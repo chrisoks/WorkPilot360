@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
+  completeJarvisOfferDraft: vi.fn(),
+  cancelJarvisOfferDraft: vi.fn(),
+  confirmJarvisOfferDraft: vi.fn(),
   completeJarvisTimeDraft: vi.fn(),
   cancelJarvisTimeDraft: vi.fn(),
   confirmJarvisTimeDraft: vi.fn(),
@@ -42,6 +45,9 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
+  completeJarvisOfferDraft: mocks.completeJarvisOfferDraft,
+  cancelJarvisOfferDraft: mocks.cancelJarvisOfferDraft,
+  confirmJarvisOfferDraft: mocks.confirmJarvisOfferDraft,
   completeJarvisTimeDraft: mocks.completeJarvisTimeDraft,
   cancelJarvisTimeDraft: mocks.cancelJarvisTimeDraft,
   confirmJarvisTimeDraft: mocks.confirmJarvisTimeDraft,
@@ -157,6 +163,25 @@ describe("JARVIS action-draft API", () => {
     );
     mocks.executePlanningBatch.mockResolvedValue({
       batchId: "planning-preview-1",
+    });
+    mocks.completeJarvisOfferDraft.mockResolvedValue({
+      ...draft,
+      actionId: "offer.prepare",
+    });
+    mocks.cancelJarvisOfferDraft.mockResolvedValue({
+      ...draft,
+      actionId: "offer.prepare",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisOfferDraft.mockResolvedValue({
+      ...draft,
+      actionId: "offer.prepare",
+      state: "executed",
+      result: {
+        entityType: "offer",
+        entityId: "offer-1",
+        label: "Öffnen",
+      },
     });
     mocks.completeJarvisTimeDraft.mockResolvedValue({
       ...draft,
@@ -434,6 +459,94 @@ describe("JARVIS action-draft API", () => {
         }),
       })
     );
+  });
+
+  it("routes offer edits and explicit confirmation through an allowlisted payload", async () => {
+    const headers = {
+      "x-jarvis-action": "jarvis-action-draft-v2",
+      origin: "https://workpilot.example",
+    };
+    const lines = [
+      {
+        catalogItemId: "catalog-1",
+        quantity: 2,
+        description: "Glasflächen reinigen",
+        unitPrice: 50,
+        discountPercent: 0,
+      },
+    ];
+    const edited = (await PATCH(
+      request(
+        "PATCH",
+        {
+          actorId: "user-1",
+          actionId: "offer.prepare",
+          revision: 1,
+          projectId: "project-1",
+          company: "OK solutions",
+          offerType: "base",
+          addendumMode: "addition",
+          parentOfferId: "",
+          plannedExecutionMonth: "2026-11",
+          plannedExecutionEndMonth: "",
+          introText: "Einleitung",
+          closingText: "Schlusstext",
+          vatRate: 19,
+          discountPercent: 5,
+          lines,
+          organizationId: "evil-org",
+          status: "Versendet",
+          pdfData: "forbidden",
+        },
+        headers
+      ) as never,
+      context
+    ))!;
+
+    expect(edited.status).toBe(200);
+    expect(mocks.completeJarvisOfferDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.objectContaining({
+        organizationId: "org-1",
+        sessionId: "session-1",
+      }),
+      {
+        revision: 1,
+        projectId: "project-1",
+        company: "OK solutions",
+        offerType: "base",
+        addendumMode: "addition",
+        parentOfferId: "",
+        plannedExecutionMonth: "2026-11",
+        plannedExecutionEndMonth: "",
+        introText: "Einleitung",
+        closingText: "Schlusstext",
+        vatRate: 19,
+        discountPercent: 5,
+        lines,
+      }
+    );
+
+    const confirmed = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "offer.prepare",
+          command: "confirm",
+          revision: 2,
+        },
+        headers
+      ) as never,
+      context
+    ))!;
+    expect(confirmed.status).toBe(200);
+    expect(mocks.confirmJarvisOfferDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.anything(),
+      2
+    );
+    expect(mocks.confirmJarvisTaskDraft).not.toHaveBeenCalled();
   });
 
   it("routes time edits, cancellation and confirmation with an allowlisted payload", async () => {

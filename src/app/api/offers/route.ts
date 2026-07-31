@@ -15,6 +15,17 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canDeleteOffers, canManageOffers, canSendDocumentMails, canViewInternalCostData } from "@/lib/permissions";
+import {
+  calculateOfferLineNet,
+  clampOfferPercent,
+  cleanOfferNumber,
+  cleanOfferText,
+  normalizeOfferAddendumMode,
+  normalizeOfferMonth,
+  normalizeOfferType as normalizeSharedOfferType,
+  normalizeOfferUnit,
+  roundOfferMoney,
+} from "@/lib/offers/offer-core";
 
 type OfferCompany = "OK solutions" | "OK immocare";
 type OfferType = "base" | "addendum";
@@ -413,51 +424,35 @@ async function ensureOfferTables() {
 }
 
 function cleanString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+  return cleanOfferText(value);
 }
 
 function cleanNumber(value: unknown, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
+  return cleanOfferNumber(value, fallback);
 }
 
 function cleanPercent(value: unknown) {
-  return Math.min(Math.max(cleanNumber(value, 0), 0), 100);
+  return clampOfferPercent(value);
 }
 
 function roundMoney(value: number) {
-  return Math.round((Number(value) || 0) * 100) / 100;
+  return roundOfferMoney(value);
 }
 
 function normalizeOfferType(value: unknown): OfferType {
-  return value === "addendum" ? "addendum" : "base";
+  return normalizeSharedOfferType(value);
 }
 
 function normalizeAddendumMode(value: unknown): OfferAddendumMode {
-  return value === "replacement" || value === "reduction" ? value : "addition";
+  return normalizeOfferAddendumMode(value);
 }
 
 function cleanMonth(value: unknown) {
-  const month = cleanString(value);
-  return /^\d{4}-\d{2}$/.test(month) ? month : "";
+  return normalizeOfferMonth(value);
 }
 
 function normalizeUnit(value: unknown) {
-  const unit = cleanString(value);
-  const aliases: Record<string, string> = {
-    h: "Std",
-    std: "Std",
-    stunde: "Std",
-    stunden: "Std",
-    stk: "Stk",
-    stück: "Stk",
-    stueck: "Stk",
-    pauschale: "Pauschal",
-    pauschal: "Pauschal",
-    liter: "L",
-    ltr: "L",
-  };
-  return aliases[unit.toLowerCase()] ?? unit;
+  return normalizeOfferUnit(value);
 }
 
 function getLineBaseNet(line: Pick<Required<OfferLineInput>, "quantity" | "unitPrice">) {
@@ -469,7 +464,7 @@ function getLineDiscountAmount(line: Pick<Required<OfferLineInput>, "quantity" |
 }
 
 function getLineTotalNet(line: Pick<Required<OfferLineInput>, "quantity" | "unitPrice" | "discountPercent">) {
-  return roundMoney(getLineBaseNet(line) - getLineDiscountAmount(line));
+  return calculateOfferLineNet(line);
 }
 
 function getErrorMessage(error: unknown) {

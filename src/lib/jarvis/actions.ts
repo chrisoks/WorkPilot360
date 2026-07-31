@@ -374,7 +374,17 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "prepare",
     confirmation: "preview",
     dataClasses: ["customer"],
-    implementation: "planned",
+    implementation: "available",
+    canUse: canManageOffers,
+  },
+  {
+    id: "offer.draft.create",
+    title: "Angebots- oder Nachtragsentwurf speichern",
+    category: "offer",
+    risk: "write",
+    confirmation: "confirm",
+    dataClasses: ["customer"],
+    implementation: "available",
     canUse: canManageOffers,
   },
   {

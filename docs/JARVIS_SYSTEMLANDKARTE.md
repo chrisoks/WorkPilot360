@@ -1,6 +1,6 @@
 # JARVIS Systemlandkarte
 
-Stand: 30.07.2026
+Stand: 31.07.2026
 
 ## Zweck
 
@@ -64,8 +64,9 @@ Kernabläufe ab. Folgende Tiefenarbeit bleibt offen:
   rollenberechtigte Suche für Projekte, Kunden/Kontakte, Aufgaben, Angebote
   und Rechnungen hinaus,
 - vollständige Dialogvarianten und Umgangssprache je Workflow,
-- weitere schreibende Aktionen außerhalb der bereits vollständigen Aufgaben-
-  und projektartgerechten Termin-/Terminwunsch-Vertikalschnitte,
+- weitere schreibende Aktionen außerhalb der bereits vollständigen Aufgaben-,
+  projektartgerechten Termin-/Terminwunsch-, manuellen Zeit-, Text- und
+  Angebotsentwurfs-Vertikalschnitte,
 - Sprachsteuerung,
 - der fachlich noch nicht abgeschlossene Ausbau der Fahrzeugvermietung.
 

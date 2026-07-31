@@ -1,0 +1,70 @@
+import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
+
+const MONTHS: Record<string, number> = {
+  januar: 1,
+  februar: 2,
+  marz: 3,
+  april: 4,
+  mai: 5,
+  juni: 6,
+  juli: 7,
+  august: 8,
+  september: 9,
+  oktober: 10,
+  november: 11,
+  dezember: 12,
+};
+
+export function looksLikeOfferDraftRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /^\s*(?:erstell|erstelle|leg|lege|bereit|kalkulier|rechne|mach)\w*\b/.test(
+      value
+    ) &&
+    /\b(?:angebot|nachtrag|nachtragsangebot)\w*\b/.test(value) &&
+    !/\baufgabe\w*\b/.test(value) &&
+    !/\b(?:such|zeig|liste|offen|alt|status|versend|send|schick|losch|archivier)\w*\b/.test(
+      value
+    )
+  );
+}
+
+export function extractOfferExecutionMonth(
+  question: string,
+  now = new Date()
+) {
+  const isoMonth = question.match(/\b(20\d{2})-(0[1-9]|1[0-2])\b/)?.[0];
+  if (isoMonth) return isoMonth;
+  const numeric = question.match(
+    /\b(?:monat\s+)?(0?[1-9]|1[0-2])[./-](20\d{2})\b/
+  );
+  if (numeric) {
+    return `${numeric[2]}-${numeric[1].padStart(2, "0")}`;
+  }
+  const value = normalizeJarvisIntentText(question);
+  for (const [name, month] of Object.entries(MONTHS)) {
+    if (!new RegExp(`\\b${name}\\b`).test(value)) continue;
+    const yearMatch = value.match(
+      new RegExp(`\\b${name}\\s+(20\\d{2})\\b`)
+    );
+    const year = yearMatch ? Number(yearMatch[1]) : now.getFullYear();
+    return `${year}-${String(month).padStart(2, "0")}`;
+  }
+  return undefined;
+}
+
+export function extractOfferDraftKind(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return {
+    offerType:
+      /\b(?:nachtrag|nachtragsangebot)\w*\b/.test(value)
+        ? ("addendum" as const)
+        : ("base" as const),
+    company:
+      /\b(?:ok\s*immocare|immocare|oki)\b/.test(value)
+        ? ("OK immocare" as const)
+        : /\b(?:ok\s*solutions|solutions)\b/.test(value)
+          ? ("OK solutions" as const)
+          : undefined,
+  };
+}

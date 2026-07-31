@@ -12,6 +12,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "time.prepare",
   "project-logbook.prepare",
   "task-comment.prepare",
+  "offer.prepare",
 ] as const;
 
 export type JarvisPreviewActionId = (typeof JARVIS_PREVIEW_ACTION_IDS)[number];
@@ -130,12 +131,48 @@ const taskCommentPreviewPayloadSchema = z
   })
   .strict();
 
+const offerPreviewLineSchema = z
+  .object({
+    catalogItemId: boundedId.optional(),
+    quantity: z.number().positive().max(1_000_000).optional(),
+    unitPrice: z.number().min(0).max(100_000_000).optional(),
+    discountPercent: z.number().min(0).max(100).optional(),
+    description: optionalText(4000),
+  })
+  .strict();
+
+const offerPreviewPayloadSchema = z
+  .object({
+    projectId: boundedId.optional(),
+    company: z.enum(["OK solutions", "OK immocare"]).optional(),
+    offerType: z.enum(["base", "addendum"]).optional(),
+    addendumMode: z
+      .enum(["addition", "replacement", "reduction"])
+      .optional(),
+    parentOfferId: boundedId.optional(),
+    plannedExecutionMonth: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+      .optional(),
+    plannedExecutionEndMonth: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+      .optional(),
+    introText: optionalText(4000),
+    closingText: optionalText(4000),
+    vatRate: z.number().min(0).max(100).optional(),
+    discountPercent: z.number().min(0).max(100).optional(),
+    lines: z.array(offerPreviewLineSchema).max(30).optional(),
+  })
+  .strict();
+
 const PREVIEW_PAYLOAD_SCHEMAS = {
   "task.prepare": taskPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
   "task-comment.prepare": taskCommentPreviewPayloadSchema,
+  "offer.prepare": offerPreviewPayloadSchema,
 } satisfies Record<JarvisPreviewActionId, z.ZodType>;
 
 export type JarvisActionPreviewPayloadMap = {
@@ -146,6 +183,7 @@ export type JarvisActionPreviewPayloadMap = {
     typeof projectLogbookPreviewPayloadSchema
   >;
   "task-comment.prepare": z.infer<typeof taskCommentPreviewPayloadSchema>;
+  "offer.prepare": z.infer<typeof offerPreviewPayloadSchema>;
 };
 
 export type JarvisActionPreviewAuditEvent = {
@@ -446,6 +484,110 @@ export type JarvisWinterCalculationInputView = {
   plowSaltIncreasePercent: number;
   mixedSpreadingPercent: number;
   mixedPlowingPercent: number;
+};
+
+export type JarvisOfferDraftLineView = {
+  catalogItemId: string;
+  catalogType: string;
+  quantity: number;
+  unit: string;
+  title: string;
+  description: string;
+  unitPrice: number;
+  discountPercent: number;
+  vatRate: number;
+  totalNet: number;
+};
+
+export type JarvisOfferDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "offer.prepare";
+  title: "Angebot oder Nachtrag vorbereiten";
+  badge:
+    | "Entwurf"
+    | "Bereit"
+    | "Wird gespeichert"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Gespeichert";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  fields: Array<{ label: string; value: string }>;
+  missingFields: string[];
+  errors: string[];
+  warnings: string[];
+  editor: {
+    projectId: string;
+    company: "OK solutions" | "OK immocare";
+    offerType: "base" | "addendum";
+    addendumMode: "addition" | "replacement" | "reduction";
+    parentOfferId: string;
+    plannedExecutionMonth: string;
+    plannedExecutionEndMonth: string;
+    introText: string;
+    closingText: string;
+    vatRate: number;
+    discountPercent: number;
+    lines: JarvisOfferDraftLineView[];
+    projectOptions: Array<{
+      id: string;
+      label: string;
+      customerLabel: string;
+      projectKind: string;
+      defaultCompany: "OK solutions" | "OK immocare";
+      defaultExecutionMonth: string;
+      defaultExecutionEndMonth: string;
+      updatedAt: string;
+    }>;
+    catalogOptions: Array<{
+      id: string;
+      label: string;
+      type: string;
+      unit: string;
+      description: string;
+      salesPrice: number;
+      vatRate: number;
+      updatedAt: string;
+    }>;
+    parentOfferOptions: Array<{
+      id: string;
+      label: string;
+      projectId: string;
+      updatedAt: string;
+    }>;
+  };
+  calculation: {
+    lineNetBeforeOfferDiscount: number;
+    offerDiscountAmount: number;
+    netTotal: number;
+    vatRate: number;
+    vatAmount: number;
+    grossTotal: number;
+  };
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "missing_fields"
+      | "invalid_input"
+      | "not_permitted"
+      | "expired"
+      | "cancelled"
+      | "executing"
+      | "executed";
+  };
+  cancellation: { enabled: boolean };
+  execution: {
+    enabled: false;
+    reason: "requires_confirmation" | "finalized";
+  };
+  result?: {
+    entityType: "offer";
+    entityId: string;
+    label: string;
+  };
 };
 
 export type JarvisWinterCalculationResultView = {

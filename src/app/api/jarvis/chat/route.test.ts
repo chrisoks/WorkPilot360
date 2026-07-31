@@ -46,6 +46,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisTaskDraft: vi.fn(),
   createPersistedJarvisCommunicationDraft: vi.fn(),
   createPersistedJarvisPlanningDraft: vi.fn(),
+  createPersistedJarvisOfferDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
   createPersistedJarvisVehicleTripCalculationDraft: vi.fn(),
@@ -108,6 +109,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisCommunicationDraft,
   createPersistedJarvisPlanningDraft:
     mocks.createPersistedJarvisPlanningDraft,
+  createPersistedJarvisOfferDraft:
+    mocks.createPersistedJarvisOfferDraft,
   createPersistedJarvisTimeDraft:
     mocks.createPersistedJarvisTimeDraft,
   createPersistedJarvisWinterCalculationDraft:
@@ -309,6 +312,51 @@ describe("POST /api/jarvis/chat", () => {
       cancellation: { enabled: true },
       execution: { enabled: false, reason: "requires_confirmation" },
     });
+    mocks.createPersistedJarvisOfferDraft.mockImplementation(
+      async ({ preview }) => ({
+        version: 2,
+        previewId: preview.previewId,
+        actionId: "offer.prepare",
+        title: "Angebot oder Nachtrag vorbereiten",
+        badge: "Entwurf",
+        state: "awaiting_input",
+        revision: 1,
+        expiresAt: "2026-07-31T10:00:00.000Z",
+        fields: [],
+        missingFields: ["Projekt", "Ausführungsmonat", "Mindestens eine Position"],
+        errors: [],
+        warnings: [],
+        editor: {
+          projectId: "",
+          company: "OK solutions",
+          offerType: preview.payload.offerType ?? "base",
+          addendumMode: "addition",
+          parentOfferId: "",
+          plannedExecutionMonth:
+            preview.payload.plannedExecutionMonth ?? "",
+          plannedExecutionEndMonth: "",
+          introText: "",
+          closingText: "",
+          vatRate: 19,
+          discountPercent: 0,
+          lines: [],
+          projectOptions: [],
+          catalogOptions: [],
+          parentOfferOptions: [],
+        },
+        calculation: {
+          lineNetBeforeOfferDiscount: 0,
+          offerDiscountAmount: 0,
+          netTotal: 0,
+          vatRate: 19,
+          vatAmount: 0,
+          grossTotal: 0,
+        },
+        confirmation: { enabled: false, reason: "missing_fields" },
+        cancellation: { enabled: true },
+        execution: { enabled: false, reason: "requires_confirmation" },
+      })
+    );
     mocks.createPersistedJarvisWinterCalculationDraft.mockResolvedValue({
       version: 2,
       previewId: "winter-preview-1",
@@ -3067,7 +3115,17 @@ describe("POST /api/jarvis/chat", () => {
     expect(payload.actionPreview).toBeUndefined();
   });
 
-  it("recognizes an offer action but never executes it", async () => {
+  it("prepares an offer action but never executes it without confirmation", async () => {
+    const actor = {
+      id: "user-1",
+      isActive: true,
+      role: "GESCHAEFTSFUEHRER",
+    };
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: actor,
+      effectiveActor: actor,
+      isImpersonating: false,
+    });
     mocks.classifyJarvisIntentWithAi.mockResolvedValue({
       intent: "prepare_action",
       domain: "system",
@@ -3079,6 +3137,10 @@ describe("POST /api/jarvis/chat", () => {
       usesCurrentContext: true,
       actionKind: "offer.create",
     });
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
 
     const response = await POST(
       new Request("http://localhost/api/jarvis/chat", {
@@ -3086,22 +3148,38 @@ describe("POST /api/jarvis/chat", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           actorId: "user-1",
-          message: "Erstelle für diesen Kunden bitte ein Angebot.",
-          context: { recordType: "customer", recordId: "customer-1" },
+          message: "Erstelle bitte ein Angebot für November 2026.",
+          context: { recordType: "project", recordId: "project-1" },
         }),
       })
     );
     const payload = await response.json();
 
     expect(payload).toMatchObject({
-      type: "clarification",
-      topicId: "intent.ai.action-clarification",
+      type: "answer",
+      topicId: "action.draft.offer",
+      actionDraft: {
+        actionId: "offer.prepare",
+        state: "awaiting_input",
+        confirmation: { enabled: false },
+        execution: {
+          enabled: false,
+          reason: "requires_confirmation",
+        },
+      },
     });
-    expect(payload.choices).toEqual([
+    expect(mocks.createPersistedJarvisOfferDraft).toHaveBeenCalledTimes(1);
+    expect(mocks.createPersistedJarvisOfferDraft).toHaveBeenCalledWith(
       expect.objectContaining({
-        label: "Angebotserstellung erklären",
-      }),
-    ]);
+        preview: expect.objectContaining({
+          payload: expect.objectContaining({
+            projectId: "project-1",
+            plannedExecutionMonth: "2026-11",
+            offerType: "base",
+          }),
+        }),
+      })
+    );
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });

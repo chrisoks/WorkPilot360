@@ -1,6 +1,6 @@
 # JARVIS Entwicklungsplan
 
-Stand: 29.07.2026
+Stand: 31.07.2026
 
 ## Vision und lebendiger Prinzipienkompass
 
@@ -1903,6 +1903,29 @@ Exactly-once, Entwurfsaudit, Aufgabenhistorie, vorhandene Benachrichtigungen
 und UI-Refresh sind Bestandteil des Vertrags. Datei-/Bildanhänge und autonome
 Mailaktionen sind ausdrücklich nicht Teil dieses Schnitts.
 
+Der vierte Action-Center-Vertikalschnitt für Angebote und Nachträge ist am
+31.07.2026 technisch umgesetzt und befindet sich in der Releaseabnahme.
+Natürliche Erstellungswünsche öffnen einen persistenten, bearbeitbaren
+Entwurf; reine Fragen, Suchen, Statusabfragen sowie Versand-, Lösch- und
+Archivbefehle werden nicht als Entwurfsanlage umgedeutet. Projekt,
+Absenderfirma, Dokument- und Nachtragsart, Bezugsangebot,
+Ausführungszeitraum, Katalogpositionen, Mengen, Einzelpreise,
+Positions-/Gesamtnachlass, Umsatzsteuer und Texte bleiben vor der
+Bestätigung sichtbar. Fehlende Angaben blockieren; Preisabweichungen vom
+aktuellen Katalog werden ausdrücklich ausgewiesen.
+
+Normale Angebotsmaske und JARVIS verwenden dieselbe zentrale Normalisierungs-
+und Rechenlogik. Der JARVIS-Speicherdienst lädt Projekt, Kontakte,
+Katalogpositionen und Bezugsangebot im Mandanten neu und erzeugt
+ausschließlich den Status `Entwurf` samt Historie. Die globale
+Angebotsnummer wird innerhalb der serialisierbaren Bestätigung durch einen
+organisationsgebundenen PostgreSQL-Advisory-Lock geschützt. Rollenpaar,
+Impersonation, Sitzung, Organisation, Revision, TTL, HMAC,
+Kontext-Fingerprint, Audit und atomare Exactly-once-Beanspruchung sind
+Bestandteil des Vertrags. Finalisierung, PDF-/Druckfreigabe, Versand,
+Gewonnen/Verloren und Löschung bleiben getrennte, nicht durch diesen
+Vertikalschnitt freigegebene Aktionen.
+
 Die Modellwahl ist ebenfalls zentralisiert: Luna bleibt der kleine
 strukturierte Intent-Fallback, Terra das normale Vertriebs-/Managementmodell.
 Sol ist nur für ausdrücklich klassifizierte spätere Komplexanalysen
@@ -1918,7 +1941,7 @@ telemetriert.
   kontrolliert als unveränderliche Version speichern,
 - Logbuch- und Kommentaraktionen (produktiver textbasierter Vertikalschnitt;
   Anhänge bleiben ein eigener Sicherheitsblock),
-- Angebote/Nachträge als Entwurf,
+- Angebote/Nachträge als Entwurf (technisch umgesetzt; Releaseabnahme läuft),
 - Rechnungsentwurf und Fakturavorprüfung,
 - Dokument-/Mailvorbereitung,
 - Vertriebsaktionslisten in Aufgaben überführen,

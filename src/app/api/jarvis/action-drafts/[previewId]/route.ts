@@ -3,18 +3,21 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { getDemoContext } from "@/lib/demo/context";
 import {
   cancelJarvisPlanningDraft,
+  cancelJarvisOfferDraft,
   cancelJarvisCommunicationDraft,
   cancelJarvisTaskDraft,
   cancelJarvisTimeDraft,
   cancelJarvisVehicleTripCalculationDraft,
   cancelJarvisWinterCalculationDraft,
   completeJarvisPlanningDraft,
+  completeJarvisOfferDraft,
   completeJarvisCommunicationDraft,
   completeJarvisTaskDraft,
   completeJarvisTimeDraft,
   completeJarvisVehicleTripCalculationDraft,
   completeJarvisWinterCalculationDraft,
   confirmJarvisPlanningDraft,
+  confirmJarvisOfferDraft,
   confirmJarvisCommunicationDraft,
   confirmJarvisTaskDraft,
   confirmJarvisTimeDraft,
@@ -156,6 +159,7 @@ export async function PATCH(
   if ("response" in resolved) return resolved.response;
   try {
     const isPlanning = body.actionId === "planning.prepare";
+    const isOffer = body.actionId === "offer.prepare";
     const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
       body.actionId === "winter-calculation.prepare";
@@ -164,7 +168,27 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isCommunication
+    const actionDraft = isOffer
+      ? await completeJarvisOfferDraft(
+          previewId,
+          resolved.binding,
+          {
+            revision: body.revision,
+            projectId: body.projectId,
+            company: body.company,
+            offerType: body.offerType,
+            addendumMode: body.addendumMode,
+            parentOfferId: body.parentOfferId,
+            plannedExecutionMonth: body.plannedExecutionMonth,
+            plannedExecutionEndMonth: body.plannedExecutionEndMonth,
+            introText: body.introText,
+            closingText: body.closingText,
+            vatRate: body.vatRate,
+            discountPercent: body.discountPercent,
+            lines: body.lines,
+          }
+        )
+      : isCommunication
       ? await completeJarvisCommunicationDraft(
           previewId,
           resolved.binding,
@@ -254,7 +278,9 @@ export async function PATCH(
         );
     return NextResponse.json({
       message:
-        isCommunication
+        isOffer
+          ? "Der Angebotsentwurf wurde mit den aktuellen Projekt-, Katalog-, Preis- und Nachtragsdaten neu berechnet. Erst deine bewusste Bestätigung legt genau einen Entwurf an."
+          : isCommunication
           ? "Der Logbuch-/Kommentarentwurf wurde mit dem aktuellen Ziel-, Rollen- und Beteiligtenstand erneut geprüft. Erst deine bewusste Bestätigung darf genau einen Text speichern."
           : isVehicleTripCalculation
           ? "Die Fahrt wurde mit den aktuellen Fahrzeugwerten und der ausgewählten Kraftstoffpreisquelle neu berechnet. Prüfe Selbstkosten, Verkauf, Gewinn, Aufschlag und Marge; gespeichert wird erst nach deiner ausdrücklichen Bestätigung."
@@ -292,6 +318,7 @@ export async function POST(
 
   try {
     const isPlanning = body.actionId === "planning.prepare";
+    const isOffer = body.actionId === "offer.prepare";
     const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
       body.actionId === "winter-calculation.prepare";
@@ -301,7 +328,13 @@ export async function POST(
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
     if (body.command === "cancel") {
-      const actionDraft = isCommunication
+      const actionDraft = isOffer
+        ? await cancelJarvisOfferDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isCommunication
         ? await cancelJarvisCommunicationDraft(
             previewId,
             resolved.binding,
@@ -337,7 +370,9 @@ export async function POST(
             body.revision
           );
       return NextResponse.json({
-        message: isCommunication
+        message: isOffer
+          ? "Der Angebotsentwurf wurde abgebrochen. Es wurde kein Angebot angelegt."
+          : isCommunication
           ? "Der Logbuch-/Kommentarentwurf wurde abgebrochen. Es wurde kein Text gespeichert."
           : isVehicleTripCalculation
           ? "Der Fahrtenentwurf wurde abgebrochen. Es wurde keine Fahrtenkalkulation gespeichert."
@@ -360,7 +395,13 @@ export async function POST(
         { status: 400 }
       );
     }
-    const actionDraft = isCommunication
+    const actionDraft = isOffer
+      ? await confirmJarvisOfferDraft(
+          previewId,
+          resolved.binding,
+          body.revision
+        )
+      : isCommunication
       ? await confirmJarvisCommunicationDraft(
           previewId,
           resolved.binding,
@@ -416,7 +457,9 @@ export async function POST(
     return NextResponse.json({
       message:
         actionDraft.state === "executed"
-          ? isCommunication
+          ? isOffer
+            ? "Das Angebot wurde nach deiner Bestätigung genau einmal als Entwurf angelegt. Es wurde weder finalisiert noch versendet."
+            : isCommunication
             ? "Der Text wurde nach deiner Bestätigung über den gemeinsamen WorkPilot-Service genau einmal gespeichert."
             : isVehicleTripCalculation
             ? "Die Fahrtenkalkulation wurde nach deiner Bestätigung genau einmal als unveränderlicher Snapshot gespeichert."
@@ -427,7 +470,9 @@ export async function POST(
             : isPlanning
             ? "Der Termin wurde nach deiner Bestätigung über den Planning-Service genau einmal angelegt."
             : "Die Aufgabe wurde nach deiner Bestätigung genau einmal angelegt."
-          : isCommunication
+          : isOffer
+            ? "Der Angebotsentwurf wurde nicht ausgeführt."
+            : isCommunication
             ? "Der Logbuch-/Kommentarentwurf wurde nicht gespeichert."
             : isVehicleTripCalculation
             ? "Der Fahrtenentwurf wurde nicht gespeichert."

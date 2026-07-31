@@ -175,6 +175,44 @@ describe("JARVIS action registry", () => {
     ).toBe(true);
   });
 
+  it("keeps offer preparation and draft creation on the existing offer roles", () => {
+    for (const role of [
+      Role.ADMIN,
+      Role.GESCHAEFTSFUEHRER,
+      Role.FUEHRUNGSKRAFT,
+      Role.VERTRIEB,
+    ]) {
+      const profile = createJarvisAccessProfile({ id: role, role });
+      expect(getJarvisActionDecision("offer.prepare", profile)).toMatchObject({
+        executable: true,
+        reason: "allowed",
+      });
+      expect(
+        getJarvisActionDecision("offer.draft.create", profile)
+      ).toMatchObject({
+        executable: true,
+        requiresConfirmation: true,
+      });
+    }
+    for (const role of [Role.MITARBEITER, Role.BUCHHALTUNG, Role.GAST]) {
+      expect(
+        getJarvisActionDecision(
+          "offer.draft.create",
+          createJarvisAccessProfile({ id: role, role })
+        )
+      ).toMatchObject({ permitted: false, executable: false });
+    }
+    expect(
+      getJarvisActionDecision(
+        "offer.draft.create",
+        createJarvisAccessProfile(
+          { id: "gf", role: Role.GESCHAEFTSFUEHRER },
+          { id: "employee", role: Role.MITARBEITER }
+        )
+      )
+    ).toMatchObject({ permitted: false, executable: false });
+  });
+
   it("prevents privilege escalation through impersonation", () => {
     const profile = createJarvisAccessProfile(
       { id: "gf", role: Role.GESCHAEFTSFUEHRER },

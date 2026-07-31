@@ -93,6 +93,7 @@ import {
   completeJarvisVehicleTripCalculationDraft,
   completeJarvisWinterCalculationDraft,
   createPersistedJarvisPlanningDraft,
+  createPersistedJarvisOfferDraft,
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
   createPersistedJarvisTimeDraft,
@@ -106,11 +107,100 @@ import {
   looksLikeGenericJarvisCalculatorStart,
   matchJarvisVehicleOption,
 } from "@/lib/jarvis/calculator-intake";
+import {
+  extractOfferDraftKind,
+  extractOfferExecutionMonth,
+  looksLikeOfferDraftRequest,
+} from "@/lib/jarvis/offer-intake";
 
 export const dynamic = "force-dynamic";
 
 function cleanText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+async function buildJarvisOfferDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.session-required",
+      message:
+        "Für einen bestätigbaren Angebotsentwurf ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde nichts gespeichert.",
+    };
+  }
+  const projectReferences = extractJarvisProjectReferences(input.question);
+  const explicitProject =
+    input.context.recordType === "project" && input.context.recordId
+      ? { id: input.context.recordId }
+      : projectReferences.length === 1
+        ? await prisma.workPilotProject.findFirst({
+            where: {
+              organizationId: input.organizationId,
+              projectNumber: {
+                equals: projectReferences[0],
+                mode: "insensitive",
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+  const kind = extractOfferDraftKind(input.question);
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "offer.prepare",
+    payload: {
+      ...(explicitProject?.id ? { projectId: explicitProject.id } : {}),
+      ...(kind.company ? { company: kind.company } : {}),
+      offerType: kind.offerType,
+      ...(extractOfferExecutionMonth(input.question)
+        ? {
+            plannedExecutionMonth:
+              extractOfferExecutionMonth(input.question),
+          }
+        : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.offer.refused",
+      message: `${preview.message} Es wurde kein Angebot angelegt.`,
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisOfferDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.draft.offer",
+      message:
+        "Ich habe einen sicheren Angebotsentwurf vorbereitet. Wähle Projekt und Katalogpositionen, prüfe Mengen, Preise, Nachlass, Umsatzsteuer und Ausführungsmonat. Erst deine ausdrückliche Bestätigung legt genau einen Entwurf an; JARVIS finalisiert oder versendet ihn nicht.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Der Angebotsentwurf konnte nicht sicher vorbereitet werden."
+      } Es wurde kein Angebot angelegt.`,
+    };
+  }
 }
 
 async function buildJarvisTaskPreview(input: {
@@ -1333,6 +1423,18 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  if (looksLikeOfferDraftRequest(message)) {
+    return respond(
+      await buildJarvisOfferDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "sales"
+    );
   }
   if (looksLikeWinterCalculationStartRequest(message)) {
     return respond(

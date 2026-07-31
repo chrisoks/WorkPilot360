@@ -70,6 +70,7 @@ import type { JarvisDialogChoice } from "@/lib/jarvis/dialog";
 import type {
   JarvisActionPreviewView,
   JarvisCommunicationActionDraftView,
+  JarvisOfferDraftView,
   JarvisPlanningActionDraftView,
   JarvisTaskActionDraftView,
   JarvisTimeActionDraftView,
@@ -669,6 +670,7 @@ type ManagementAiChatMessage = {
   actionDraft?:
     | JarvisTaskActionDraftView
     | JarvisCommunicationActionDraftView
+    | JarvisOfferDraftView
     | JarvisPlanningActionDraftView
     | JarvisTimeActionDraftView
     | JarvisWinterCalculationDraftView
@@ -688,6 +690,7 @@ const jarvisPreviewActionIds = new Set([
   "task.prepare",
   "planning.prepare",
   "time.prepare",
+  "offer.prepare",
 ]);
 
 function parseJarvisDialogChoices(value: unknown): JarvisDialogChoice[] | undefined {
@@ -2215,6 +2218,7 @@ function parseJarvisActionDraft(
 ):
   | JarvisTaskActionDraftView
   | JarvisCommunicationActionDraftView
+  | JarvisOfferDraftView
   | JarvisPlanningActionDraftView
   | JarvisTimeActionDraftView
   | JarvisWinterCalculationDraftView
@@ -2223,6 +2227,7 @@ function parseJarvisActionDraft(
   return (
     parseJarvisTaskActionDraft(value) ??
     parseJarvisCommunicationActionDraft(value) ??
+    parseJarvisOfferDraft(value) ??
     parseJarvisPlanningActionDraft(value) ??
     parseJarvisTimeActionDraft(value) ??
     parseJarvisWinterCalculationDraft(value) ??
@@ -2230,11 +2235,671 @@ function parseJarvisActionDraft(
   );
 }
 
+function parseJarvisOfferDraft(
+  value: unknown
+): JarvisOfferDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "offer.prepare" ||
+    typeof candidate.previewId !== "string" ||
+    typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" ||
+    typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" ||
+    typeof candidate.expiresAt !== "string" ||
+    !Array.isArray(candidate.fields) ||
+    !Array.isArray(candidate.missingFields) ||
+    !Array.isArray(candidate.errors) ||
+    !Array.isArray(candidate.warnings) ||
+    !candidate.editor ||
+    typeof candidate.editor !== "object" ||
+    !candidate.calculation ||
+    typeof candidate.calculation !== "object" ||
+    !candidate.confirmation ||
+    typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation ||
+    typeof candidate.cancellation !== "object"
+  ) {
+    return undefined;
+  }
+  const editor = candidate.editor as Record<string, unknown>;
+  const calculation = candidate.calculation as Record<string, unknown>;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (
+    !Array.isArray(editor.lines) ||
+    !Array.isArray(editor.projectOptions) ||
+    !Array.isArray(editor.catalogOptions) ||
+    !Array.isArray(editor.parentOfferOptions) ||
+    typeof editor.projectId !== "string" ||
+    typeof editor.company !== "string" ||
+    typeof editor.offerType !== "string" ||
+    typeof editor.addendumMode !== "string" ||
+    typeof editor.parentOfferId !== "string" ||
+    typeof editor.plannedExecutionMonth !== "string" ||
+    typeof editor.plannedExecutionEndMonth !== "string" ||
+    typeof editor.introText !== "string" ||
+    typeof editor.closingText !== "string" ||
+    typeof editor.vatRate !== "number" ||
+    typeof editor.discountPercent !== "number" ||
+    typeof calculation.netTotal !== "number" ||
+    typeof calculation.grossTotal !== "number" ||
+    typeof confirmation.enabled !== "boolean" ||
+    typeof confirmation.reason !== "string" ||
+    typeof cancellation.enabled !== "boolean"
+  ) {
+    return undefined;
+  }
+  return candidate as unknown as JarvisOfferDraftView;
+}
+
 function jarvisIsoToLocalInput(value: string) {
   if (!value || !Number.isFinite(Date.parse(value))) return "";
   const date = new Date(value);
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function JarvisOfferDraftCard({
+  draft,
+  actorId,
+  disabled,
+  onChange,
+  onOpenOffer,
+}: {
+  draft: JarvisOfferDraftView;
+  actorId: string;
+  disabled: boolean;
+  onChange: (next: JarvisOfferDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferDraftView) => void;
+}) {
+  const [editor, setEditor] = useState(draft.editor);
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setEditor(draft.editor);
+    setError("");
+  }, [draft.previewId, draft.revision, draft.state, draft.editor]);
+
+  const payload = {
+    projectId: editor.projectId,
+    company: editor.company,
+    offerType: editor.offerType,
+    addendumMode: editor.addendumMode,
+    parentOfferId: editor.parentOfferId,
+    plannedExecutionMonth: editor.plannedExecutionMonth,
+    plannedExecutionEndMonth: editor.plannedExecutionEndMonth,
+    introText: editor.introText,
+    closingText: editor.closingText,
+    vatRate: editor.vatRate,
+    discountPercent: editor.discountPercent,
+    lines: editor.lines.map((line) => ({
+      catalogItemId: line.catalogItemId,
+      quantity: line.quantity,
+      description: line.description,
+      unitPrice: line.unitPrice,
+      discountPercent: line.discountPercent,
+    })),
+  };
+  const persistedPayload = {
+    projectId: draft.editor.projectId,
+    company: draft.editor.company,
+    offerType: draft.editor.offerType,
+    addendumMode: draft.editor.addendumMode,
+    parentOfferId: draft.editor.parentOfferId,
+    plannedExecutionMonth: draft.editor.plannedExecutionMonth,
+    plannedExecutionEndMonth: draft.editor.plannedExecutionEndMonth,
+    introText: draft.editor.introText,
+    closingText: draft.editor.closingText,
+    vatRate: draft.editor.vatRate,
+    discountPercent: draft.editor.discountPercent,
+    lines: draft.editor.lines.map((line) => ({
+      catalogItemId: line.catalogItemId,
+      quantity: line.quantity,
+      description: line.description,
+      unitPrice: line.unitPrice,
+      discountPercent: line.discountPercent,
+    })),
+  };
+  const isDirty = JSON.stringify(payload) !== JSON.stringify(persistedPayload);
+  const isOpen =
+    draft.state === "awaiting_input" ||
+    draft.state === "awaiting_confirmation";
+  const money = (value: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: "EUR",
+    }).format(value);
+
+  const request = async (
+    method: "PATCH" | "POST",
+    body: Record<string, unknown>
+  ) => {
+    setIsWorking(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/jarvis/action-drafts/${encodeURIComponent(draft.previewId)}`,
+        {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Jarvis-Action": "jarvis-action-draft-v2",
+          },
+          body: JSON.stringify({
+            actorId,
+            actionId: "offer.prepare",
+            revision: draft.revision,
+            ...body,
+          }),
+        }
+      );
+      const data = await response.json().catch(() => null);
+      const next = parseJarvisOfferDraft(data?.actionDraft);
+      if (!response.ok || !next) {
+        setError(
+          data?.error ??
+            "Der Angebotsentwurf konnte nicht sicher verarbeitet werden."
+        );
+        return;
+      }
+      onChange(
+        next,
+        typeof data?.message === "string" ? data.message : undefined
+      );
+    } catch {
+      setError(
+        "Das Action Center ist gerade nicht erreichbar. Es wurde kein Angebot angelegt."
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const updateLine = (
+    index: number,
+    patch: Partial<JarvisOfferDraftView["editor"]["lines"][number]>
+  ) =>
+    setEditor((current) => ({
+      ...current,
+      lines: current.lines.map((line, lineIndex) =>
+        lineIndex === index ? { ...line, ...patch } : line
+      ),
+    }));
+
+  return (
+    <section
+      className={styles.jarvisActionPreview}
+      data-state={draft.state}
+      aria-label={`${draft.title} – ${draft.badge}`}
+    >
+      <header>
+        <div>
+          <span>Action Center</span>
+          <strong>{draft.title}</strong>
+        </div>
+        <em>{draft.badge}</em>
+      </header>
+      <dl>
+        {draft.fields.map((field) => (
+          <div key={`${field.label}-${field.value}`}>
+            <dt>{field.label}</dt>
+            <dd>{field.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {isOpen ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label>
+            <span>Projekt</span>
+            <select
+              value={editor.projectId}
+              disabled={disabled || isWorking}
+              onChange={(event) => {
+                const project = editor.projectOptions.find(
+                  (option) => option.id === event.target.value
+                );
+                setEditor((current) => ({
+                  ...current,
+                  projectId: event.target.value,
+                  parentOfferId: "",
+                  ...(project
+                    ? {
+                        company: project.defaultCompany,
+                        plannedExecutionMonth:
+                          current.plannedExecutionMonth ||
+                          project.defaultExecutionMonth,
+                        plannedExecutionEndMonth:
+                          current.plannedExecutionEndMonth ||
+                          project.defaultExecutionEndMonth,
+                      }
+                    : {}),
+                }));
+              }}
+            >
+              <option value="">Bitte auswählen</option>
+              {editor.projectOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label} · {option.customerLabel || "ohne Kunde"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Absenderfirma</span>
+            <select
+              value={editor.company}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setEditor((current) => ({
+                  ...current,
+                  company: event.target.value as typeof current.company,
+                }))
+              }
+            >
+              <option value="OK solutions">OK solutions</option>
+              <option value="OK immocare">OK immocare</option>
+            </select>
+          </label>
+          <label>
+            <span>Dokumentart</span>
+            <select
+              value={editor.offerType}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setEditor((current) => ({
+                  ...current,
+                  offerType: event.target.value as typeof current.offerType,
+                  parentOfferId:
+                    event.target.value === "base"
+                      ? ""
+                      : current.parentOfferId,
+                }))
+              }
+            >
+              <option value="base">Angebot</option>
+              <option value="addendum">Nachtrag</option>
+            </select>
+          </label>
+          {editor.offerType === "addendum" ? (
+            <>
+              <label>
+                <span>Nachtragsart</span>
+                <select
+                  value={editor.addendumMode}
+                  disabled={disabled || isWorking}
+                  onChange={(event) =>
+                    setEditor((current) => ({
+                      ...current,
+                      addendumMode:
+                        event.target.value as typeof current.addendumMode,
+                    }))
+                  }
+                >
+                  <option value="addition">Ergänzung</option>
+                  <option value="replacement">Ersatz</option>
+                  <option value="reduction">Reduzierung</option>
+                </select>
+              </label>
+              <label>
+                <span>Bezugsangebot</span>
+                <select
+                  value={editor.parentOfferId}
+                  disabled={disabled || isWorking}
+                  onChange={(event) =>
+                    setEditor((current) => ({
+                      ...current,
+                      parentOfferId: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Bitte auswählen</option>
+                  {editor.parentOfferOptions
+                    .filter(
+                      (option) =>
+                        !editor.projectId ||
+                        option.projectId === editor.projectId
+                    )
+                    .map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </>
+          ) : null}
+          <label>
+            <span>Ausführungsmonat</span>
+            <input
+              type="month"
+              value={editor.plannedExecutionMonth}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setEditor((current) => ({
+                  ...current,
+                  plannedExecutionMonth: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Endmonat bei Dauerleistung</span>
+            <input
+              type="month"
+              value={editor.plannedExecutionEndMonth}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setEditor((current) => ({
+                  ...current,
+                  plannedExecutionEndMonth: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Gesamtnachlass in %</span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={editor.discountPercent}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setEditor((current) => ({
+                  ...current,
+                  discountPercent: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Umsatzsteuer in %</span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={editor.vatRate}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setEditor((current) => ({
+                  ...current,
+                  vatRate: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <div className={styles.jarvisPlanningChecks}>
+            <strong>Positionen aus dem Leistungskatalog</strong>
+            {editor.lines.map((line, index) => (
+              <div key={`${line.catalogItemId}-${index}`} data-status="ok">
+                <span>{index + 1}</span>
+                <p>
+                  <label>
+                    <span>Leistung</span>
+                    <select
+                      value={line.catalogItemId}
+                      disabled={disabled || isWorking}
+                      onChange={(event) => {
+                        const item = editor.catalogOptions.find(
+                          (option) => option.id === event.target.value
+                        );
+                        if (!item) return;
+                        updateLine(index, {
+                          catalogItemId: item.id,
+                          catalogType: item.type,
+                          title: item.label,
+                          unit: item.unit,
+                          description: item.description,
+                          unitPrice: item.salesPrice,
+                          vatRate: item.vatRate,
+                        });
+                      }}
+                    >
+                      {editor.catalogOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Menge ({line.unit})</span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={line.quantity}
+                      disabled={disabled || isWorking}
+                      onChange={(event) =>
+                        updateLine(index, {
+                          quantity: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Einzelpreis netto</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={line.unitPrice}
+                      disabled={disabled || isWorking}
+                      onChange={(event) =>
+                        updateLine(index, {
+                          unitPrice: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Positionsnachlass in %</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={line.discountPercent}
+                      disabled={disabled || isWorking}
+                      onChange={(event) =>
+                        updateLine(index, {
+                          discountPercent: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Beschreibung</span>
+                    <textarea
+                      rows={2}
+                      maxLength={4000}
+                      value={line.description}
+                      disabled={disabled || isWorking}
+                      onChange={(event) =>
+                        updateLine(index, {
+                          description: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={disabled || isWorking}
+                    onClick={() =>
+                      setEditor((current) => ({
+                        ...current,
+                        lines: current.lines.filter(
+                          (_, lineIndex) => lineIndex !== index
+                        ),
+                      }))
+                    }
+                  >
+                    Position entfernen
+                  </button>
+                </p>
+              </div>
+            ))}
+            <button
+              type="button"
+              disabled={
+                disabled || isWorking || editor.catalogOptions.length === 0
+              }
+              onClick={() => {
+                const item = editor.catalogOptions[0];
+                if (!item) return;
+                setEditor((current) => ({
+                  ...current,
+                  lines: [
+                    ...current.lines,
+                    {
+                      catalogItemId: item.id,
+                      catalogType: item.type,
+                      quantity: 1,
+                      unit: item.unit,
+                      title: item.label,
+                      description: item.description,
+                      unitPrice: item.salesPrice,
+                      discountPercent: 0,
+                      vatRate: item.vatRate,
+                      totalNet: item.salesPrice,
+                    },
+                  ],
+                }));
+              }}
+            >
+              Position hinzufügen
+            </button>
+          </div>
+          <label>
+            <span>Einleitung</span>
+            <textarea
+              rows={3}
+              maxLength={4000}
+              value={editor.introText}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setEditor((current) => ({
+                  ...current,
+                  introText: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Schlusstext</span>
+            <textarea
+              rows={3}
+              maxLength={4000}
+              value={editor.closingText}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setEditor((current) => ({
+                  ...current,
+                  closingText: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <button
+            type="button"
+            disabled={disabled || isWorking || !isDirty}
+            onClick={() => void request("PATCH", payload)}
+          >
+            Angebot neu berechnen und prüfen
+          </button>
+        </div>
+      ) : null}
+      <div className={styles.jarvisPlanningChecks}>
+        <strong>Aktuell bestätigte Kalkulation</strong>
+        <div data-status="ok">
+          <span>€</span>
+          <p>
+            <b>{money(draft.calculation.netTotal)} netto</b>
+            <small>
+              {money(draft.calculation.vatAmount)} Umsatzsteuer ·{" "}
+              {money(draft.calculation.grossTotal)} brutto
+            </small>
+          </p>
+        </div>
+      </div>
+      {draft.warnings.map((warning) => (
+        <div key={warning} className={styles.jarvisActionPreviewMissing}>
+          <strong>Prüfhinweis</strong>
+          <span>{warning}</span>
+        </div>
+      ))}
+      {[...draft.missingFields, ...draft.errors].length ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Speichern ist noch blockiert</strong>
+          <span>
+            {[...draft.missingFields, ...draft.errors].join(" · ")}
+          </span>
+        </div>
+      ) : null}
+      {draft.confirmation.enabled && isDirty ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Änderungen noch nicht geprüft</strong>
+          <span>Berechne und prüfe die geänderten Angaben erneut.</span>
+        </div>
+      ) : null}
+      {error ? (
+        <div className={styles.jarvisActionDraftError} role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className={styles.jarvisActionDraftActions}>
+        {draft.confirmation.enabled ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking || isDirty}
+            onClick={() => void request("POST", { command: "confirm" })}
+          >
+            Angebotsentwurf jetzt anlegen
+          </button>
+        ) : null}
+        {draft.cancellation.enabled ? (
+          <button
+            type="button"
+            disabled={disabled || isWorking}
+            onClick={() => void request("POST", { command: "cancel" })}
+          >
+            Entwurf abbrechen
+          </button>
+        ) : null}
+        {draft.result ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking}
+            onClick={() => onOpenOffer(draft)}
+          >
+            {draft.result.label}
+          </button>
+        ) : null}
+      </div>
+      <footer>
+        {draft.state === "executed"
+          ? "Die Datenbank hat genau einen Angebotsentwurf bestätigt. Er wurde weder finalisiert noch versendet."
+          : draft.state === "cancelled"
+            ? "Der Entwurf wurde beendet. Es wurde kein Angebot angelegt."
+            : draft.state === "expired"
+              ? "Der Entwurf ist abgelaufen und kann nicht mehr bestätigt werden."
+              : `Der Entwurf ist bis ${new Date(
+                  draft.expiresAt
+                ).toLocaleTimeString("de-DE", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })} Uhr an diese Sitzung gebunden.`}
+      </footer>
+    </section>
+  );
 }
 
 function JarvisTaskDraftCard({
@@ -36876,6 +37541,7 @@ await addProjectLogbookEntry(
     nextDraft:
       | JarvisTaskActionDraftView
       | JarvisCommunicationActionDraftView
+      | JarvisOfferDraftView
       | JarvisPlanningActionDraftView
       | JarvisTimeActionDraftView
       | JarvisWinterCalculationDraftView
@@ -36902,6 +37568,8 @@ await addProjectLogbookEntry(
         void loadProjectLogbookEntries();
       } else if (nextDraft.actionId === "task-comment.prepare") {
         void loadTasks();
+      } else if (nextDraft.actionId === "offer.prepare") {
+        void loadOffers();
       } else if (
         nextDraft.actionId === "winter-calculation.prepare" ||
         nextDraft.actionId === "vehicle-trip-calculation.prepare"
@@ -73242,6 +73910,37 @@ await addProjectLogbookEntry(
                           Diese Vorschau verändert keine WorkPilot360-Daten.
                         </footer>
                       </section>
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.actionDraft?.actionId === "offer.prepare" ? (
+                      <JarvisOfferDraftCard
+                        draft={message.actionDraft}
+                        actorId={activeUserId}
+                        disabled={isManagementAiSending}
+                        onChange={(nextDraft, nextMessage) =>
+                          updateJarvisActionDraftMessage(
+                            index,
+                            nextDraft,
+                            nextMessage
+                          )
+                        }
+                        onOpenOffer={(offerDraft) => {
+                          const project = heroProjects.find(
+                            (candidate) =>
+                              candidate.id === offerDraft.editor.projectId
+                          );
+                          if (!project) {
+                            setManagementAiError(
+                              "Das Projekt ist mit der aktuellen Rolle nicht sichtbar."
+                            );
+                            return;
+                          }
+                          openProjectFile(project, {
+                            tab: "documents",
+                            documentType: "Angebote",
+                          });
+                        }}
+                      />
                     ) : null}
                     {message.role === "assistant" &&
                     message.actionDraft?.actionId === "task.prepare" ? (

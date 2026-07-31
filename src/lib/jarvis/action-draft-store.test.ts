@@ -35,6 +35,8 @@ const fake = vi.hoisted(() => {
   const absences: Array<Record<string, any>> = [];
   const winterCalculations: Array<Record<string, any>> = [];
   const vehicleCalculations: Array<Record<string, any>> = [];
+  const offerDrafts: Array<Record<string, any>> = [];
+  const offerHistory: Array<Record<string, any>> = [];
   const createProjectLogbookEntry = vi.fn(async () => ({
     entry: { id: "logbook-entry-1" },
     project: { id: "project-1", label: "MKG-209 · Marketing" },
@@ -170,6 +172,11 @@ const fake = vi.hoisted(() => {
                 contactId: "contact-1",
                 trade: "Marketing",
                 status: "Umsetzung",
+                projectType: "OK solutions",
+                projectRuntimeFrom: null,
+                projectRuntimeUntil: null,
+                address: "Musterstraße 1, 76133 Karlsruhe",
+                contactPersonId: null,
                 updatedAt: projectUpdatedAt,
                 projectKind: "einmaliges Projekt",
                 recurringBillingMode: null,
@@ -297,6 +304,20 @@ const fake = vi.hoisted(() => {
             }
           : null
       ),
+      create: vi.fn(async ({ data }: { data: Record<string, any> }) => {
+        const row: Record<string, any> = {
+          ...data,
+          id: `offer-draft-${offerDrafts.length + 1}`,
+        };
+        offerDrafts.push(row);
+        return { id: row.id, offerNumber: row.offerNumber };
+      }),
+    },
+    offerHistory: {
+      create: vi.fn(async ({ data }: { data: Record<string, any> }) => {
+        offerHistory.push(data);
+        return data;
+      }),
     },
     catalogItem: {
       findMany: vi.fn(async ({ where }: { where: Record<string, any> }) =>
@@ -306,9 +327,12 @@ const fake = vi.hoisted(() => {
                 id: "service-hourly",
                 number: "GLR-STD",
                 name: "Glasreinigung Stunde",
+                type: "service",
                 trade: "Glasreinigung",
                 unit: "Std.",
+                description: "Glasflächen reinigen",
                 salesPrice: 55,
+                vatRate: 19,
                 updatedAt: new Date("2026-07-29T18:20:00.000Z"),
               },
             ]
@@ -390,6 +414,11 @@ const fake = vi.hoisted(() => {
     organizationSetting: {
       findUnique: vi.fn(async () => ({ value: { state: "BW" } })),
     },
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray) =>
+      strings.join("").includes("nextNumber")
+        ? [{ nextNumber: 10100 }]
+        : [{ locked: 1 }]
+    ),
     $transaction: vi.fn(async (callback: (tx: any) => unknown) =>
       callback(prisma)
     ),
@@ -413,6 +442,8 @@ const fake = vi.hoisted(() => {
       absences.length = 0;
       winterCalculations.length = 0;
       vehicleCalculations.length = 0;
+      offerDrafts.length = 0;
+      offerHistory.length = 0;
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -427,6 +458,8 @@ const fake = vi.hoisted(() => {
     absences,
     winterCalculations,
     vehicleCalculations,
+    offerDrafts,
+    offerHistory,
   };
 });
 
@@ -531,6 +564,9 @@ import {
   confirmJarvisTimeDraft,
   createPersistedJarvisTimeDraft,
   getJarvisTimeDraft,
+  completeJarvisOfferDraft,
+  confirmJarvisOfferDraft,
+  createPersistedJarvisOfferDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 import { calculateWinterService } from "@/lib/winter-service/calculation";
@@ -1833,5 +1869,122 @@ describe("persistent JARVIS vehicle trip calculation drafts", () => {
       );
     expect(cancelled.state).toBe("cancelled");
     expect(fake.vehicleCalculations).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS offer drafts", () => {
+  beforeEach(() => {
+    fake.reset();
+  });
+
+  it("recalculates from the catalog, creates one draft and makes confirmation replay-safe", async () => {
+    const created = await createPersistedJarvisOfferDraft({
+      ...binding(),
+      now: baseNow,
+      preview: {
+        version: 1,
+        previewId: "offer-preview-1",
+        actionId: "offer.prepare",
+        actionTitle: "Angebot oder Nachtrag vorbereiten",
+        state: "awaiting_confirmation",
+        organizationId: "org-1",
+        sessionActorId: "user-1",
+        effectiveActorId: "user-1",
+        impersonating: false,
+        payload: {
+          projectId: "project-1",
+          offerType: "base",
+          plannedExecutionMonth: "2026-11",
+        },
+        execution: { enabled: false, reason: "preview_only" },
+        audit: [],
+      },
+    });
+    expect(created.state).toBe("awaiting_input");
+
+    const ready = await completeJarvisOfferDraft(
+      created.previewId,
+      binding(),
+      {
+        revision: created.revision,
+        projectId: "project-1",
+        company: "OK solutions",
+        offerType: "base",
+        addendumMode: "addition",
+        parentOfferId: "",
+        plannedExecutionMonth: "2026-11",
+        plannedExecutionEndMonth: "",
+        introText: "Einleitung",
+        closingText: "Schlusstext",
+        vatRate: 19,
+        discountPercent: 0,
+        lines: [
+          {
+            catalogItemId: "service-hourly",
+            quantity: 2,
+            description: "Zwei Stunden Glasreinigung",
+            unitPrice: 55,
+            discountPercent: 0,
+          },
+        ],
+      },
+      baseNow
+    );
+    expect(ready.state).toBe("awaiting_confirmation");
+    expect(ready.calculation).toMatchObject({
+      netTotal: 110,
+      grossTotal: 130.9,
+    });
+    expect(ready.editor.lines[0]?.title).toBe("Glasreinigung Stunde");
+
+    const first = await confirmJarvisOfferDraft(
+      ready.previewId,
+      binding(),
+      ready.revision,
+      baseNow
+    );
+    const replay = await confirmJarvisOfferDraft(
+      ready.previewId,
+      binding(),
+      ready.revision,
+      baseNow
+    );
+
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe(first.result?.entityId);
+    expect(fake.offerDrafts).toHaveLength(1);
+    expect(fake.offerDrafts[0]).toMatchObject({
+      status: "Entwurf",
+      offerNumber: "ANG-10100",
+      netTotal: 110,
+      grossTotal: 130.9,
+    });
+    expect(fake.offerHistory).toHaveLength(1);
+  });
+
+  it("blocks employees before an offer draft can be persisted", async () => {
+    await expect(
+      createPersistedJarvisOfferDraft({
+        organizationId: "org-1",
+        sessionId: "session-1",
+        profile: profile(Role.MITARBEITER),
+        now: baseNow,
+        preview: {
+          version: 1,
+          previewId: "offer-preview-employee",
+          actionId: "offer.prepare",
+          actionTitle: "Angebot oder Nachtrag vorbereiten",
+          state: "awaiting_confirmation",
+          organizationId: "org-1",
+          sessionActorId: "user-1",
+          effectiveActorId: "user-1",
+          impersonating: false,
+          payload: {},
+          execution: { enabled: false, reason: "preview_only" },
+          audit: [],
+        },
+      })
+    ).rejects.toMatchObject({ code: "scope_mismatch" });
+    expect(fake.offerDrafts).toHaveLength(0);
   });
 });

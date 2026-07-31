@@ -1,5 +1,26 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Angebots-/Nachtragsentwurf 2026-07-31:
+  Der nächste Action-Center-Vertikalschnitt verwendet für normale
+  Angebotsmasken und JARVIS die gemeinsame Rechenbasis
+  `src/lib/offers/offer-core.ts`. JARVIS erzeugt aus einem eindeutigen
+  Angebots- oder Nachtragswunsch zunächst ausschließlich einen
+  sitzungsgebundenen Entwurf. Die bearbeitbare Karte umfasst Projekt,
+  Absenderfirma, Angebot/Nachtrag samt Bezugsangebot und Nachtragsart,
+  Ausführungsmonat beziehungsweise Zeitraum, aktive Katalogpositionen,
+  Mengen, Einzelpreise, Positions- und Gesamtnachlass, Umsatzsteuer,
+  Einleitungs-/Schlusstext sowie Netto-/Bruttosummen. Katalogzugehörigkeit,
+  aktuelle Preise, Projekt-/Kontaktstand und Nachtragsbezug werden
+  organisationsgebunden neu geladen; Preisabweichungen bleiben sichtbar.
+  Erst eine ausdrückliche Bestätigung darf über
+  `src/lib/offers/offer-draft-service.ts` genau ein Angebot mit Status
+  `Entwurf` und Historie speichern. Die Angebotsnummer wird innerhalb der
+  serialisierbaren Bestätigung unter einem organisationsgebundenen
+  PostgreSQL-Advisory-Lock vergeben. JARVIS finalisiert, druckt oder
+  versendet das Angebot nicht. Rollenpaar, Impersonation, Sitzung,
+  Organisation, Revision, TTL, HMAC, Fachkontext, Audit und Exactly-once
+  bleiben verbindlich.
+
 - JARVIS Kalkulationsrechner-Dialog 2026-07-31:
   Das verbindliche Inventar in
   `docs/JARVIS_KALKULATIONSRECHNER_INVENTAR.md` grenzt die zwei produktiv

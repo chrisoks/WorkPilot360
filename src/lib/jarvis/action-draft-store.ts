@@ -18,6 +18,8 @@ import {
   type JarvisCommunicationActionDraftView,
   type JarvisPlanningActionDraftCheck,
   type JarvisPlanningActionDraftView,
+  type JarvisOfferDraftView,
+  type JarvisTaskActionDraftState,
   type JarvisTaskActionDraftView,
   type JarvisTimeActionDraftCheck,
   type JarvisTimeActionDraftView,
@@ -35,6 +37,7 @@ import {
   canManagePlanningEntries,
   canManageProjectTimeEntries,
   canManageProjects,
+  canManageOffers,
 } from "@/lib/permissions";
 import {
   createProjectLogbookEntry,
@@ -84,6 +87,13 @@ import {
   saveProjectTimeEntry,
   WITHOUT_OFFER_ASSIGNMENT,
 } from "@/lib/time/project-time-entry-service";
+import {
+  createConfirmedOfferDraft,
+  evaluateOfferDraft,
+  loadOfferDraftWorkspace,
+  OfferDraftServiceError,
+  type OfferDraftInput,
+} from "@/lib/offers/offer-draft-service";
 
 const JARVIS_TASK_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_TASK_DRAFT_MAX_FUTURE_MS = 5 * 365 * 24 * 60 * 60 * 1000;
@@ -94,6 +104,7 @@ const JARVIS_TIME_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_WINTER_CALCULATION_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_VEHICLE_TRIP_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_COMMUNICATION_DRAFT_TTL_MS = 15 * 60 * 1000;
+const JARVIS_OFFER_DRAFT_TTL_MS = 15 * 60 * 1000;
 const OPEN_DRAFT_STATES = ["awaiting_input", "awaiting_confirmation"] as const;
 
 const taskPayloadSchema = z
@@ -381,6 +392,78 @@ const vehicleTripContextSchema = z
   })
   .strict();
 
+const offerDraftLineSchema = z
+  .object({
+    catalogItemId: z.string().trim().max(120).default(""),
+    catalogType: z.string().trim().max(40).default(""),
+    quantity: z.number(),
+    unit: z.string().trim().max(30).default("Stk"),
+    title: z.string().trim().max(500).default(""),
+    description: z.string().trim().max(4000).default(""),
+    unitPrice: z.number(),
+    discountPercent: z.number(),
+    vatRate: z.number(),
+    totalNet: z.number(),
+  })
+  .strict();
+
+const offerDraftPayloadSchema = z
+  .object({
+    projectId: z.string().trim().max(120).default(""),
+    company: z.enum(["OK solutions", "OK immocare"]),
+    offerType: z.enum(["base", "addendum"]),
+    addendumMode: z.enum(["addition", "replacement", "reduction"]),
+    parentOfferId: z.string().trim().max(120).default(""),
+    plannedExecutionMonth: z.string().trim().max(7).default(""),
+    plannedExecutionEndMonth: z.string().trim().max(7).default(""),
+    introText: z.string().trim().max(4000).default(""),
+    closingText: z.string().trim().max(4000).default(""),
+    vatRate: z.number().min(0).max(100),
+    discountPercent: z.number().min(0).max(100),
+    lines: z.array(offerDraftLineSchema).max(30),
+  })
+  .strict();
+
+const completeOfferDraftSchema = offerDraftPayloadSchema
+  .omit({ lines: true })
+  .extend({
+    revision: z.number().int().min(1),
+    lines: z
+      .array(
+        z
+          .object({
+            catalogItemId: z.string().trim().max(120).default(""),
+            quantity: z.number(),
+            unitPrice: z.number(),
+            discountPercent: z.number(),
+            description: z.string().trim().max(4000).default(""),
+          })
+          .strict()
+      )
+      .max(30),
+  })
+  .strict();
+
+const offerDraftContextSchema = z
+  .object({
+    projectId: z.string().trim().min(1).max(120).optional(),
+    projectUpdatedAt: z.string().datetime({ offset: true }).optional(),
+    parentOfferId: z.string().trim().min(1).max(120).optional(),
+    parentOfferUpdatedAt: z.string().datetime({ offset: true }).optional(),
+    catalogVersions: z
+      .array(
+        z
+          .object({
+            id: z.string().trim().min(1).max(120),
+            updatedAt: z.string().datetime({ offset: true }),
+          })
+          .strict()
+      )
+      .max(30)
+      .default([]),
+  })
+  .strict();
+
 export type JarvisTaskDraftBinding = {
   organizationId: string;
   sessionId: string;
@@ -613,6 +696,7 @@ async function appendAuditEvent(
          | "projectTimeEntry"
          | "winterServiceCalculation"
         | "vehicleCalculation"
+        | "offer"
         | "projectLogbookEntry"
         | "taskComment";
     };
@@ -3122,6 +3206,9 @@ export async function getJarvisActionDraft(
       binding,
       now
     );
+  }
+  if (draft?.actionId === "offer.prepare") {
+    return getJarvisOfferDraft(previewId, binding, now);
   }
   if (
     draft?.actionId === "project-logbook.prepare" ||
@@ -6725,6 +6812,692 @@ export async function confirmJarvisVehicleTripCalculationDraft(
     throw new JarvisActionDraftError(
       "execution_failed",
       "Die Fahrtenkalkulation wurde nicht gespeichert. Der Entwurf bleibt erhalten.",
+      500
+    );
+  }
+}
+
+type OfferPayload = z.infer<typeof offerDraftPayloadSchema>;
+type OfferContext = z.infer<typeof offerDraftContextSchema>;
+
+function mayManageOfferDraft(binding: JarvisTaskDraftBinding) {
+  return (
+    canManageOffers(binding.profile.sessionActor) &&
+    canManageOffers(binding.profile.effectiveActor)
+  );
+}
+
+function validateOfferDraftBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Dieser Angebotsentwurf gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit Erstellung des Angebotsentwurfs geändert. Bitte erstelle eine neue Vorschau.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis des Angebotsentwurfs ist ungültig. Es wurde nichts ausgeführt.",
+      409
+    );
+  }
+  const payload = offerDraftPayloadSchema.safeParse(draft.payload);
+  const context = offerDraftContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "offer.prepare" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Angebotsentwurf oder sein Fachkontext stimmt nicht mit dem Integritätsnachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundOfferDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Der Angebotsentwurf wurde nicht gefunden.",
+      404
+    );
+  }
+  validateOfferDraftBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateOfferDraftBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function offerContextFromEvaluation(evaluated: Awaited<ReturnType<typeof evaluateOfferDraft>>) {
+  return offerDraftContextSchema.parse({
+    ...(evaluated.project
+      ? {
+          projectId: evaluated.project.id,
+          projectUpdatedAt: evaluated.project.updatedAt,
+        }
+      : {}),
+    ...(evaluated.parentOffer
+      ? {
+          parentOfferId: evaluated.parentOffer.id,
+          parentOfferUpdatedAt: evaluated.parentOffer.updatedAt,
+        }
+      : {}),
+    catalogVersions: evaluated.catalogVersions,
+  });
+}
+
+function offerPayloadFromEvaluation(
+  evaluated: Awaited<ReturnType<typeof evaluateOfferDraft>>
+) {
+  return offerDraftPayloadSchema.parse(evaluated.input);
+}
+
+function offerDraftIsReady(
+  evaluated: Awaited<ReturnType<typeof evaluateOfferDraft>>,
+  binding: JarvisTaskDraftBinding
+) {
+  return (
+    mayManageOfferDraft(binding) &&
+    evaluated.missingFields.length === 0 &&
+    evaluated.errors.length === 0 &&
+    Boolean(evaluated.project)
+  );
+}
+
+function offerBadge(
+  state: JarvisTaskActionDraftState
+): JarvisOfferDraftView["badge"] {
+  if (state === "executed") return "Gespeichert";
+  if (state === "executing") return "Wird gespeichert";
+  if (state === "cancelled") return "Abgebrochen";
+  if (state === "expired") return "Abgelaufen";
+  if (state === "awaiting_confirmation") return "Bereit";
+  return "Entwurf";
+}
+
+export async function toJarvisOfferDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): Promise<JarvisOfferDraftView> {
+  const { payload } = validateOfferDraftBinding(draft, binding);
+  const [evaluated, workspace] = await Promise.all([
+    evaluateOfferDraft({
+      organizationId: binding.organizationId,
+      draft: payload,
+      restrictToCatalog: true,
+    }),
+    loadOfferDraftWorkspace(binding.organizationId),
+  ]);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const ready =
+    state === "awaiting_confirmation" &&
+    offerDraftIsReady(evaluated, binding);
+  const permitted = mayManageOfferDraft(binding);
+  const reason: JarvisOfferDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : !permitted
+              ? "not_permitted"
+              : evaluated.errors.length > 0
+                ? "invalid_input"
+                : ready
+                  ? "ready"
+                  : "missing_fields";
+  const currency = (value: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: "EUR",
+    }).format(value);
+  const isOpen =
+    state === "awaiting_input" || state === "awaiting_confirmation";
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "offer.prepare",
+    title: "Angebot oder Nachtrag vorbereiten",
+    badge: offerBadge(state),
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    fields: [
+      {
+        label: "Dokumentart",
+        value:
+          payload.offerType === "addendum"
+            ? "Nachtragsentwurf"
+            : "Angebotsentwurf",
+      },
+      {
+        label: "Projekt",
+        value: evaluated.project
+          ? `${evaluated.project.projectNumber} · ${evaluated.project.projectTitle}`
+          : "Noch nicht ausgewählt",
+      },
+      {
+        label: "Kunde",
+        value: evaluated.project?.customerName || "Noch nicht bestimmt",
+      },
+      {
+        label: "Netto",
+        value: currency(evaluated.totals.netTotal),
+      },
+      {
+        label: "Brutto",
+        value: currency(evaluated.totals.grossTotal),
+      },
+    ],
+    missingFields: [
+      ...evaluated.missingFields,
+      ...(!permitted
+        ? ["Speichern ist für diese Rollenkombination nicht freigegeben"]
+        : []),
+    ],
+    errors: evaluated.errors,
+    warnings: evaluated.warnings,
+    editor: {
+      ...evaluated.input,
+      projectOptions: workspace.projectOptions,
+      catalogOptions: workspace.catalogOptions,
+      parentOfferOptions: workspace.parentOfferOptions.filter(
+        (offer) => !evaluated.input.projectId || offer.projectId === evaluated.input.projectId
+      ),
+    },
+    calculation: evaluated.totals,
+    confirmation: { enabled: ready, reason },
+    cancellation: { enabled: isOpen },
+    execution: {
+      enabled: false,
+      reason: state === "executed" ? "finalized" : "requires_confirmation",
+    },
+    ...(state === "executed" &&
+    draft.resultEntityType === "offer" &&
+    draft.resultEntityId
+      ? {
+          result: {
+            entityType: "offer" as const,
+            entityId: draft.resultEntityId,
+            label: "Gespeicherten Angebotsentwurf öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisOfferDraft(input: {
+  preview: JarvisActionPreview<"offer.prepare">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für einen bestätigbaren Angebotsentwurf ist eine aktuelle Sitzung erforderlich.",
+      401
+    );
+  }
+  if (!mayManageOfferDraft(input)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keine Angebote oder Nachträge vorbereiten.",
+      403
+    );
+  }
+  const now = input.now ?? new Date();
+  const evaluated = await evaluateOfferDraft({
+    organizationId: input.organizationId,
+    draft: input.preview.payload,
+    restrictToCatalog: true,
+  });
+  const payload = offerPayloadFromEvaluation(evaluated);
+  const context = offerContextFromEvaluation(evaluated);
+  const actorIds = getActorIds(input.profile);
+  const state = offerDraftIsReady(evaluated, input)
+    ? "awaiting_confirmation"
+    : "awaiting_input";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "offer.prepare",
+    state,
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_OFFER_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: evaluated.errors.length ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft,
+      eventType: state === "awaiting_confirmation"
+        ? "draft_created_ready"
+        : "draft_created",
+    });
+    return draft;
+  });
+  return toJarvisOfferDraftView(created, input);
+}
+
+export async function getJarvisOfferDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundOfferDraft(previewId, binding, now);
+  return toJarvisOfferDraftView(draft, binding);
+}
+
+export async function completeJarvisOfferDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  rawInput: unknown,
+  now = new Date()
+) {
+  const completed = completeOfferDraftSchema.safeParse(rawInput);
+  if (!completed.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Die Angebotsangaben sind unvollständig oder ungültig.",
+      400
+    );
+  }
+  const loaded = await loadBoundOfferDraft(previewId, binding, now);
+  if (loaded.draft.revision !== completed.data.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Der Angebotsentwurf wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as never)) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_state",
+      "Dieser Angebotsentwurf kann nicht mehr bearbeitet werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  const protectedText = [
+    completed.data.introText,
+    completed.data.closingText,
+    ...completed.data.lines.map((line) => line.description),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  if (protectedText) {
+    const authorization = authorizeJarvisQuestion(
+      protectedText,
+      binding.profile
+    );
+    if (
+      authorization.reason === "prompt_injection" ||
+      authorization.reason === "secret"
+    ) {
+      throw new JarvisActionDraftError(
+        "invalid_input",
+        "Der Angebotstext enthält eine gesperrte technische Anweisung oder ein Geheimnis.",
+        400
+      );
+    }
+  }
+  const evaluated = await evaluateOfferDraft({
+    organizationId: binding.organizationId,
+    draft: completed.data,
+    restrictToCatalog: true,
+  });
+  const payload = offerPayloadFromEvaluation(evaluated);
+  const context = offerContextFromEvaluation(evaluated);
+  const ready = offerDraftIsReady(evaluated, binding);
+  const revision = loaded.draft.revision + 1;
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state: ready ? "awaiting_confirmation" : "awaiting_input",
+    revision,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    lastErrorCode: evaluated.errors.length ? "invalid_input" : null,
+  };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state: nextData.state,
+        revision,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        payloadHash: nextData.payloadHash,
+        contextHash: nextData.contextHash,
+        lastErrorCode: nextData.lastErrorCode,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Angebotsentwurf wurde zwischenzeitlich verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: ready ? "draft_recalculated" : "draft_validation_failed",
+      ...(!ready ? { reasonCode: "invalid_input" } : {}),
+    });
+    return current;
+  });
+  return toJarvisOfferDraftView(updated, binding);
+}
+
+export async function cancelJarvisOfferDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundOfferDraft(previewId, binding, now);
+  if (draft.state === "cancelled") {
+    return toJarvisOfferDraftView(draft, binding);
+  }
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) {
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "invalid_state",
+      "Dieser Angebotsentwurf kann nicht mehr abgebrochen werden.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (expectedRevision !== draft.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Der Angebotsentwurf wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Angebotsentwurf wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisOfferDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisOfferDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const loaded = await loadBoundOfferDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") {
+    return toJarvisOfferDraftView(loaded.draft, binding);
+  }
+  if (
+    expectedRevision !== loaded.draft.revision ||
+    loaded.draft.state !== "awaiting_confirmation"
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Nur die aktuelle, vollständig geprüfte Angebotsvorschau darf gespeichert werden.",
+      409
+    );
+  }
+  if (!mayManageOfferDraft(binding)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keinen Angebotsentwurf speichern.",
+      403
+    );
+  }
+  try {
+    const executed = await prisma.$transaction(
+      async (tx) => {
+        const current = await tx.jarvisActionDraft.findUnique({
+          where: { id: loaded.draft.id },
+        });
+        if (!current) {
+          throw new JarvisActionDraftError(
+            "not_found",
+            "Der Angebotsentwurf wurde nicht gefunden.",
+            404
+          );
+        }
+        const parsed = validateOfferDraftBinding(current, binding);
+        if (current.state === "executed") return current;
+        if (
+          current.state !== "awaiting_confirmation" ||
+          current.expiresAt.getTime() <= now.getTime()
+        ) {
+          throw new JarvisActionDraftError(
+            current.expiresAt.getTime() <= now.getTime()
+              ? "expired"
+              : "conflict",
+            "Der Angebotsentwurf ist nicht mehr ausführbar.",
+            current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+          );
+        }
+        const actor = await tx.user.findFirst({
+          where: {
+            id: current.effectiveActorId,
+            organizationId: binding.organizationId,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            role: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            salesRoleEnabled: true,
+          },
+        });
+        if (!actor || !canManageOffers(actor)) {
+          throw new JarvisActionDraftError(
+            "role_changed",
+            "Akteur oder Angebotsberechtigung sind nicht mehr aktuell.",
+            409
+          );
+        }
+        const reevaluated = await evaluateOfferDraft({
+          organizationId: binding.organizationId,
+          draft: parsed.payload,
+          db: tx,
+          restrictToCatalog: true,
+        });
+        const currentContext = offerContextFromEvaluation(reevaluated);
+        if (
+          hashJson(currentContext) !== hashJson(parsed.context) ||
+          !offerDraftIsReady(reevaluated, binding)
+        ) {
+          throw new JarvisActionDraftError(
+            "stale_context",
+            "Projekt, Bezugsangebot oder Katalogdaten haben sich geändert. Bitte prüfe und berechne den Entwurf erneut.",
+            409
+          );
+        }
+        const claimedData: DraftIntegrityData = {
+          ...current,
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+        };
+        const claimed = await tx.jarvisActionDraft.updateMany({
+          where: {
+            id: current.id,
+            revision: current.revision,
+            state: "awaiting_confirmation",
+            integrityTag: current.integrityTag,
+          },
+          data: {
+            state: "executing",
+            confirmedAt: now,
+            lastErrorCode: null,
+            integrityTag: createIntegrityTag(claimedData),
+          },
+        });
+        if (claimed.count !== 1) {
+          throw new JarvisActionDraftError(
+            "conflict",
+            "Der Angebotsentwurf wird bereits gespeichert.",
+            409
+          );
+        }
+        const actorName =
+          [actor.firstName, actor.lastName].filter(Boolean).join(" ") ||
+          actor.email;
+        const offer = await createConfirmedOfferDraft({
+          tx,
+          organizationId: binding.organizationId,
+          actorName,
+          draft: parsed.payload,
+          source: "jarvis",
+        });
+        const executedAt = new Date();
+        const executedData: DraftIntegrityData = {
+          ...claimedData,
+          state: "executed",
+          executedAt,
+          resultEntityType: "offer",
+          resultEntityId: offer.id,
+        };
+        const finalDraft = await tx.jarvisActionDraft.update({
+          where: { id: current.id },
+          data: {
+            state: "executed",
+            executedAt,
+            resultEntityType: "offer",
+            resultEntityId: offer.id,
+            integrityTag: createIntegrityTag(executedData),
+          },
+        });
+        await appendAuditEvent(tx, {
+          draft: finalDraft,
+          eventType: "draft_confirmed_and_executed",
+          result: { id: offer.id, entityType: "offer" },
+        });
+        return finalDraft;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    return toJarvisOfferDraftView(executed, binding);
+  } catch (error) {
+    if (
+      error instanceof JarvisActionDraftError &&
+      error.code === "conflict"
+    ) {
+      const latest = await loadBoundOfferDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") {
+        return toJarvisOfferDraftView(latest.draft, binding);
+      }
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof OfferDraftServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "stale_context" ? "stale_context" : "invalid_input",
+        error.message,
+        409
+      );
+    }
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Der Angebotsentwurf wurde nicht gespeichert und bleibt zur Prüfung erhalten.",
       500
     );
   }
