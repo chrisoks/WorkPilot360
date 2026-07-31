@@ -35957,7 +35957,7 @@
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 2;
+  stroke-width: 2.2;
   width: 23px;
 }
 
@@ -36707,9 +36707,17 @@
 
 .headerActions .notificationBell.notificationBellActive svg,
 .notificationDashboardAlert:not([data-empty="true"]) .onlineRequestDashboardIcon svg {
-  animation: notification-bell-attention 2.4s ease-in-out infinite;
+  animation: notification-bell-attention 1.9s ease-in-out infinite;
   transform-box: fill-box;
   transform-origin: 50% 8%;
+}
+
+.navIcon[data-icon="online-requests"] {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 @keyframes dashboard-attention-pulse {
@@ -36724,21 +36732,21 @@
 
 @keyframes notification-bell-attention {
   0%,
-  58%,
+  45%,
   100% {
     transform: rotate(0deg);
   }
-  66% {
-    transform: rotate(13deg);
+  56% {
+    transform: rotate(16deg);
   }
-  74% {
-    transform: rotate(-11deg);
+  67% {
+    transform: rotate(-14deg);
   }
-  82% {
-    transform: rotate(8deg);
+  78% {
+    transform: rotate(10deg);
   }
-  90% {
-    transform: rotate(-5deg);
+  89% {
+    transform: rotate(-6deg);
   }
 }
 

@@ -9631,6 +9631,15 @@ function isPreparedSidebarTab(tab: AppTab): tab is SidebarPreparedTab {
   return tab in preparedSidebarTabLabels;
 }
 
+function NotificationBellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M18 16v-5a6 6 0 0 0-12 0v5l-2 2h16l-2-2Z" />
+      <path d="M10 21h4" />
+    </svg>
+  );
+}
+
 function SidebarIcon({ tab }: { tab: AppTab }) {
   const common = {
     className: styles.navIcon,
@@ -9660,16 +9669,18 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
 
   if (tab === "onlineRequests") {
     return (
-      <svg {...common}>
-        <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
-        <path
-          d="m5.5 7 6.5 5 6.5-5M7 16h5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+      <svg
+        {...common}
+        data-icon="online-requests"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4.5 7.5h15l1.3 7.2v2.1a2.2 2.2 0 0 1-2.2 2.2H5.4a2.2 2.2 0 0 1-2.2-2.2v-2.1l1.3-7.2Z" />
+        <path d="M3.4 14.5h5l1.6 2h4l1.6-2h5" />
+        <path d="M12 3.5v7M9.5 8l2.5 2.5L14.5 8" />
       </svg>
     );
   }
@@ -65989,10 +66000,7 @@ await addProjectLogbookEntry(
               }}
               aria-label="Benachrichtigungen"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M18 16v-5a6 6 0 0 0-12 0v5l-2 2h16l-2-2Z" />
-                <path d="M10 21h4" />
-              </svg>
+              <NotificationBellIcon />
               {unreadNotifications.length > 0 && (
                 <span className={styles.notificationCount}>{unreadNotifications.length}</span>
               )}
@@ -66895,10 +66903,7 @@ await addProjectLogbookEntry(
                   }}
                 >
                   <span className={styles.onlineRequestDashboardIcon} aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M18 16v-5a6 6 0 0 0-12 0v5l-2 2h16l-2-2Z" />
-                      <path d="M10 21h4" />
-                    </svg>
+                    <NotificationBellIcon />
                   </span>
                   <span className={styles.onlineRequestDashboardCopy}>
                     <small>Benachrichtigungen</small>
