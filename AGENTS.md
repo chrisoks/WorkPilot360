@@ -1,5 +1,39 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierter Angebotsversand 2026-07-31:
+  Der dreizehnte Action-Center-Vertikalschnitt versendet ausschließlich ein
+  finalisiertes Angebot im Status `Erstellt` mit gespeichertem PDF. JARVIS
+  erkennt den Versandwunsch getrennt von Finalisierung, Gewonnen/Verloren,
+  Aufgaben und Projektstatus und zeigt Angebot, Projekt, Kunde, Absender,
+  Summen, Empfänger, CC/BCC, Betreff, Nachricht, finales PDF samt Größe und
+  SHA-256 sowie den optionalen 30-Tage-Link zur digitalen Angebotsannahme.
+  Jede Änderung erzwingt eine neue serverseitige Prüfung. Erst die exakte,
+  groß-/kleinschreibungssensitive Phrase `SENDEN ANG-... AN <Empfänger>` darf
+  die E-Mail einmalig an Microsoft 365 übergeben.
+  Normale Angebotsmaske und JARVIS verwenden denselben bestehenden
+  `/api/document-mail`-Fachweg einschließlich Angebots-PDF, optionaler
+  Widerrufsunterlagen für Privatkunden, Annahmelink, Versandprotokoll und
+  `email_sent`-Angebotshistorie. Versand-ID, Organisation, Sitzung,
+  Rollenpaar, Impersonation, Revision, TTL, HMAC, Fachfingerprint und
+  Exactly-once-Claim schützen vor Fremdzugriff, Doppelklick und Replay. Ein
+  laufender, bereits zugestellter oder nach der Übergabe technisch unklarer
+  Vorgang wird nicht automatisch erneut gesendet. Gewonnen/Verloren,
+  Aufgaben und Projektstatus bleiben unverändert.
+  Produktiv auf Code-Commit `9f24eff` mit Serverbackup
+  `/var/backups/workpilot360/20260731-223000-jarvis-offer-delivery`.
+  Lokal und produktiv sind 137 Testdateien mit 1.463 Tests, TypeScript,
+  Prisma-Validierung, leerer Live-Diff und der 90-Seiten-Build grün. Der
+  permanente Korpus bestand jeweils 110/110 und bereitete `offer.send` real
+  vor, ohne eine E-Mail oder andere Aktion auszuführen und ohne QA-Rückstände.
+  Der echte lokale Klicktest prüfte vollständige Vorschau, Betreffänderung,
+  Annahmelink-Umschaltung, erneute Prüfung, sicheren Abbruch und eine
+  fehlerfreie Browserkonsole. Da aktuell kein Führungs-/GF-Benutzer ein
+  verbundenes Microsoft-365-Konto besitzt, blieb eine echte externe
+  Testzustellung erwartungsgemäß blockiert; der Zustelladapter ist mit
+  Microsoft-Graph-/Dispatch-Mocks einschließlich Erfolgs-, Stale- und
+  Uncertain-Fällen abgenommen. WorkPilot läuft unter PID `519994`;
+  KlinikNavigator blieb unverändert unter PID `398228`.
+
 - JARVIS kontrollierte Angebotsfinalisierung 2026-07-31:
   Der zwÃ¶lfte Action-Center-Vertikalschnitt finalisiert einen vorhandenen
   Angebots- oder Nachtragsentwurf kontrolliert. JARVIS erkennt den Wunsch

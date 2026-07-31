@@ -1957,6 +1957,42 @@ PDF und ein Historienereignis und bestätigte beim Replay dieselbe Entität.
 Versand, Aufgaben, Projektstatus und Gewonnen/Verloren blieben unverändert;
 der echte sichtbare Klicktest bestätigte denselben Ablauf ohne Browserfehler.
 
+Der kontrollierte Versand eines finalisierten Angebots ist seit 31.07.2026
+als eigener kritischer Vertikalschnitt umgesetzt. JARVIS akzeptiert nur
+Angebote im Status `Erstellt` mit gespeichertem finalem PDF und trennt den
+Versand strikt von Finalisierung, Gewonnen/Verloren, Aufgaben und
+Projektstatus. Die Vorschau zeigt Angebot, Projekt, Kunde, Absender, Summen,
+Empfänger, CC/BCC, Betreff, Nachricht, PDF-Datei mit Größe und SHA-256 sowie
+die bewusste Entscheidung, ob ein 30 Tage gültiger digitaler Annahmelink
+enthalten sein soll. Jede Änderung muss serverseitig neu geprüft werden.
+Erst die exakte, groß-/kleinschreibungssensitive Phrase
+`SENDEN ANG-... AN <Empfänger>` darf den Versand auslösen.
+
+JARVIS verwendet denselben `/api/document-mail`-Fachweg wie die normale
+Angebotsmaske. Damit bleiben Microsoft 365, PDF-Anhang, optionaler
+Annahmelink, Privatkunden-Widerrufsunterlagen, Versandprotokoll und
+`email_sent`-Angebotshistorie identisch. Organisation, Sitzung, Rollenpaar,
+Impersonation, Revision, TTL, HMAC, Angebot/PDF/Empfänger/Absender-Fingerprint
+und die eindeutige Dispatch-ID sichern Vorschau und Ausführung. Replay liefert
+keinen zweiten Versand; laufende, bereits zugestellte oder technisch unklare
+Zustände werden fail-closed zur manuellen Prüfung gesperrt. Der Versand setzt
+weder Gewonnen/Verloren noch Aufgaben oder Projektstatus.
+
+Die lokale und produktive Abnahme bestand 137 Testdateien mit 1.463 Tests,
+TypeScript, Prisma-Validierung, leerem Live-Diff, dem 90-Seiten-Build und
+jeweils 110/110 permanenten Livefragen. `offer.send` wurde dabei real als
+persistente Vorschau vorbereitet, aber nicht bestätigt; es entstanden keine
+E-Mail und keine QA-Rückstände. Der sichtbare Klicktest prüfte vollständige
+Felder, PDF-Bindung, Betreffänderung, Umschaltung des Annahmelinks, erneute
+Prüfung und Abbruch ohne Browserfehler. Eine echte externe Testzustellung war
+nicht möglich, weil aktuell kein Führungs-/GF-Benutzer ein verbundenes
+Microsoft-365-Konto besitzt; dieser bestehende betriebliche
+Konfigurationsblocker wird sichtbar und sicher ausgewiesen. Der
+Zustelladapter selbst ist mit Erfolgs-, Stale-, Fehler- und Uncertain-Fällen
+gegen den gemeinsamen Versandweg getestet. Als nächster chronologischer
+Angebotsbaustein folgt die kontrollierte Gewonnen-/Verloren-Entscheidung mit
+Grund, Historie und klar abgegrenzten Projektfolgen.
+
 Der fünfte Action-Center-Vertikalschnitt für Rechnungsentwürfe und die
 Fakturavorprüfung ist am 31.07.2026 umgesetzt. Natürliche Erstellungswünsche
 öffnen einen persistenten, bearbeitbaren Entwurf; reine Rechnungsfragen sowie
