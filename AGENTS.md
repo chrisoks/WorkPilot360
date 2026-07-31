@@ -18,6 +18,18 @@
   wiederholt beantwortet; `sending`, fehlgeschlagen oder technisch unklar
   wird niemals automatisch erneut gesendet. Fakturierung und Versand bleiben
   zwei getrennte kritische Aktionen.
+  Produktiv abgenommen auf Code-Commit `75cc998` mit Serverbackup
+  `/var/backups/workpilot360/before-jarvis-invoice-delivery-20260731-121001`.
+  Der Produktionsbuild mit 90 Seiten, Prisma-Synchronität und HTTP-Smokes ist
+  grün. Der permanente produktive Korpus bestand 110/110 Fragen, bereitete
+  acht Vorschauen vor und führte null Aktionen aus; QA-Sitzungen und
+  QA-Entwürfe wurden vollständig bereinigt. Der echte produktive Klicktest
+  prüfte PDF plus XRechnung, gültiges XML, bestandene KoSIT-Validierung, eine
+  falsche Bestätigungsphrase und den Abbruch. Es entstand kein
+  Versanddatensatz und keine E-Mail. Lokal sind 1.401 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Build und Prisma-Diff grün. WorkPilot läuft
+  seit der Abnahme unter PID `446799`; KlinikNavigator blieb unverändert
+  unter PID `398228`.
 
 - JARVIS kontrollierte Rechnungsfinalisierung 2026-07-31:
   Der sechste Action-Center-Vertikalschnitt fakturiert einen vorhandenen
