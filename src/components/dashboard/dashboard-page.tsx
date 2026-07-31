@@ -47710,7 +47710,7 @@ await addProjectLogbookEntry(
               className={styles.secondaryButton}
               onClick={() => openProjectTaskModal(selectedProjectFile, "task")}
             >
-              Aufgabe anlegen
+              + Aufgabe
             </button>
             <button
               type="button"
