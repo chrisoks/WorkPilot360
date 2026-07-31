@@ -1,5 +1,35 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrolliertes Löschen/Wiederherstellen von Rechnungsentwürfen
+  2026-08-01: JARVIS und die normale Rechnungsmaske verwenden jetzt denselben
+  organisationsgebundenen Soft-Delete-Fachservice. Nur ein unverarbeiteter
+  Status `Entwurf` darf mit dokumentiertem Grund gelöscht und anschließend
+  wiederhergestellt werden. Fakturierte, versendete, bezahlte, gemahnte,
+  zeit- oder lagerverknüpfte Rechnungen und Belege mit Folgebelegen bleiben
+  gesperrt und müssen über Storno oder Korrektur berichtigt werden. Die exakte
+  Phrase `RECHNUNG LÖSCHEN RE-...` beziehungsweise
+  `RECHNUNG WIEDERHERSTELLEN RE-...` ist Pflicht. Positionen, Entwurfs-PDF,
+  Zahlungen, Mahnungen, Stempelungen, Lager, Versand, Angebote und
+  Projektstatus bleiben unverändert; Historie und Projektlogbuch werden
+  atomar geschrieben. Sitzung, Organisation, Rollenpaar, Impersonation,
+  Revision, TTL, HMAC, SHA-256-Fachfingerprint, serialisierbare Transaktion,
+  PostgreSQL-Advisory-Lock, bedingtes Update und Exactly-once-Replay sichern
+  die Aktion. Produktiv auf Code-Commit
+  `8b23799f1cab1844c5d56a459b04f23c2e7bd073`; Backup:
+  `/var/backups/workpilot360/20260801-002500-jarvis-invoice-lifecycle`.
+  Lokal und produktiv sind 140 Testdateien mit 1.491 Tests, TypeScript,
+  Regression, Mojibake, Prisma-Validierung, leerer Live-Diff und der
+  90-Seiten-Build grün. Der permanente Korpus bestand 110/110, bereitete 16
+  Action-Center-Entwürfe einschließlich `invoice.delete` vor und führte keine
+  Aktion aus. Die isolierte Produktions-QA bestand Sperre fakturierter
+  Rechnungen, Löschen, Wiederherstellen, Abbruch, falsche Phrase,
+  Exactly-once-Replay, Historie, Logbuch und Nebenwirkungsgrenzen ohne
+  Rückstände. Der echte sichtbare Klicktest bestätigte kritische Karten,
+  exakte Phrasen, Projektakte, Archiv, Wiederherstellung, die fehlende
+  Löschaktion bei fakturierten Rechnungen und eine fehlerfreie Browserkonsole.
+  Alle UI-QA-Daten wurden bereinigt. WorkPilot läuft unter PID `541979`;
+  KlinikNavigator blieb unverändert unter PID `398228`.
+
 - JARVIS kontrolliertes Löschen/Wiederherstellen von Angeboten 2026-07-31:
   JARVIS und die normale Angebotsmaske verwenden jetzt denselben
   organisationsgebundenen Soft-Delete-Fachservice. Ein dokumentierter Grund

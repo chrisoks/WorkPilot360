@@ -1,6 +1,6 @@
 # JARVIS Entwicklungsplan
 
-Stand: 31.07.2026
+Stand: 01.08.2026
 
 ## Vision und lebendiger Prinzipienkompass
 
@@ -2065,6 +2065,43 @@ behoben und mit einem Regressionstest abgesichert; sämtliche QA-Daten wurden
 danach bereinigt. Das Backup liegt unter
 `/var/backups/workpilot360/20260731-234000-jarvis-offer-lifecycle`.
 
+Das kontrollierte Löschen und Wiederherstellen von Rechnungsentwürfen ist seit
+01.08.2026 als eigener kritischer Vertikalschnitt umgesetzt. JARVIS trennt
+beide Wünsche strikt von Rechnungssuche, Entwurfserstellung, Fakturierung,
+Versand, Mahnung, Bezahlt-Markierung, Storno und Korrektur. Die Vorschau zeigt
+Rechnung, Projekt, Kunde, Status, Summen, Grund, Stempel-, Lager- und
+Versandverknüpfungen sowie die abgegrenzten Folgen. Erst die exakt sichtbare,
+groß-/kleinschreibungssensitive Phrase `RECHNUNG LÖSCHEN RE-...`
+beziehungsweise `RECHNUNG WIEDERHERSTELLEN RE-...` darf ausführen.
+
+Nur ein unverarbeiteter Status `Entwurf` darf soft-gelöscht werden. Bezahlte,
+versendete, gemahnte, fakturierte, zeit- oder lagerverknüpfte Rechnungen sowie
+Belege mit Folgebelegen bleiben fail-closed und werden über Storno oder
+Korrektur berichtigt. Eine Altlöschung ohne zuverlässig dokumentierten
+Vorstatus wird nicht automatisch wiederhergestellt. Normale Rechnungsmaske und
+JARVIS verwenden denselben Fachservice; das sichtbare Projektarchiv bietet die
+kontrollierte Wiederherstellung an. Positionen, Entwurfs-PDF, Zahlungen,
+Mahnungen, Stempelungen, Lager, Versand, Angebote und Projektstatus bleiben
+unverändert. Rechnungshistorie und Projektlogbuch werden gemeinsam oder gar
+nicht geschrieben.
+
+Sitzung, Organisation, Rollenpaar, Impersonation, Revision, TTL, HMAC,
+SHA-256-Fachfingerprint, serialisierbare Transaktion, organisations- und
+rechnungsgebundener PostgreSQL-Advisory-Lock, bedingtes Update, Audit und
+Exactly-once-Replay sichern den Vorgang. Die lokale und produktive Abnahme auf
+Code-Commit `8b23799f1cab1844c5d56a459b04f23c2e7bd073` bestand 140 Testdateien
+mit 1.491 Tests, TypeScript, Regression, Mojibake, Prisma-Validierung, leerem
+Live-Diff, dem 90-Seiten-Build und dem permanenten Korpus mit 110/110 Fragen.
+Sechzehn Action-Center-Entwürfe einschließlich `invoice.delete` wurden
+vorbereitet, aber keine Korpusaktion ausgeführt. Die isolierte Produktions-QA
+bestand Sperre fakturierter Rechnungen, Löschen, Wiederherstellen, Abbruch,
+falsche Phrase, Exactly-once-Replay, Historie, Logbuch und die Abwesenheit
+unerlaubter Nebenwirkungen; alle Rückstände blieben null. Der echte sichtbare
+Klicktest bestätigte die vollständigen kritischen Karten, exakten Phrasen,
+Projektakte, Archiv, Wiederherstellung und die fehlende Löschaktion bei einer
+fakturierten Rechnung ohne Browserfehler. Das Backup liegt unter
+`/var/backups/workpilot360/20260801-002500-jarvis-invoice-lifecycle`.
+
 Der fünfte Action-Center-Vertikalschnitt für Rechnungsentwürfe und die
 Fakturavorprüfung ist am 31.07.2026 umgesetzt. Natürliche Erstellungswünsche
 öffnen einen persistenten, bearbeitbaren Entwurf; reine Rechnungsfragen sowie
@@ -2173,7 +2210,9 @@ Chat vollständig vorbereiten und kontrolliert speichern.
   Teilzahlungen bleiben ein eigener späterer Datenmodellschritt),
 - Mahnung,
 - Stornieren,
-- Archivieren/Löschen/Wiederherstellen,
+- Archivieren/Löschen/Wiederherstellen (Rechnungsentwürfe als erster
+  produktiver Vertikalschnitt umgesetzt; fakturierte Belege bleiben bei
+  Storno/Korrektur),
 - Rollen- und Rechteänderungen,
 - berechtigte Personalstammdatenänderungen,
 - Massenänderungen mit Dry-Run und Rollback.
