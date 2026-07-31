@@ -1989,9 +1989,44 @@ nicht möglich, weil aktuell kein Führungs-/GF-Benutzer ein verbundenes
 Microsoft-365-Konto besitzt; dieser bestehende betriebliche
 Konfigurationsblocker wird sichtbar und sicher ausgewiesen. Der
 Zustelladapter selbst ist mit Erfolgs-, Stale-, Fehler- und Uncertain-Fällen
-gegen den gemeinsamen Versandweg getestet. Als nächster chronologischer
-Angebotsbaustein folgt die kontrollierte Gewonnen-/Verloren-Entscheidung mit
-Grund, Historie und klar abgegrenzten Projektfolgen.
+gegen den gemeinsamen Versandweg getestet.
+
+Die kontrollierte Gewonnen-/Verloren-Entscheidung eines finalisierten Angebots
+ist seit 31.07.2026 als eigener kritischer Vertikalschnitt umgesetzt. JARVIS
+trennt sie strikt von Angebotssuche, Finalisierung, Versand, Löschung,
+Aufgaben und Projektstatus. Beide Entscheidungen verlangen einen Grund; bei
+`Verloren` ist zusätzlich ein Kommentar Pflicht. Die Vorschau zeigt Angebot,
+Projekt, Kunde, Netto/Brutto, Entscheidung, Begründung, aktuelle Prüfungen und
+die ausdrücklich abgegrenzten Folgen. Aktive verknüpfte Rechnungen blockieren
+eine Verlustentscheidung. Erst die exakte, groß-/kleinschreibungssensitive
+Phrase `ANGEBOT GEWINNEN ANG-...` beziehungsweise `ANGEBOT VERLIEREN ANG-...`
+darf ausführen.
+
+Der gemeinsame Angebotsentscheidungsdienst lädt den vollständigen Fachstand
+mandantengebunden neu und bindet ihn in einen SHA-256-Fingerprint. Sitzung,
+Organisation, Rollenpaar, Impersonation, Revision, TTL, HMAC, Audit,
+serialisierbare Transaktion, organisations- und angebotsgebundener
+PostgreSQL-Advisory-Lock, bedingtes Exactly-once-Update und Replay sichern die
+Aktion. In derselben Transaktion ändern sich ausschließlich Angebot,
+Angebotshistorie und Projektlogbuch. Projektstatus, Termine, Aufgaben,
+Rechnungen und Versand bleiben unverändert.
+
+Zusätzlich behandelt die Angebotsleselogik Füllwörter wie `mal` korrekt und
+löst bekannte Kontakte organisationsgebunden auf. Für die natürliche Frage
+`zeig mal alle oKW Angebote` lautet die belegte leere Antwort nun verständlich:
+`Für OKW GmbH sind aktuell keine Angebote in WorkPilot360 vorhanden.`
+
+Die lokale und produktive Abnahme auf Code-Commit `f74a8d0` bestand 138
+Testdateien mit 1.473 Tests, TypeScript, Prisma-Validierung, leerem Live-Diff,
+dem 90-Seiten-Build und dem permanenten Korpus mit 110/110 Fragen. Vierzehn
+Action-Center-Entwürfe wurden vorbereitet, aber keine Korpusaktion ausgeführt;
+QA-Rückstände blieben null. Die isolierte Produktions-QA bestand Gewinn,
+Verlust, sicheren Abbruch, falsche Phrase, Exactly-once-Replay, je zwei
+Historien- und Logbucheinträge sowie die Abwesenheit unerlaubter
+Nebenwirkungen. Der sichtbare produktive Klicktest bestätigte die klare
+OKW-Antwort, vollständige kritische Angebotskarte, exakte Phrase und sicheren
+Abbruch ohne Browserfehler; alle UI-QA-Daten wurden bereinigt. Das Backup liegt
+unter `/var/backups/workpilot360/20260731-230000-jarvis-offer-decision`.
 
 Der fünfte Action-Center-Vertikalschnitt für Rechnungsentwürfe und die
 Fakturavorprüfung ist am 31.07.2026 umgesetzt. Natürliche Erstellungswünsche

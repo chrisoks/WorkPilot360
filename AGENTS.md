@@ -1,5 +1,37 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Angebotsentscheidung und klare OKW-Leersuche 2026-07-31:
+  JARVIS erkennt jetzt Gewonnen-/Verloren-Wünsche für ein konkretes Angebot
+  getrennt von Suche, Finalisierung, Versand, Löschung, Aufgaben und
+  Projektstatus. Beide Entscheidungen verlangen einen Grund; bei `Verloren`
+  ist zusätzlich ein Kommentar Pflicht. Angebot, Projekt, Kunde, Summen,
+  Entscheidung, Begründung, Prüfungen und ausdrücklich ausgeschlossene
+  Nebenwirkungen werden vor der Ausführung sichtbar. Erst die exakte,
+  groß-/kleinschreibungssensitive Phrase `ANGEBOT GEWINNEN ANG-...` oder
+  `ANGEBOT VERLIEREN ANG-...` darf genau einmal ausführen. Aktive verknüpfte
+  Rechnungen blockieren eine Verlustentscheidung. Der gemeinsame Fachservice
+  verwendet Mandantenbindung, Sitzung, Rollenpaar, Impersonation, Revision,
+  TTL, HMAC, SHA-256-Fachfingerprint, serialisierbare Transaktion,
+  PostgreSQL-Advisory-Lock, bedingtes Update, Audit und Exactly-once-Replay.
+  Gemeinsam werden ausschließlich Angebot, Angebotshistorie und
+  Projektlogbuch geändert; Projektstatus, Termine, Aufgaben, Rechnungen und
+  Versand bleiben unverändert. Die natürliche Frage `zeig mal alle oKW
+  Angebote` entfernt nun korrekt das Füllwort `mal`, löst den bekannten
+  Kontakt auf und antwortet bei leerem Ergebnis verständlich: `Für OKW GmbH
+  sind aktuell keine Angebote in WorkPilot360 vorhanden.`
+  Produktiv auf Code-Commit `f74a8d0` mit Serverbackup
+  `/var/backups/workpilot360/20260731-230000-jarvis-offer-decision`.
+  Lokal und produktiv sind 138 Testdateien mit 1.473 Tests, TypeScript,
+  Prisma-Validierung, leerer Live-Diff und der 90-Seiten-Build grün. Der
+  permanente Korpus bestand 110/110 und bereitete 14 Entwürfe vor, ohne eine
+  Aktion auszuführen oder QA-Rückstände zu hinterlassen. Die isolierte
+  Produktions-QA bestand Gewonnen, Verloren, Abbruch, falsche Phrase,
+  Exactly-once-Replay, Historie und Logbuch. Der sichtbare produktive
+  Klicktest bestätigte die klare OKW-Antwort, vollständige kritische
+  Angebotskarte, exakte Phrase, sicheren Abbruch und eine fehlerfreie
+  Browserkonsole; alle UI-QA-Daten wurden bereinigt. WorkPilot läuft unter
+  PID `526336`; KlinikNavigator blieb unverändert unter PID `398228`.
+
 - JARVIS kontrollierter Angebotsversand 2026-07-31:
   Der dreizehnte Action-Center-Vertikalschnitt versendet ausschließlich ein
   finalisiertes Angebot im Status `Erstellt` mit gespeichertem PDF. JARVIS
