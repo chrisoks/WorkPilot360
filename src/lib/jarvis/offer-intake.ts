@@ -29,6 +29,19 @@ export function looksLikeOfferDraftRequest(question: string) {
   );
 }
 
+export function looksLikeOfferFinalizationRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /\b(?:angebot|angebotsentwurf|nachtragsangebot)\w*\b/.test(value) &&
+    /\b(?:finalisier|abschliess|abschließ|fertigstell)\w*\b/.test(value) &&
+    !/\b(?:versend|send|schick|gewonnen|verloren|losch|loesch|archivier)\w*\b/.test(value)
+  );
+}
+
+export function extractOfferNumber(question: string) {
+  return question.match(/\bANG-\d+\b/i)?.[0]?.toUpperCase();
+}
+
 export function extractOfferExecutionMonth(
   question: string,
   now = new Date()

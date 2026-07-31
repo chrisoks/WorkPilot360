@@ -31,7 +31,7 @@ type OfferCompany = "OK solutions" | "OK immocare";
 type OfferType = "base" | "addendum";
 type OfferAddendumMode = "addition" | "replacement" | "reduction";
 
-type OfferLineInput = {
+export type OfferLineInput = {
   catalogItemId?: string;
   catalogType?: string;
   isLaborPosition?: boolean;
@@ -55,7 +55,7 @@ type OfferLineLaborInput = {
   totalCost?: number;
 };
 
-type OfferInput = {
+export type OfferInput = {
   id?: string;
   action?: "markLost" | "markWon" | "restoreLost" | "markPrinted";
   actorId?: string;
@@ -626,7 +626,7 @@ function drawRightAlignedText(
   });
 }
 
-async function generateOfferPdf(offer: OfferInput & { offerNumber: string }, lines: Required<OfferLineInput>[]) {
+export async function generateOfferPdf(offer: OfferInput & { offerNumber: string }, lines: Required<OfferLineInput>[]) {
   const company = offer.company === "OK immocare" ? "OK immocare" : "OK solutions";
   const templateBytes = await readFile(getTemplatePath(company));
   const templateDoc = await PDFDocument.load(templateBytes);

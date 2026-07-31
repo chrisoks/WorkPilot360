@@ -4,6 +4,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import {
   cancelJarvisPlanningDraft,
   cancelJarvisOfferDraft,
+  cancelJarvisOfferFinalizationDraft,
   cancelJarvisInvoiceDraft,
   cancelJarvisInvoiceFinalizationDraft,
   cancelJarvisInvoicePaymentDraft,
@@ -31,6 +32,7 @@ import {
   completeJarvisWinterCalculationDraft,
   confirmJarvisPlanningDraft,
   confirmJarvisOfferDraft,
+  confirmJarvisOfferFinalizationDraft,
   confirmJarvisInvoiceDraft,
   confirmJarvisInvoiceFinalizationDraft,
   confirmJarvisInvoicePaymentDraft,
@@ -180,6 +182,7 @@ export async function PATCH(
   try {
     const isPlanning = body.actionId === "planning.prepare";
     const isOffer = body.actionId === "offer.prepare";
+    const isOfferFinalization = body.actionId === "offer.finalize";
     const isInvoice = body.actionId === "invoice.prepare";
     const isInvoiceFinalization = body.actionId === "invoice.finalize";
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
@@ -195,7 +198,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isInvoiceFinalization
+    const actionDraft = isOfferFinalization || isInvoiceFinalization
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isInvoicePayment
       ? await completeJarvisInvoicePaymentDraft(
@@ -368,7 +371,9 @@ export async function PATCH(
         );
     return NextResponse.json({
       message:
-        isInvoiceFinalization
+        isOfferFinalization
+          ? "Die Angebotsvorschau ist fest an den aktuellen Entwurfs- und Kalkulationsstand gebunden. Änderungen erfordern eine neue Vorschau."
+          : isInvoiceFinalization
           ? "Die Fakturavorschau ist fest an den aktuellen Rechnungs- und Prüfstand gebunden. Änderungen erfordern eine neue Vorschau."
           : isInvoicePayment
           ? "Die Zahlungsvorschau wurde mit dem aktuellen Rechnungsstand und Zahlungsdatum neu geprüft. Gebucht wird erst nach deiner exakten kritischen Bestätigung."
@@ -421,6 +426,7 @@ export async function POST(
   try {
     const isPlanning = body.actionId === "planning.prepare";
     const isOffer = body.actionId === "offer.prepare";
+    const isOfferFinalization = body.actionId === "offer.finalize";
     const isInvoice = body.actionId === "invoice.prepare";
     const isInvoiceFinalization = body.actionId === "invoice.finalize";
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
@@ -437,7 +443,13 @@ export async function POST(
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
     if (body.command === "cancel") {
-      const actionDraft = isInvoiceFinalization
+      const actionDraft = isOfferFinalization
+        ? await cancelJarvisOfferFinalizationDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isInvoiceFinalization
         ? await cancelJarvisInvoiceFinalizationDraft(
             previewId,
             resolved.binding,
@@ -521,7 +533,9 @@ export async function POST(
             body.revision
           );
       return NextResponse.json({
-        message: isInvoiceFinalization
+        message: isOfferFinalization
+          ? "Die Angebotsfinalisierung wurde abgebrochen. Das Angebot blieb ein Entwurf."
+          : isInvoiceFinalization
           ? "Die Fakturierung wurde abgebrochen. Die Rechnung blieb ein Entwurf."
           : isInvoicePayment
           ? "Die Zahlungsvorschau wurde abgebrochen. Die Rechnung blieb unverändert offen."
@@ -560,7 +574,14 @@ export async function POST(
         { status: 400 }
       );
     }
-    const actionDraft = isInvoiceFinalization
+    const actionDraft = isOfferFinalization
+      ? await confirmJarvisOfferFinalizationDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isInvoiceFinalization
       ? await confirmJarvisInvoiceFinalizationDraft(
           previewId,
           resolved.binding,
@@ -679,7 +700,9 @@ export async function POST(
     return NextResponse.json({
       message:
         actionDraft.state === "executed"
-          ? isInvoiceFinalization
+          ? isOfferFinalization
+            ? "Das Angebot wurde nach deiner kritischen Bestätigung genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert."
+            : isInvoiceFinalization
             ? "Die Rechnung wurde nach deiner kritischen Bestätigung genau einmal fakturiert. Sie wurde weder versendet noch gemahnt oder als bezahlt markiert."
             : isInvoicePayment
             ? "Der vollständige Zahlungseingang wurde nach deiner kritischen Bestätigung genau einmal gebucht. Es wurde keine Mahnung, kein Storno und kein Versand ausgelöst."
@@ -706,7 +729,9 @@ export async function POST(
             : isPlanning
             ? "Der Termin wurde nach deiner Bestätigung über den Planning-Service genau einmal angelegt."
             : "Die Aufgabe wurde nach deiner Bestätigung genau einmal angelegt."
-          : isInvoiceFinalization
+          : isOfferFinalization
+            ? "Das Angebot wurde nicht finalisiert."
+            : isInvoiceFinalization
             ? "Die Rechnung wurde nicht fakturiert."
             : isInvoicePayment
             ? "Der Zahlungseingang wurde nicht gebucht."

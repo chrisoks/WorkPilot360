@@ -94,6 +94,7 @@ import {
   completeJarvisWinterCalculationDraft,
   createPersistedJarvisPlanningDraft,
   createPersistedJarvisOfferDraft,
+  createPersistedJarvisOfferFinalizationDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -117,7 +118,9 @@ import {
 import {
   extractOfferDraftKind,
   extractOfferExecutionMonth,
+  extractOfferNumber,
   looksLikeOfferDraftRequest,
+  looksLikeOfferFinalizationRequest,
 } from "@/lib/jarvis/offer-intake";
 import {
   extractInvoiceCompany,
@@ -303,6 +306,109 @@ async function buildJarvisInvoiceDraft(input: {
           ? error.message
           : "Der Rechnungsentwurf konnte nicht sicher vorbereitet werden."
       } Es wurde keine Rechnung angelegt.`,
+    };
+  }
+}
+
+async function buildJarvisOfferFinalizationDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-finalize.session-required",
+      message:
+        "Für eine kritische Angebotsfinalisierung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const offerNumber = extractOfferNumber(input.question);
+  const offer = offerNumber
+    ? await prisma.offer.findFirst({
+        where: {
+          offerNumber: { equals: offerNumber, mode: "insensitive" },
+          organizationId: input.organizationId,
+        },
+        select: { id: true, offerNumber: true, status: true },
+      })
+    : null;
+  if (offerNumber && !offer) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-finalize.not-found",
+      message: `${offerNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts verändert.`,
+    };
+  }
+  if (!offer) {
+    const drafts = await prisma.offer.findMany({
+      where: { organizationId: input.organizationId, status: "Entwurf" },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: { offerNumber: true, customerName: true },
+    });
+    return {
+      type: "clarification" as const,
+      topicId: "action.offer-finalize.choose",
+      message:
+        drafts.length > 0
+          ? "Welches Angebot soll kontrolliert finalisiert werden? Es wurde noch nichts verändert."
+          : "Es gibt aktuell keinen Angebotsentwurf, den JARVIS finalisieren könnte.",
+      choices: drafts.map((draft) =>
+        createJarvisDialogChoice(
+          `offer-finalize-${draft.offerNumber}`,
+          `${draft.offerNumber} · ${draft.customerName || "ohne Kunde"}`,
+          `Finalisiere Angebot ${draft.offerNumber}`
+        )
+      ),
+    };
+  }
+  if (offer.status !== "Entwurf") {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-finalize.invalid-state",
+      message: `${offer.offerNumber} ist kein finalisierbarer Angebotsentwurf. Es wurde nichts verändert.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "offer.finalize",
+    payload: { offerId: offer.id },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-finalize.refused",
+      message: `${preview.message} Es wurde nichts finalisiert.`,
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisOfferFinalizationDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.offer-finalize",
+      message:
+        "Ich habe den Angebotsentwurf serverseitig erneut geprüft. Kontrolliere Projekt, Kunde, Ausführungszeitraum, Positionen, Summen und Hinweise. Zur Finalisierung musst du die angezeigte kritische Bestätigungsphrase exakt eingeben. Versand, Gewonnen/Verloren und Projektstatus werden nicht ausgelöst.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-finalize.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Die Angebotsvorschau konnte nicht sicher vorbereitet werden."
+      } Es wurde nichts finalisiert.`,
     };
   }
 }
@@ -2257,6 +2363,17 @@ export async function POST(req: Request) {
         sessionId: actorResult.sessionId,
         accessProfile,
         context,
+      }),
+      "sales"
+    );
+  }
+  if (looksLikeOfferFinalizationRequest(message)) {
+    return respond(
+      await buildJarvisOfferFinalizationDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
       }),
       "sales"
     );

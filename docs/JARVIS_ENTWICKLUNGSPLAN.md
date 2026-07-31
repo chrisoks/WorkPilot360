@@ -1924,9 +1924,38 @@ Angebotsnummer wird innerhalb der serialisierbaren Bestätigung durch einen
 organisationsgebundenen PostgreSQL-Advisory-Lock geschützt. Rollenpaar,
 Impersonation, Sitzung, Organisation, Revision, TTL, HMAC,
 Kontext-Fingerprint, Audit und atomare Exactly-once-Beanspruchung sind
-Bestandteil des Vertrags. Finalisierung, PDF-/Druckfreigabe, Versand,
-Gewonnen/Verloren und Löschung bleiben getrennte, nicht durch diesen
-Vertikalschnitt freigegebene Aktionen.
+Bestandteil des Vertrags. Versand, Gewonnen/Verloren und Löschung bleiben
+getrennte, nicht durch diesen Entwurfs-Vertikalschnitt freigegebene Aktionen.
+
+Die kontrollierte Finalisierung eines vorhandenen Angebotsentwurfs ist seit
+31.07.2026 als eigener kritischer Vertikalschnitt umgesetzt. JARVIS trennt
+`finalisieren` strikt von Entwurfserstellung, Versand, Gewonnen/Verloren,
+Löschung und bloßen Statusfragen. Die Vorschau lädt Angebot, Projekt,
+Bezugsangebot, Positionen, Katalogstände, Ausführungszeitraum und Summen im
+Mandanten neu, zeigt die Prüfung sichtbar an und bindet den vollständigen
+Fachstand in einen SHA-256-Fingerprint. Fehlende Pflichtdaten, inkonsistente
+Summen, ein anderer Status oder ein veralteter Kontext blockieren fail-closed.
+Erst die exakt sichtbare, groß-/kleinschreibungssensitive Phrase
+`ANGEBOT FINALISIEREN ANG-...` darf ausführen.
+
+Normale Angebotsmaske und JARVIS nutzen dieselbe zentrale Angebotsvalidierung,
+Kalkulation und PDF-Erzeugung. In einer serialisierbaren Transaktion unter
+organisations- und angebotsgebundenem PostgreSQL-Advisory-Lock wechselt genau
+ein unveränderter Entwurf bedingt auf `Erstellt`, erhält sein finales PDF und
+genau ein Historienereignis. Organisation, Sitzung, Rollenpaar, Impersonation,
+Revision, TTL, HMAC, Fingerprint, Audit und Exactly-once-Replay sichern die
+Aktion. Sie löst bewusst keinen Versand, keine Gewonnen-/Verloren-Markierung,
+keine Aufgabe und keine automatische Projektstatusänderung aus.
+
+Die lokale Abnahme bestand 136 Testdateien mit 1.454 Tests, TypeScript,
+Regressionscheck, Prisma-Validierung und den 90-Seiten-Produktionsbuild. Der
+permanente Korpus bestand 110/110 und bereitete die neue
+`offer.finalize`-Vorschau real vor, ohne eine Aktion auszuführen oder QA-Daten
+zu hinterlassen. Die isolierte Ausführungs-QA wies eine falsche Phrase mit
+HTTP 400 ab, finalisierte danach genau ein Angebot, erzeugte ein vollständiges
+PDF und ein Historienereignis und bestätigte beim Replay dieselbe Entität.
+Versand, Aufgaben, Projektstatus und Gewonnen/Verloren blieben unverändert;
+der echte sichtbare Klicktest bestätigte denselben Ablauf ohne Browserfehler.
 
 Der fünfte Action-Center-Vertikalschnitt für Rechnungsentwürfe und die
 Fakturavorprüfung ist am 31.07.2026 umgesetzt. Natürliche Erstellungswünsche
@@ -2015,6 +2044,7 @@ telemetriert.
 - Logbuch- und Kommentaraktionen (produktiver textbasierter Vertikalschnitt;
   Anhänge bleiben ein eigener Sicherheitsblock),
 - Angebote/Nachträge als Entwurf (produktiv abgenommen),
+- Angebotsentwürfe kontrolliert finalisieren und als PDF erzeugen,
 - Rechnungsentwurf und Fakturavorprüfung (produktiver Vertikalschnitt),
 - kontrollierte Rechnungsfinalisierung mit exakter kritischer Phrase,
 - kontrollierte Bezahlt-Markierung mit Zahlungsdatum, vollständigem

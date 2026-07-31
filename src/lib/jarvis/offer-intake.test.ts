@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   extractOfferDraftKind,
   extractOfferExecutionMonth,
+  extractOfferNumber,
   looksLikeOfferDraftRequest,
+  looksLikeOfferFinalizationRequest,
 } from "@/lib/jarvis/offer-intake";
 
 describe("JARVIS offer intake", () => {
@@ -10,6 +12,13 @@ describe("JARVIS offer intake", () => {
     expect(looksLikeOfferDraftRequest("Erstelle ein Angebot für Projekt GLR-449")).toBe(true);
     expect(looksLikeOfferDraftRequest("Zeig mir offene Angebote")).toBe(false);
     expect(looksLikeOfferDraftRequest("Versende das Angebot")).toBe(false);
+  });
+
+  it("recognizes isolated finalization and excludes combined follow-up actions", () => {
+    expect(looksLikeOfferFinalizationRequest("Finalisiere Angebot ANG-10124")).toBe(true);
+    expect(looksLikeOfferFinalizationRequest("Finalisiere und versende Angebot ANG-10124")).toBe(false);
+    expect(looksLikeOfferFinalizationRequest("Markiere Angebot ANG-10124 als gewonnen")).toBe(false);
+    expect(extractOfferNumber("Bitte ANG-10124 finalisieren")).toBe("ANG-10124");
   });
 
   it("extracts ISO, numeric and German execution months", () => {

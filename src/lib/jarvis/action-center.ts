@@ -13,6 +13,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "project-logbook.prepare",
   "task-comment.prepare",
   "offer.prepare",
+  "offer.finalize",
   "invoice.prepare",
   "invoice.finalize",
   "invoice.mark-paid",
@@ -196,6 +197,12 @@ const invoiceFinalizePreviewPayloadSchema = z
   })
   .strict();
 
+const offerFinalizePreviewPayloadSchema = z
+  .object({
+    offerId: boundedId,
+  })
+  .strict();
+
 const invoiceMarkPaidPreviewPayloadSchema = z
   .object({
     invoiceId: boundedId,
@@ -249,6 +256,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
   "task-comment.prepare": taskCommentPreviewPayloadSchema,
   "offer.prepare": offerPreviewPayloadSchema,
+  "offer.finalize": offerFinalizePreviewPayloadSchema,
   "invoice.prepare": invoicePreviewPayloadSchema,
   "invoice.finalize": invoiceFinalizePreviewPayloadSchema,
   "invoice.mark-paid": invoiceMarkPaidPreviewPayloadSchema,
@@ -267,6 +275,7 @@ export type JarvisActionPreviewPayloadMap = {
   >;
   "task-comment.prepare": z.infer<typeof taskCommentPreviewPayloadSchema>;
   "offer.prepare": z.infer<typeof offerPreviewPayloadSchema>;
+  "offer.finalize": z.infer<typeof offerFinalizePreviewPayloadSchema>;
   "invoice.prepare": z.infer<typeof invoicePreviewPayloadSchema>;
   "invoice.finalize": z.infer<typeof invoiceFinalizePreviewPayloadSchema>;
   "invoice.mark-paid": z.infer<typeof invoiceMarkPaidPreviewPayloadSchema>;
@@ -766,6 +775,52 @@ export type JarvisInvoiceFinalizationDraftView = {
   cancellation: { enabled: boolean };
   result?: {
     entityType: "invoice";
+    entityId: string;
+    label: string;
+  };
+};
+
+export type JarvisOfferFinalizationDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "offer.finalize";
+  title: "Angebot kontrolliert finalisieren";
+  badge:
+    | "Prüfung"
+    | "Bereit"
+    | "Wird finalisiert"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Finalisiert";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  offerId: string;
+  projectId: string;
+  fields: Array<{ label: string; value: string }>;
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "ok" | "warning" | "blocked";
+    detail: string;
+  }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "blocked"
+      | "not_permitted"
+      | "expired"
+      | "cancelled"
+      | "executing"
+      | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: {
+    entityType: "offer";
     entityId: string;
     label: string;
   };

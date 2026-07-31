@@ -132,6 +132,44 @@ async function main() {
       lines: { orderBy: { position: "asc" }, select: { id: true, totalNet: true } },
     },
   });
+  let finalizableOffer = await prisma.offer.findFirst({
+    where: {
+      organizationId: actor.organizationId,
+      status: "Entwurf",
+      plannedExecutionMonth: { not: "" },
+      lines: { some: {} },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, offerNumber: true, status: true, pdfData: true, updatedAt: true },
+  });
+  let qaFinalizableOfferId = "";
+  if (!finalizableOffer) {
+    const project = await prisma.workPilotProject.findFirst({
+      where: { organizationId: actor.organizationId },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, projectNumber: true, title: true, customer: true },
+    });
+    if (project) {
+      const offerNumber = `ANG-${Date.now().toString().slice(-9)}`;
+      const created = await prisma.offer.create({
+        data: {
+          id: randomUUID(), organizationId: actor.organizationId,
+          projectId: project.id, projectNumber: project.projectNumber,
+          projectTitle: project.title, company: "OK solutions", offerNumber,
+          status: "Entwurf", customerName: project.customer || "QA Kunde",
+          plannedExecutionMonth: "2026-11", netTotal: 100, vatRate: 19, grossTotal: 119,
+          lines: { create: {
+            id: randomUUID(), organizationId: actor.organizationId, position: 1,
+            quantity: 1, unit: "Pauschal", title: "QA Korpusleistung",
+            unitPrice: 100, vatRate: 19, totalNet: 100,
+          } },
+        },
+        select: { id: true, offerNumber: true, status: true, pdfData: true, updatedAt: true },
+      });
+      finalizableOffer = created;
+      qaFinalizableOfferId = created.id;
+    }
+  }
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -153,6 +191,7 @@ async function main() {
   let invoiceReminderDraftPrepared = false;
   let invoiceCancellationDraftPrepared = false;
   let invoiceCreditDraftPrepared = false;
+  let offerFinalizationDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -164,6 +203,7 @@ async function main() {
         const isReminderCase = item.question.includes("Erstelle eine Mahnung");
         const isCancellationCase = item.question.includes("Storniere Rechnung");
         const isCreditCase = item.question.includes("Teilgutschrift");
+        const isOfferFinalizationCase = item.question.includes("Finalisiere Angebot");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -178,6 +218,8 @@ async function main() {
               ? `Storniere Rechnung ${cancellationInvoice.invoiceNumber} vollständig wegen QA-Doppelberechnung.`
             : isCreditCase && creditInvoice
               ? `Erstelle eine Teilgutschrift zu Rechnung ${creditInvoice.invoiceNumber} über 20 Euro netto wegen QA-Preisnachlass.`
+            : isOfferFinalizationCase && finalizableOffer
+              ? `Finalisiere Angebot ${finalizableOffer.offerNumber} kontrolliert.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -285,6 +327,27 @@ async function main() {
             });
           } else {
             invoiceCreditDraftPrepared = true;
+          }
+        }
+        if (isOfferFinalizationCase && finalizableOffer) {
+          if (payload.actionDraft?.actionId !== "offer.finalize") {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Angebotsfrage hat keine kontrollierte offer.finalize-Vorschau erzeugt.",
+            });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length
+          ) {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Angebotsfrage hat keine vollständig prüfbare, unblockierte Bestätigungsvorschau erzeugt.",
+            });
+          } else {
+            offerFinalizationDraftPrepared = true;
           }
         }
       } catch (error) {
@@ -466,6 +529,35 @@ async function main() {
         });
       }
     }
+    if (finalizableOffer) {
+      const [currentOffer, finalizationHistoryCount] = await Promise.all([
+        prisma.offer.findUnique({
+          where: { id: finalizableOffer.id },
+          select: { status: true, pdfData: true, updatedAt: true },
+        }),
+        prisma.offerHistory.count({
+          where: {
+            organizationId: actor.organizationId,
+            offerId: finalizableOffer.id,
+            eventType: "finalized",
+            createdAt: { gte: now },
+          },
+        }),
+      ]);
+      if (
+        !currentOffer ||
+        currentOffer.status !== finalizableOffer.status ||
+        currentOffer.pdfData !== finalizableOffer.pdfData ||
+        currentOffer.updatedAt.toISOString() !== finalizableOffer.updatedAt.toISOString() ||
+        finalizationHistoryCount !== 0
+      ) {
+        failures.push({
+          id: "side-effect-offer-finalization",
+          status: 0,
+          error: "Die 110-Fragen-Prüfung hat unerwartet ein Angebot finalisiert oder ein PDF erzeugt.",
+        });
+      }
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -474,6 +566,11 @@ async function main() {
           organizationId: actor.organizationId,
           executedAt: null,
         },
+      });
+    }
+    if (qaFinalizableOfferId) {
+      await prisma.offer.deleteMany({
+        where: { id: qaFinalizableOfferId, organizationId: actor.organizationId },
       });
     }
     await prisma.authSession.deleteMany({ where: { id: sessionId } });
@@ -493,6 +590,10 @@ async function main() {
     invoiceReminderDraftPrepared,
     invoiceCancellationDraftPrepared,
     invoiceCreditDraftPrepared,
+    offerFinalizationDraftPrepared,
+    qaFinalizableOfferRemaining: qaFinalizableOfferId
+      ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
+      : 0,
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,
