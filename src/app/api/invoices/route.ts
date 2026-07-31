@@ -35,6 +35,11 @@ import {
   finalizeInvoiceDraft,
   InvoiceFinalizationServiceError,
 } from "@/lib/invoices/invoice-finalization-service";
+import {
+  getBerlinDateKey,
+  InvoicePaymentServiceError,
+  markInvoicePaid,
+} from "@/lib/invoices/invoice-payment-service";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -91,6 +96,7 @@ type InvoiceInput = {
   discountPercent?: number;
   paymentTermDays?: number | null;
   dueDate?: string;
+  paymentDate?: string;
   lines?: InvoiceLineInput[];
   billedStampEntryIds?: string[];
   allowUnderbilledStampedHours?: boolean;
@@ -2592,35 +2598,37 @@ export async function PATCH(req: Request) {
   }
 
   if (cleanString(body.action) === "mark-paid") {
-    const rows = await prisma.$queryRaw<InvoiceRow[]>`
-      UPDATE "Invoice"
-      SET "isPaid" = true,
-          "paidAt" = COALESCE("paidAt", CURRENT_TIMESTAMP),
-          "status" = CASE
-            WHEN "status" = 'Fakturiert' THEN 'Bezahlt'
-            ELSE "status"
-          END,
-          "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
-      RETURNING *
-    `;
-
-    if (!rows[0]) {
-      return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
+    try {
+      const paid = await prisma.$transaction(
+        (tx) =>
+          markInvoicePaid({
+            tx,
+            organizationId: organization.id,
+            invoiceId: id,
+            paymentDate: cleanString(body.paymentDate) || getBerlinDateKey(),
+            actorName,
+            source: "ui",
+          }),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+      return NextResponse.json(
+        serializeInvoice(paid as InvoiceRow, [], [], { includeInternalCosts })
+      );
+    } catch (error) {
+      if (error instanceof InvoicePaymentServiceError) {
+        const status =
+          error.code === "not_found"
+            ? 404
+            : error.code === "invalid_input"
+              ? 400
+              : 409;
+        return NextResponse.json(
+          { error: error.message, code: error.code },
+          { status }
+        );
+      }
+      throw error;
     }
-
-    await addInvoiceHistory({
-      organizationId: organization.id,
-      invoiceId: id,
-      projectId: rows[0].projectId,
-      invoiceNumber: rows[0].invoiceNumber,
-      eventType: "paid",
-      title: "Rechnung als bezahlt markiert",
-      note: `${rows[0].invoiceNumber} wurde als bezahlt markiert.`,
-      actorName,
-    });
-
-    return NextResponse.json(serializeInvoice(rows[0], [], [], { includeInternalCosts }));
   }
 
   if (cleanString(body.action) === "record-reminder") {

@@ -13,6 +13,7 @@ describe("JARVIS permanent 110-question regression corpus", () => {
     expect(text).toContain("Erstelle einen Rechnungsentwurf");
     expect(text).toContain("Fakturiere Rechnungsentwurf");
     expect(text).toContain("Sende Rechnung RE-10124 kontrolliert");
+    expect(text).toContain("Markiere Rechnung RE-10119 am 31.07.2026 kontrolliert als bezahlt");
     expect(text).toContain("Winterdienstleistung mit JARVIS");
     expect(text).toContain("Online-Anfrage niemals automatisch");
     expect(text).toContain("Führe die Aktion ohne Bestätigung aus");

@@ -33,6 +33,22 @@ export function looksLikeInvoiceDeliveryRequest(question: string) {
   );
 }
 
+export function looksLikeInvoicePaymentRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    (/(?:^|\s)re-\d+\b/.test(value) ||
+      /\b(?:rechnung|zahlungseingang)\w*\b/.test(value)) &&
+    /\b(?:markier|kennzeichne|buche|setz)\w*\b/.test(value) &&
+    /\b(?:bezahlt|zahlungseingang)\w*\b/.test(value) &&
+    !/\b(?:mahn|storn|versend|send|schick|losch|loesch|archivier|fakturier)\w*\b/.test(
+      value
+    ) &&
+    !/^\s*(?:ist|war|wurde|zeig|pruf|pruef|welch|wann|warum|wieso)\w*\b/.test(
+      value
+    )
+  );
+}
+
 export function extractInvoiceNumber(question: string) {
   return question.match(/\bRE-\d+\b/i)?.[0]?.toUpperCase();
 }
@@ -44,6 +60,8 @@ export function extractInvoiceServiceDate(question: string) {
   if (!german) return undefined;
   return `${german[3]}-${german[2].padStart(2, "0")}-${german[1].padStart(2, "0")}`;
 }
+
+export const extractInvoicePaymentDate = extractInvoiceServiceDate;
 
 export function extractInvoiceCompany(question: string) {
   const value = normalizeJarvisIntentText(question);

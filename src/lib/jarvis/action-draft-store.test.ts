@@ -38,6 +38,36 @@ const fake = vi.hoisted(() => {
   const offerDrafts: Array<Record<string, any>> = [];
   const offerHistory: Array<Record<string, any>> = [];
   const invoiceDrafts: Array<Record<string, any>> = [];
+  const paidInvoices: Array<Record<string, any>> = [];
+  const evaluateInvoicePayment = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate?: string }) => ({
+    invoice: {
+      id: invoiceId,
+      invoiceNumber: "RE-10119",
+      status: "Fakturiert",
+      projectId: "project-1",
+      projectNumber: "MKG-209",
+      projectTitle: "Marketing",
+      customerName: "Musterkunde",
+      serviceDate: "2026-07-20",
+      dueDate: "2026-08-03",
+      grossTotal: 119,
+      isPaid: false,
+      paidAt: "",
+      updatedAt: "2026-07-31T08:00:00.000Z",
+    },
+    paymentDate: paymentDate === undefined ? "2026-07-31" : paymentDate,
+    checks: paymentDate === ""
+      ? [{ key: "payment-date", label: "Zahlungsdatum", status: "blocked", detail: "Ein gültiges Zahlungsdatum ist erforderlich." }]
+      : [{ key: "full-payment", label: "Vollständig", status: "ok", detail: "119,00 € vollständig." }],
+    warnings: [],
+    blockingIssues: paymentDate === "" ? ["Ein gültiges Zahlungsdatum ist erforderlich."] : [],
+    fingerprint: "a".repeat(64),
+  }));
+  const markInvoicePaid = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate: string }) => {
+    const row = { id: invoiceId, status: "Bezahlt", isPaid: true, paymentDate };
+    paidInvoices.push(row);
+    return row;
+  });
   const evaluateInvoiceDraft = vi.fn(async ({ draft }: { draft: Record<string, any> }) => {
     const lines = Array.isArray(draft.lines) ? draft.lines : [];
     const canonicalLines = lines.map((line: Record<string, any>) => ({
@@ -476,8 +506,11 @@ const fake = vi.hoisted(() => {
       offerDrafts.length = 0;
       offerHistory.length = 0;
       invoiceDrafts.length = 0;
+      paidInvoices.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
+      evaluateInvoicePayment.mockClear();
+      markInvoicePaid.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -495,8 +528,11 @@ const fake = vi.hoisted(() => {
     offerDrafts,
     offerHistory,
     invoiceDrafts,
+    paidInvoices,
     evaluateInvoiceDraft,
     createConfirmedInvoiceDraft,
+    evaluateInvoicePayment,
+    markInvoicePaid,
   };
 });
 
@@ -511,6 +547,14 @@ vi.mock("@/lib/invoices/invoice-draft-service", () => ({
     constructor(public readonly code: string, message: string) { super(message); }
   },
 }));
+vi.mock("@/lib/invoices/invoice-payment-service", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/invoices/invoice-payment-service")>("@/lib/invoices/invoice-payment-service");
+  return {
+    ...actual,
+    evaluateInvoicePayment: fake.evaluateInvoicePayment,
+    markInvoicePaid: fake.markInvoicePaid,
+  };
+});
 vi.mock("@/lib/services/task-service", () => ({
   createJarvisConfirmedTask: fake.createJarvisConfirmedTask,
 }));
@@ -617,6 +661,9 @@ import {
   completeJarvisInvoiceDraft,
   confirmJarvisInvoiceDraft,
   createPersistedJarvisInvoiceDraft,
+  completeJarvisInvoicePaymentDraft,
+  confirmJarvisInvoicePaymentDraft,
+  createPersistedJarvisInvoicePaymentDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 import { calculateWinterService } from "@/lib/winter-service/calculation";
@@ -2112,5 +2159,136 @@ describe("persistent JARVIS invoice drafts", () => {
       },
     })).rejects.toMatchObject({ code: "scope_mismatch" });
     expect(fake.invoiceDrafts).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS invoice payment drafts", () => {
+  beforeEach(() => {
+    fake.reset();
+  });
+
+  it("rejects an employee before a payment draft is persisted", async () => {
+    await expect(
+      createPersistedJarvisInvoicePaymentDraft({
+        organizationId: "org-1",
+        sessionId: "session-1",
+        profile: profile(Role.MITARBEITER),
+        now: baseNow,
+        preview: {
+          version: 1,
+          previewId: "invoice-payment-preview-employee",
+          actionId: "invoice.mark-paid",
+          actionTitle: "Zahlungseingang vollständig bestätigen",
+          state: "awaiting_confirmation",
+          organizationId: "org-1",
+          sessionActorId: "user-1",
+          effectiveActorId: "user-1",
+          impersonating: false,
+          payload: { invoiceId: "invoice-1", paymentDate: "2026-07-31" },
+          execution: { enabled: false, reason: "preview_only" },
+          audit: [],
+        },
+      })
+    ).rejects.toMatchObject({ code: "scope_mismatch" });
+    expect(fake.evaluateInvoicePayment).not.toHaveBeenCalled();
+    expect(fake.paidInvoices).toHaveLength(0);
+  });
+
+  it("rechecks an edited date and books a full payment exactly once", async () => {
+    const created = await createPersistedJarvisInvoicePaymentDraft({
+      ...binding(),
+      now: baseNow,
+      preview: {
+        version: 1,
+        previewId: "invoice-payment-preview-1",
+        actionId: "invoice.mark-paid",
+        actionTitle: "Zahlungseingang vollständig bestätigen",
+        state: "awaiting_confirmation",
+        organizationId: "org-1",
+        sessionActorId: "user-1",
+        effectiveActorId: "user-1",
+        impersonating: false,
+        payload: { invoiceId: "invoice-1", paymentDate: "2026-07-30" },
+        execution: { enabled: false, reason: "preview_only" },
+        audit: [],
+      },
+    });
+    expect(created.state).toBe("awaiting_confirmation");
+
+    const incomplete = await completeJarvisInvoicePaymentDraft(
+      created.previewId,
+      binding(),
+      { revision: created.revision, paymentDate: "" },
+      baseNow
+    );
+    expect(incomplete.state).toBe("awaiting_input");
+    expect(incomplete.confirmation.enabled).toBe(false);
+
+    const ready = await completeJarvisInvoicePaymentDraft(
+      created.previewId,
+      binding(),
+      { revision: incomplete.revision, paymentDate: "2026-07-31" },
+      baseNow
+    );
+    expect(ready.editor.paymentDate).toBe("2026-07-31");
+    expect(ready.confirmation.requiredText).toBe(
+      "BEZAHLT RE-10119 AM 31.07.2026"
+    );
+
+    const first = await confirmJarvisInvoicePaymentDraft(
+      ready.previewId,
+      binding(),
+      ready.revision,
+      ready.confirmation.requiredText,
+      baseNow
+    );
+    const replay = await confirmJarvisInvoicePaymentDraft(
+      ready.previewId,
+      binding(),
+      ready.revision,
+      ready.confirmation.requiredText,
+      baseNow
+    );
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe(first.result?.entityId);
+    expect(fake.paidInvoices).toHaveLength(1);
+    expect(fake.markInvoicePaid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invoiceId: "invoice-1",
+        paymentDate: "2026-07-31",
+        source: "jarvis",
+      })
+    );
+  });
+
+  it("rejects an inexact critical phrase before booking", async () => {
+    const created = await createPersistedJarvisInvoicePaymentDraft({
+      ...binding(),
+      now: baseNow,
+      preview: {
+        version: 1,
+        previewId: "invoice-payment-preview-phrase",
+        actionId: "invoice.mark-paid",
+        actionTitle: "Zahlungseingang vollständig bestätigen",
+        state: "awaiting_confirmation",
+        organizationId: "org-1",
+        sessionActorId: "user-1",
+        effectiveActorId: "user-1",
+        impersonating: false,
+        payload: { invoiceId: "invoice-1", paymentDate: "2026-07-31" },
+        execution: { enabled: false, reason: "preview_only" },
+        audit: [],
+      },
+    });
+    await expect(
+      confirmJarvisInvoicePaymentDraft(
+        created.previewId,
+        binding(),
+        created.revision,
+        "bezahlt RE-10119 AM 31.07.2026",
+        baseNow
+      )
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(fake.paidInvoices).toHaveLength(0);
   });
 });

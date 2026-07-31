@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisOfferDraft: vi.fn(),
   createPersistedJarvisInvoiceDraft: vi.fn(),
   createPersistedJarvisInvoiceFinalizationDraft: vi.fn(),
+  createPersistedJarvisInvoicePaymentDraft: vi.fn(),
+  createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
   createPersistedJarvisVehicleTripCalculationDraft: vi.fn(),
@@ -117,6 +119,10 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft:
     mocks.createPersistedJarvisInvoiceFinalizationDraft,
+  createPersistedJarvisInvoicePaymentDraft:
+    mocks.createPersistedJarvisInvoicePaymentDraft,
+  createPersistedJarvisInvoiceDeliveryDraft:
+    mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
     mocks.createPersistedJarvisTimeDraft,
   createPersistedJarvisWinterCalculationDraft:

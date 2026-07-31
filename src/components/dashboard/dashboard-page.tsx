@@ -74,6 +74,7 @@ import type {
   JarvisInvoiceDraftView,
   JarvisInvoiceDeliveryDraftView,
   JarvisInvoiceFinalizationDraftView,
+  JarvisInvoicePaymentDraftView,
   JarvisPlanningActionDraftView,
   JarvisTaskActionDraftView,
   JarvisTimeActionDraftView,
@@ -677,6 +678,7 @@ type ManagementAiChatMessage = {
     | JarvisInvoiceDraftView
     | JarvisInvoiceDeliveryDraftView
     | JarvisInvoiceFinalizationDraftView
+    | JarvisInvoicePaymentDraftView
     | JarvisPlanningActionDraftView
     | JarvisTimeActionDraftView
     | JarvisWinterCalculationDraftView
@@ -699,6 +701,7 @@ const jarvisPreviewActionIds = new Set([
   "offer.prepare",
   "invoice.prepare",
   "invoice.finalize",
+  "invoice.mark-paid",
   "document.send",
 ]);
 
@@ -2231,6 +2234,7 @@ function parseJarvisActionDraft(
   | JarvisInvoiceDraftView
   | JarvisInvoiceDeliveryDraftView
   | JarvisInvoiceFinalizationDraftView
+  | JarvisInvoicePaymentDraftView
   | JarvisPlanningActionDraftView
   | JarvisTimeActionDraftView
   | JarvisWinterCalculationDraftView
@@ -2242,12 +2246,52 @@ function parseJarvisActionDraft(
     parseJarvisOfferDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
     parseJarvisInvoiceDeliveryDraft(value) ??
+    parseJarvisInvoicePaymentDraft(value) ??
     parseJarvisInvoiceFinalizationDraft(value) ??
     parseJarvisPlanningActionDraft(value) ??
     parseJarvisTimeActionDraft(value) ??
     parseJarvisWinterCalculationDraft(value) ??
     parseJarvisVehicleTripCalculationDraft(value)
   );
+}
+
+function parseJarvisInvoicePaymentDraft(
+  value: unknown
+): JarvisInvoicePaymentDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "invoice.mark-paid" ||
+    typeof candidate.previewId !== "string" ||
+    typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" ||
+    typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" ||
+    typeof candidate.expiresAt !== "string" ||
+    typeof candidate.invoiceId !== "string" ||
+    typeof candidate.projectId !== "string" ||
+    !Array.isArray(candidate.fields) ||
+    !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) ||
+    !Array.isArray(candidate.blockingIssues) ||
+    !candidate.editor ||
+    typeof candidate.editor !== "object" ||
+    !candidate.confirmation ||
+    typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation ||
+    typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const editor = candidate.editor as Record<string, unknown>;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (
+    typeof editor.paymentDate !== "string" ||
+    typeof confirmation.enabled !== "boolean" ||
+    typeof confirmation.requiredText !== "string" ||
+    typeof cancellation.enabled !== "boolean"
+  ) return undefined;
+  return candidate as unknown as JarvisInvoicePaymentDraftView;
 }
 
 function parseJarvisInvoiceDeliveryDraft(
@@ -3393,6 +3437,91 @@ function JarvisInvoiceFinalizationCard({
                   minute: "2-digit",
                 })} Uhr an diese Sitzung gebunden.`}
       </footer>
+    </section>
+  );
+}
+
+function JarvisInvoicePaymentCard({
+  draft,
+  actorId,
+  disabled,
+  onChange,
+  onOpenInvoice,
+}: {
+  draft: JarvisInvoicePaymentDraftView;
+  actorId: string;
+  disabled: boolean;
+  onChange: (next: JarvisInvoicePaymentDraftView, message?: string) => void;
+  onOpenInvoice: (draft: JarvisInvoicePaymentDraftView) => void;
+}) {
+  const [paymentDate, setPaymentDate] = useState(draft.editor.paymentDate);
+  const [confirmationText, setConfirmationText] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
+  const isOpen = draft.state === "awaiting_input" || draft.state === "awaiting_confirmation";
+  const isDirty = paymentDate !== draft.editor.paymentDate;
+
+  useEffect(() => {
+    setPaymentDate(draft.editor.paymentDate);
+    setConfirmationText("");
+    setError("");
+  }, [draft.previewId, draft.revision, draft.state, draft.editor.paymentDate]);
+
+  const request = async (
+    method: "PATCH" | "POST",
+    payload: Record<string, unknown>
+  ) => {
+    setIsWorking(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/jarvis/action-drafts/${encodeURIComponent(draft.previewId)}`, {
+        method,
+        headers: { "Content-Type": "application/json", "X-Jarvis-Action": "jarvis-action-draft-v2" },
+        body: JSON.stringify({ actorId, actionId: "invoice.mark-paid", revision: draft.revision, ...payload }),
+      });
+      const data = await response.json().catch(() => null);
+      const next = parseJarvisInvoicePaymentDraft(data?.actionDraft);
+      if (!response.ok || !next) {
+        setError(data?.error ?? "Der Zahlungseingang konnte nicht sicher verarbeitet werden.");
+        return;
+      }
+      onChange(next, typeof data?.message === "string" ? data.message : undefined);
+    } catch {
+      setError("Das Action Center ist gerade nicht erreichbar. Es wurde kein Zahlungseingang gebucht.");
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  return (
+    <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
+      <header><div><span>Action Center · Kritische Finanzaktion</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+      <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+      {isOpen ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label><span>Zahlungsdatum</span><input type="date" value={paymentDate} disabled={disabled || isWorking} onChange={(event) => setPaymentDate(event.target.value)} /></label>
+          <button type="button" disabled={disabled || isWorking || !isDirty} onClick={() => void request("PATCH", { paymentDate })}>Zahlungsdatum neu prüfen</button>
+        </div>
+      ) : null}
+      <div className={styles.jarvisPlanningChecks}>
+        <strong>Zahlungsprüfung</strong>
+        {draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}
+      </div>
+      {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
+      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Bezahlt-Markierung ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+      {draft.confirmation.enabled && isDirty ? <div className={styles.jarvisActionPreviewMissing}><strong>Änderung noch nicht geprüft</strong><span>Prüfe das geänderte Zahlungsdatum erneut.</span></div> : null}
+      {draft.confirmation.enabled && isOpen && !isDirty ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label>
+        </div>
+      ) : null}
+      {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
+      <div className={styles.jarvisActionDraftActions}>
+        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || isDirty || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("POST", { command: "confirm", confirmationText })}>Vollständig als bezahlt markieren</button> : null}
+        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("POST", { command: "cancel" })}>Zahlungsvorschau abbrechen</button> : null}
+        {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenInvoice(draft)}>{draft.result.label}</button> : null}
+      </div>
+      <footer>{draft.state === "executed" ? "Der vollständige Zahlungseingang wurde genau einmal gebucht. Es wurde keine Mahnung, kein Storno und kein Versand ausgelöst." : draft.state === "cancelled" ? "Die Zahlungsvorschau wurde beendet. Die Rechnung blieb unverändert offen." : draft.state === "expired" ? "Die Zahlungsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`}</footer>
     </section>
   );
 }
@@ -15145,6 +15274,20 @@ export function DashboardPage() {
       return;
     }
 
+    const paymentDate = window.prompt(
+      `Zahlungsdatum für ${invoice.invoiceNumber} (JJJJ-MM-TT)`,
+      formatDateKey(new Date())
+    );
+    if (paymentDate === null) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate.trim())) {
+      setErrorMessage("Bitte gib das Zahlungsdatum im Format JJJJ-MM-TT ein.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `${invoice.invoiceNumber} über ${formatMoney(invoice.grossTotal)} mit Zahlungsdatum ${paymentDate.trim()} vollständig als bezahlt markieren? Teilzahlungen werden damit nicht erfasst.`
+    );
+    if (!confirmed) return;
+
     const res = await fetch("/api/invoices", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -15152,6 +15295,7 @@ export function DashboardPage() {
         id: invoice.id,
         action: "mark-paid",
         actorId: activeUserId,
+        paymentDate: paymentDate.trim(),
       }),
     });
 
@@ -38388,6 +38532,7 @@ await addProjectLogbookEntry(
       | JarvisInvoiceDraftView
       | JarvisInvoiceDeliveryDraftView
       | JarvisInvoiceFinalizationDraftView
+      | JarvisInvoicePaymentDraftView
       | JarvisPlanningActionDraftView
       | JarvisTimeActionDraftView
       | JarvisWinterCalculationDraftView
@@ -38419,6 +38564,7 @@ await addProjectLogbookEntry(
       } else if (
         nextDraft.actionId === "invoice.prepare" ||
         nextDraft.actionId === "invoice.finalize" ||
+        nextDraft.actionId === "invoice.mark-paid" ||
         nextDraft.actionId === "document.send"
       ) {
         void loadInvoices();
@@ -74776,6 +74922,25 @@ await addProjectLogbookEntry(
                             nextMessage
                           )
                         }
+                      />
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.actionDraft?.actionId === "invoice.mark-paid" ? (
+                      <JarvisInvoicePaymentCard
+                        draft={message.actionDraft}
+                        actorId={activeUserId}
+                        disabled={isManagementAiSending}
+                        onChange={(nextDraft, nextMessage) =>
+                          updateJarvisActionDraftMessage(index, nextDraft, nextMessage)
+                        }
+                        onOpenInvoice={(invoiceDraft) => {
+                          const project = heroProjects.find((candidate) => candidate.id === invoiceDraft.projectId);
+                          if (!project) {
+                            setManagementAiError("Das Projekt ist mit der aktuellen Rolle nicht sichtbar.");
+                            return;
+                          }
+                          openProjectFile(project, { tab: "documents", documentType: "Rechnungen" });
+                        }}
                       />
                     ) : null}
                     {message.role === "assistant" &&

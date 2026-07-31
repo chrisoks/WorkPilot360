@@ -1,5 +1,22 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Bezahlt-Markierung 2026-07-31:
+  Der achte Action-Center-Vertikalschnitt markiert ausschließlich offene,
+  fakturierte Rechnungen vollständig als bezahlt. JARVIS zeigt Rechnung,
+  Projekt, Kunde, Bruttobetrag, Fälligkeit, Zahlungsdatum, Warnungen und
+  Blockaden; ein geändertes Datum muss serverseitig erneut geprüft werden.
+  Erst die exakte, groß-/kleinschreibungssensitive Phrase
+  `BEZAHLT RE-... AM TT.MM.JJJJ` darf buchen. Normale Rechnungsmaske und
+  JARVIS verwenden gemeinsam
+  `src/lib/invoices/invoice-payment-service.ts`. Der Service bindet den
+  aktuellen Rechnungsstand in einen Fingerprint, verwendet einen
+  organisationsgebundenen PostgreSQL-Advisory-Lock und schreibt Status,
+  Zahlungsdatum und genau ein Historienereignis in derselben serialisierbaren
+  Transaktion. Entwurf, Sitzung, Session- und Effektivrolle, Impersonation,
+  Revision, TTL, HMAC, Mandant, Doppelklick und Replay bleiben fail-closed.
+  Teilzahlungen sind im aktuellen Datenmodell ausdrücklich nicht enthalten;
+  Mahnung, Versand und Storno werden nicht ausgelöst.
+
 - JARVIS kontrollierter Rechnungsversand 2026-07-31:
   Der siebte Action-Center-Vertikalschnitt versendet ausschließlich bereits
   fakturierte Rechnungen. JARVIS zeigt Absender, Empfänger, CC/BCC, Betreff,

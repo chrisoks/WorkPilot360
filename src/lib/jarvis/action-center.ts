@@ -15,6 +15,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "offer.prepare",
   "invoice.prepare",
   "invoice.finalize",
+  "invoice.mark-paid",
   "document.send",
 ] as const;
 
@@ -192,6 +193,13 @@ const invoiceFinalizePreviewPayloadSchema = z
   })
   .strict();
 
+const invoiceMarkPaidPreviewPayloadSchema = z
+  .object({
+    invoiceId: boundedId,
+    paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  })
+  .strict();
+
 const documentSendPreviewPayloadSchema = z
   .object({
     invoiceId: boundedId,
@@ -207,6 +215,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "offer.prepare": offerPreviewPayloadSchema,
   "invoice.prepare": invoicePreviewPayloadSchema,
   "invoice.finalize": invoiceFinalizePreviewPayloadSchema,
+  "invoice.mark-paid": invoiceMarkPaidPreviewPayloadSchema,
   "document.send": documentSendPreviewPayloadSchema,
 } satisfies Record<JarvisPreviewActionId, z.ZodType>;
 
@@ -221,6 +230,7 @@ export type JarvisActionPreviewPayloadMap = {
   "offer.prepare": z.infer<typeof offerPreviewPayloadSchema>;
   "invoice.prepare": z.infer<typeof invoicePreviewPayloadSchema>;
   "invoice.finalize": z.infer<typeof invoiceFinalizePreviewPayloadSchema>;
+  "invoice.mark-paid": z.infer<typeof invoiceMarkPaidPreviewPayloadSchema>;
   "document.send": z.infer<typeof documentSendPreviewPayloadSchema>;
 };
 
@@ -692,6 +702,53 @@ export type JarvisInvoiceFinalizationDraftView = {
   projectId: string;
   fields: Array<{ label: string; value: string }>;
   preflight: Array<{
+    key: string;
+    label: string;
+    status: "ok" | "warning" | "blocked";
+    detail: string;
+  }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "blocked"
+      | "not_permitted"
+      | "expired"
+      | "cancelled"
+      | "executing"
+      | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: {
+    entityType: "invoice";
+    entityId: string;
+    label: string;
+  };
+};
+
+export type JarvisInvoicePaymentDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "invoice.mark-paid";
+  title: "Zahlungseingang kontrolliert bestätigen";
+  badge:
+    | "Prüfung"
+    | "Bereit"
+    | "Wird gebucht"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Bezahlt";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  invoiceId: string;
+  projectId: string;
+  fields: Array<{ label: string; value: string }>;
+  editor: { paymentDate: string };
+  checks: Array<{
     key: string;
     label: string;
     status: "ok" | "warning" | "blocked";

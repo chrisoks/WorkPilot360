@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisInvoiceDraft: vi.fn(),
   cancelJarvisInvoiceFinalizationDraft: vi.fn(),
   confirmJarvisInvoiceFinalizationDraft: vi.fn(),
+  completeJarvisInvoicePaymentDraft: vi.fn(),
+  cancelJarvisInvoicePaymentDraft: vi.fn(),
+  confirmJarvisInvoicePaymentDraft: vi.fn(),
   completeJarvisInvoiceDeliveryDraft: vi.fn(),
   cancelJarvisInvoiceDeliveryDraft: vi.fn(),
   confirmJarvisInvoiceDeliveryDraft: vi.fn(),
@@ -63,6 +66,12 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.cancelJarvisInvoiceFinalizationDraft,
   confirmJarvisInvoiceFinalizationDraft:
     mocks.confirmJarvisInvoiceFinalizationDraft,
+  completeJarvisInvoicePaymentDraft:
+    mocks.completeJarvisInvoicePaymentDraft,
+  cancelJarvisInvoicePaymentDraft:
+    mocks.cancelJarvisInvoicePaymentDraft,
+  confirmJarvisInvoicePaymentDraft:
+    mocks.confirmJarvisInvoicePaymentDraft,
   completeJarvisInvoiceDeliveryDraft:
     mocks.completeJarvisInvoiceDeliveryDraft,
   cancelJarvisInvoiceDeliveryDraft:
@@ -985,6 +994,42 @@ describe("JARVIS action-draft API", () => {
       mocks.confirmJarvisInvoiceFinalizationDraft
     ).not.toHaveBeenCalled();
     expect(mocks.confirmJarvisInvoiceDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the bound critical phrase to the paid-status action", async () => {
+    mocks.confirmJarvisInvoicePaymentDraft.mockResolvedValue({
+      state: "executed",
+      actionId: "invoice.mark-paid",
+    });
+    const response = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "invoice.mark-paid",
+          command: "confirm",
+          revision: 4,
+          confirmationText: "BEZAHLT RE-10119 AM 31.07.2026",
+          paymentDateAfterConfirmation: "2026-08-01",
+          sendReminder: true,
+        },
+        {
+          "x-jarvis-action": "jarvis-action-draft-v2",
+          origin: "https://workpilot.example",
+        }
+      ) as never,
+      context
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisInvoicePaymentDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.anything(),
+      4,
+      "BEZAHLT RE-10119 AM 31.07.2026"
+    );
+    expect(mocks.confirmJarvisInvoiceDeliveryDraft).not.toHaveBeenCalled();
+    expect(mocks.confirmJarvisInvoiceFinalizationDraft).not.toHaveBeenCalled();
   });
 
   it("rejects unknown commands without touching draft state", async () => {

@@ -942,7 +942,8 @@ bewusste Aktion der betroffenen Person.
 - Rechnung nach eindeutiger Vorschau fakturieren,
 - offene Posten und Mahnfähigkeit prüfen,
 - Mahnung vorbereiten und erzeugen,
-- Rechnung als bezahlt markieren,
+- Rechnung nach vollständiger Zahlungsprüfung und exakter Phrase als bezahlt
+  markieren (Vertikalschnitt in Releaseabnahme),
 - Storno vorbereiten und transaktional ausführen,
 - Rechnungsversand vorbereiten und bestätigen,
 - Rechnungen berechtigt löschen oder wiederherstellen,
@@ -2016,6 +2017,8 @@ telemetriert.
 - Angebote/Nachträge als Entwurf (produktiv abgenommen),
 - Rechnungsentwurf und Fakturavorprüfung (produktiver Vertikalschnitt),
 - kontrollierte Rechnungsfinalisierung mit exakter kritischer Phrase,
+- kontrollierte Bezahlt-Markierung mit Zahlungsdatum, vollständigem
+  Bruttobetrag und exakter kritischer Phrase,
 - Dokument-/Mailvorbereitung,
 - Vertriebsaktionslisten in Aufgaben überführen,
 - UI-Refresh, Audit und Fehlerbehandlung.
@@ -2028,7 +2031,9 @@ Chat vollständig vorbereiten und kontrolliert speichern.
 - direkter Mailversand nach Vorschau,
 - Fakturieren (kontrollierte Einzelrechnung als erster produktiver
   Vertikalschnitt umgesetzt; PDF-/E-Rechnung und Versand bleiben getrennt),
-- Mahnung und Bezahlt-Markierung,
+- Bezahlt-Markierung (vollständiger Vertikalschnitt in Releaseabnahme;
+  Teilzahlungen bleiben ein eigener späterer Datenmodellschritt),
+- Mahnung,
 - Stornieren,
 - Archivieren/Löschen/Wiederherstellen,
 - Rollen- und Rechteänderungen,
@@ -2279,6 +2284,36 @@ oder Projektänderung. Kombinierte kritische Aktionsketten bleiben fail-closed.
 Der permanente Korpus behält exakt 110 Fälle und enthält nun zusätzlich den
 kontrollierten Rechnungsversand mit sichtbarer Empfänger- und
 Dokumentvorschau.
+
+## 20. Kontrollierte Bezahlt-Markierung
+
+Die Bezahlt-Markierung ist eine eigenständige kritische Finanzaktion und wird
+nicht mit Fakturierung, Versand, Mahnung oder Storno verkettet. Ein eindeutiger
+Wunsch erzeugt ausschließlich für eine offene Rechnung im Status
+`Fakturiert` einen 15 Minuten gültigen serverseitigen Entwurf. Rechnung,
+Projekt, Kunde, Fälligkeit, vollständiger Bruttobetrag und Zahlungsdatum sind
+sichtbar; ein geändertes Datum benötigt eine neue serverseitige Prüfung. Ein
+Datum in der Zukunft blockiert, ein Datum vor dem Leistungsdatum bleibt als
+bewusster Warnhinweis sichtbar.
+
+Erst die exakt angezeigte, groß-/kleinschreibungssensitive Phrase
+`BEZAHLT RE-... AM TT.MM.JJJJ` darf die Aktion ausführen. Organisation,
+Sitzung, Session- und Effektivrolle, Impersonation, Revision, TTL, HMAC,
+Payload-/Kontexthash und der aktuelle Rechnungsfingerprint werden vor dem
+Schreiben neu geprüft. Ein organisationsgebundener PostgreSQL-Advisory-Lock,
+der bedingte Statuswechsel und die serialisierbare Transaktion schützen
+Doppelklick und Parallelzugriffe. Status `Bezahlt`, Zahlungsdatum und genau ein
+Historienereignis entstehen gemeinsam oder gar nicht; Replay liefert nur das
+bereits gespeicherte Ergebnis zurück.
+
+Die normale Rechnungsmaske und JARVIS delegieren beide an
+`src/lib/invoices/invoice-payment-service.ts`. Das heutige Rechnungsmodell
+kennt nur vollständige Zahlungen. Deshalb nennt die Vorschau ausdrücklich den
+gesamten Bruttobetrag und nimmt keine Teilzahlung entgegen. Mahnung, Versand
+und Storno werden durch diese Aktion nicht ausgelöst. Teilzahlungen benötigen
+später ein eigenes fachliches Datenmodell mit offenen Restbeträgen,
+Zahlungsereignissen und eigener Abnahme.
+
 # Aktueller Ausbau: Projektbestand und fachlicher Prüfstatus
 
 - Der organisationsgebundene Projektbestandsadapter beantwortet Zähl-,

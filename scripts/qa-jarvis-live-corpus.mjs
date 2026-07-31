@@ -46,6 +46,24 @@ function createSessionToken(sessionId, version) {
   return `${value}.${signature}`;
 }
 
+function getBerlinDateKey(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Europe/Berlin",
+  }).formatToParts(value);
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+  return `${year}-${month}-${day}`;
+}
+
+function formatGermanDate(dateKey) {
+  const [year, month, day] = dateKey.split("-");
+  return `${day}.${month}.${year}`;
+}
+
 async function main() {
   const corpus = await loadCorpus();
   if (!Array.isArray(corpus) || corpus.length !== 110) {
@@ -62,6 +80,22 @@ async function main() {
   if (!actor) throw new Error("Kein aktiver Geschäftsführungs-Testakteur gefunden.");
 
   const now = new Date();
+  const paymentInvoice = await prisma.invoice.findFirst({
+    where: {
+      organizationId: actor.organizationId,
+      status: "Fakturiert",
+      isPaid: false,
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      invoiceNumber: true,
+      status: true,
+      isPaid: true,
+      paidAt: true,
+      updatedAt: true,
+    },
+  });
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -79,10 +113,21 @@ async function main() {
   const createdDraftIds = new Set();
   const failures = [];
   let actionDraftCount = 0;
+  let invoicePaymentDraftPrepared = false;
 
   try {
     for (const item of corpus) {
       try {
+        const isPaymentCase = item.question.includes(
+          "kontrolliert als bezahlt"
+        );
+        const paymentDate = getBerlinDateKey(now);
+        const question =
+          isPaymentCase && paymentInvoice
+            ? `Markiere Rechnung ${paymentInvoice.invoiceNumber} am ${formatGermanDate(
+                paymentDate
+              )} kontrolliert als bezahlt.`
+            : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
           headers: {
@@ -91,7 +136,7 @@ async function main() {
           },
           body: JSON.stringify({
             actorId: actor.id,
-            message: item.question,
+            message: question,
             context: {
               activeTab: "dashboard",
               activeMainView: "dashboard",
@@ -124,6 +169,18 @@ async function main() {
             });
           }
         }
+        if (isPaymentCase && paymentInvoice) {
+          if (payload.actionDraft?.actionId !== "invoice.mark-paid") {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error:
+                "Die Bezahlt-Frage hat keine kontrollierte invoice.mark-paid-Vorschau erzeugt.",
+            });
+          } else {
+            invoicePaymentDraftPrepared = true;
+          }
+        }
       } catch (error) {
         failures.push({
           id: item.id,
@@ -144,6 +201,44 @@ async function main() {
         status: 0,
         error: `${dispatchCount} unerwartete Versanddatensätze seit Testbeginn.`,
       });
+    }
+    if (paymentInvoice) {
+      const [currentPaymentInvoice, paymentHistoryCount] = await Promise.all([
+        prisma.invoice.findUnique({
+          where: { id: paymentInvoice.id },
+          select: {
+            status: true,
+            isPaid: true,
+            paidAt: true,
+            updatedAt: true,
+          },
+        }),
+        prisma.invoiceHistory.count({
+          where: {
+            organizationId: actor.organizationId,
+            invoiceId: paymentInvoice.id,
+            eventType: "paid",
+            createdAt: { gte: now },
+          },
+        }),
+      ]);
+      if (
+        !currentPaymentInvoice ||
+        currentPaymentInvoice.status !== paymentInvoice.status ||
+        currentPaymentInvoice.isPaid !== paymentInvoice.isPaid ||
+        currentPaymentInvoice.paidAt?.toISOString() !==
+          paymentInvoice.paidAt?.toISOString() ||
+        currentPaymentInvoice.updatedAt.toISOString() !==
+          paymentInvoice.updatedAt.toISOString() ||
+        paymentHistoryCount !== 0
+      ) {
+        failures.push({
+          id: "side-effect-invoice-payment",
+          status: 0,
+          error:
+            "Die 110-Fragen-Prüfung hat unerwartet Rechnung oder Zahlungshistorie verändert.",
+        });
+      }
     }
   } finally {
     if (createdDraftIds.size) {
@@ -168,6 +263,7 @@ async function main() {
     passed: corpus.length - failures.length,
     total: corpus.length,
     actionDraftsPrepared: actionDraftCount,
+    invoicePaymentDraftPrepared,
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

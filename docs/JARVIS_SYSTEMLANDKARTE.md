@@ -178,6 +178,15 @@ Aktionen werden getrennt über das Action Center abgesichert:
   über denselben advisory-lock-geschützten Dispatch-Service. Ein bestätigter
   Versand wird nur als Replay zurückgegeben; laufende, fehlgeschlagene oder
   technisch unklare Versuche werden niemals automatisch wiederholt.
+- Kontrollierte Bezahlt-Markierung: Nur offene Rechnungen im Status
+  `Fakturiert` dürfen vorbereitet werden. JARVIS zeigt den vollständigen
+  Bruttobetrag und ein editierbares Zahlungsdatum; jede Änderung wird erneut
+  serverseitig geprüft. Die exakte Phrase `BEZAHLT RE-... AM TT.MM.JJJJ`
+  bestätigt die vollständige Zahlung genau einmal. Normale Rechnungsmaske und
+  JARVIS verwenden denselben transaktionalen Payment-Service mit
+  organisationsgebundenem Advisory Lock, Rechnungsfingerprint und genau einem
+  Historienereignis. Teilzahlungen, Mahnung, Versand und Storno sind nicht
+  Bestandteil dieser Aktion.
 
 Ein JARVIS-Entwurf darf weder Organisation, Projektart, Projektstand,
 Mitarbeiterzugehörigkeit noch Kontingent aus seinem eigenen Payload bestimmen.

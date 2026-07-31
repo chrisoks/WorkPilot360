@@ -96,6 +96,7 @@ import {
   createPersistedJarvisOfferDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
+  createPersistedJarvisInvoicePaymentDraft,
   createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
@@ -118,10 +119,12 @@ import {
 import {
   extractInvoiceCompany,
   extractInvoiceNumber,
+  extractInvoicePaymentDate,
   extractInvoiceServiceDate,
   looksLikeInvoiceDraftRequest,
   looksLikeInvoiceDeliveryRequest,
   looksLikeInvoiceFinalizationRequest,
+  looksLikeInvoicePaymentRequest,
 } from "@/lib/jarvis/invoice-intake";
 
 export const dynamic = "force-dynamic";
@@ -321,6 +324,13 @@ async function buildJarvisInvoiceFinalizationDraft(input: {
         select: { id: true, invoiceNumber: true, status: true },
       })
     : null;
+  if (invoiceNumber && !invoice) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-payment.not-found",
+      message: `${invoiceNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts verändert.`,
+    };
+  }
   if (!invoice) {
     const drafts = await prisma.invoice.findMany({
       where: {
@@ -393,6 +403,119 @@ async function buildJarvisInvoiceFinalizationDraft(input: {
           ? error.message
           : "Die Fakturavorschau konnte nicht sicher vorbereitet werden."
       } Es wurde nichts fakturiert.`,
+    };
+  }
+}
+
+async function buildJarvisInvoicePaymentDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-payment.session-required",
+      message:
+        "Für eine kritische Bezahlt-Markierung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const invoiceNumber = extractInvoiceNumber(input.question);
+  const invoice = invoiceNumber
+    ? await prisma.invoice.findFirst({
+        where: {
+          invoiceNumber: { equals: invoiceNumber, mode: "insensitive" },
+          organizationId: input.organizationId,
+        },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          customerName: true,
+          status: true,
+          isPaid: true,
+        },
+      })
+    : null;
+  if (!invoice) {
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        organizationId: input.organizationId,
+        status: "Fakturiert",
+        isPaid: false,
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: { invoiceNumber: true, customerName: true },
+    });
+    return {
+      type: "clarification" as const,
+      topicId: "action.invoice-payment.choose",
+      message:
+        invoices.length > 0
+          ? "Welche offene fakturierte Rechnung soll vollständig als bezahlt markiert werden? Es wurde noch nichts verändert."
+          : "Es gibt aktuell keine offene fakturierte Rechnung, die JARVIS als bezahlt markieren könnte.",
+      choices: invoices.map((candidate) =>
+        createJarvisDialogChoice(
+          `invoice-payment-${candidate.invoiceNumber}`,
+          `${candidate.invoiceNumber} · ${candidate.customerName || "ohne Kunde"}`,
+          `Markiere Rechnung ${candidate.invoiceNumber} als bezahlt`
+        )
+      ),
+    };
+  }
+  if (invoice.status !== "Fakturiert" || invoice.isPaid) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-payment.invalid-state",
+      message: invoice.isPaid || invoice.status === "Bezahlt"
+        ? `${invoice.invoiceNumber} ist bereits als bezahlt gekennzeichnet. Es wurde nichts verändert.`
+        : `${invoice.invoiceNumber} ist keine offene fakturierte Rechnung und darf deshalb nicht als bezahlt markiert werden. Es wurde nichts verändert.`,
+    };
+  }
+  const paymentDate = extractInvoicePaymentDate(input.question);
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "invoice.mark-paid",
+    payload: {
+      invoiceId: invoice.id,
+      ...(paymentDate ? { paymentDate } : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-payment.refused",
+      message: `${preview.message} Es wurde kein Zahlungseingang gebucht.`,
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisInvoicePaymentDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.invoice-payment",
+      message:
+        "Ich habe eine kontrollierte Zahlungsvorschau vorbereitet. Prüfe Rechnung, vollständigen Bruttobetrag und Zahlungsdatum. Erst die exakt angezeigte kritische Bestätigungsphrase markiert die Rechnung genau einmal vollständig als bezahlt; Teilzahlung, Mahnung, Storno und Versand werden nicht ausgelöst.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-payment.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Die Zahlungsvorschau konnte nicht sicher vorbereitet werden."
+      } Es wurde kein Zahlungseingang gebucht.`,
     };
   }
 }
@@ -1722,6 +1845,18 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  if (looksLikeInvoicePaymentRequest(message)) {
+    return respond(
+      await buildJarvisInvoicePaymentDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "sales"
+    );
   }
   if (looksLikeInvoiceDeliveryRequest(message)) {
     return respond(

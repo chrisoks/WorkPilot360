@@ -428,6 +428,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: canManageInvoices,
   },
   {
+    id: "invoice.mark-paid",
+    title: "Zahlungseingang vollständig bestätigen",
+    category: "invoice",
+    risk: "critical",
+    confirmation: "critical",
+    dataClasses: ["financial"],
+    implementation: "available",
+    canUse: canManageInvoices,
+  },
+  {
     id: "invoice.cancel",
     title: "Rechnung stornieren",
     category: "invoice",

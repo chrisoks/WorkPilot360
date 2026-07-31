@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   extractInvoiceCompany,
   extractInvoiceNumber,
+  extractInvoicePaymentDate,
   extractInvoiceServiceDate,
   looksLikeInvoiceDraftRequest,
   looksLikeInvoiceDeliveryRequest,
   looksLikeInvoiceFinalizationRequest,
+  looksLikeInvoicePaymentRequest,
 } from "@/lib/jarvis/invoice-intake";
 
 describe("JARVIS invoice intake", () => {
@@ -44,6 +46,22 @@ describe("JARVIS invoice intake", () => {
     expect(extractInvoiceNumber("Bitte RE-10124 fakturieren")).toBe(
       "RE-10124"
     );
+  });
+
+  it("recognizes only an explicit isolated payment mutation", () => {
+    expect(
+      looksLikeInvoicePaymentRequest(
+        "Markiere Rechnung RE-10119 am 31.07.2026 als bezahlt"
+      )
+    ).toBe(true);
+    expect(looksLikeInvoicePaymentRequest("Markiere RE-10119 als bezahlt")).toBe(true);
+    expect(looksLikeInvoicePaymentRequest("Ist Rechnung RE-10119 bezahlt?")).toBe(false);
+    expect(
+      looksLikeInvoicePaymentRequest(
+        "Markiere RE-10119 als bezahlt und sende eine Mahnung"
+      )
+    ).toBe(false);
+    expect(extractInvoicePaymentDate("Bezahlt am 31.07.2026")).toBe("2026-07-31");
   });
 
   it("extracts service date and company", () => {
