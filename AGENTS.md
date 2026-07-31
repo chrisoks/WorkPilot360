@@ -20,6 +20,15 @@
   versendet das Angebot nicht. Rollenpaar, Impersonation, Sitzung,
   Organisation, Revision, TTL, HMAC, Fachkontext, Audit und Exactly-once
   bleiben verbindlich.
+  Produktiv abgenommen auf Code-Commit `5864a1c` mit Serverbackup
+  `/var/backups/workpilot360/before-jarvis-offer-drafts-20260731T081326Z`.
+  Der Produktionsbuild mit 90 Seiten, Schemaabgleich und HTTP-Smokes ist
+  grün. Der echte Oberflächentest erzeugte trotz Doppelbestätigung genau
+  einen Entwurf samt einer Historie und einem Ausführungsereignis, prüfte
+  Preisabweichung, Nachtragsabbruch und Mitarbeiter-Rollensperre und
+  bereinigte anschließend alle eindeutig zugeordneten QA-Daten. WorkPilot
+  läuft seit der Abnahme unter PID `422034`; KlinikNavigator blieb
+  unverändert unter PID `398228`.
 
 - JARVIS Kalkulationsrechner-Dialog 2026-07-31:
   Das verbindliche Inventar in

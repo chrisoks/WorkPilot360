@@ -1904,7 +1904,8 @@ und UI-Refresh sind Bestandteil des Vertrags. Datei-/Bildanhänge und autonome
 Mailaktionen sind ausdrücklich nicht Teil dieses Schnitts.
 
 Der vierte Action-Center-Vertikalschnitt für Angebote und Nachträge ist am
-31.07.2026 technisch umgesetzt und befindet sich in der Releaseabnahme.
+31.07.2026 technisch umgesetzt und auf Code-Commit `5864a1c` produktiv
+abgenommen.
 Natürliche Erstellungswünsche öffnen einen persistenten, bearbeitbaren
 Entwurf; reine Fragen, Suchen, Statusabfragen sowie Versand-, Lösch- und
 Archivbefehle werden nicht als Entwurfsanlage umgedeutet. Projekt,
@@ -1941,7 +1942,7 @@ telemetriert.
   kontrolliert als unveränderliche Version speichern,
 - Logbuch- und Kommentaraktionen (produktiver textbasierter Vertikalschnitt;
   Anhänge bleiben ein eigener Sicherheitsblock),
-- Angebote/Nachträge als Entwurf (technisch umgesetzt; Releaseabnahme läuft),
+- Angebote/Nachträge als Entwurf (produktiv abgenommen),
 - Rechnungsentwurf und Fakturavorprüfung,
 - Dokument-/Mailvorbereitung,
 - Vertriebsaktionslisten in Aufgaben überführen,
