@@ -33,6 +33,19 @@
   ST-Rechnung samt 623-KB-PDF, zwei Historienereignissen und einem Logbuchbeleg;
   Replay lieferte dieselbe Entität. Sämtliche QA-Rechnungen, Historien,
   Logbücher, Entwürfe und Sitzungen wurden vollständig bereinigt.
+  Produktiv abgenommen auf Code-Commit `36898b7` mit Serverbackup
+  `/var/backups/workpilot360/before-jarvis-cancellation-20260731T164000Z`.
+  Der Produktionsserver bestand erneut Prisma-Synchronität, 90-Seiten-Build,
+  HTTP-Smokes und den authentifizierten Korpus mit 110/110 Fragen, elf
+  vorbereiteten Action-Center-Entwürfen, null Ausführungen und null
+  Rückständen. Der isolierte echte Produktionsfall blockierte die falsche
+  Phrase mit HTTP 400, lehnte die Teilgutschrift ohne ausführbaren Entwurf ab
+  und erzeugte nach exakter Bestätigung genau `ST-10101` mit -100 EUR netto,
+  -119 EUR brutto, PDF, beiden Historienereignissen und einem Logbucheintrag.
+  Replay blieb exactly-once; anschließend wurden Rechnung, Stornorechnung,
+  Historien, Logbuch, Entwurf und Sitzung vollständig entfernt. WorkPilot
+  läuft seit der Abnahme unter PID `479268`; KlinikNavigator blieb
+  unverändert unter PID `398228`.
 
 - JARVIS kontrollierte Mahnung 2026-07-31:
   Der neunte Action-Center-Vertikalschnitt erstellt für eine überfällige,

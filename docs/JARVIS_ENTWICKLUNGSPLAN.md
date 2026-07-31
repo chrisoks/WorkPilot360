@@ -2374,3 +2374,11 @@ Zeit-/Lagerfreigabe, Historie und Logbuch in einer serialisierbaren
 Transaktion. Bezahlte Rechnungen lösen keine Rückzahlung aus. Teilgutschrift,
 Rechnungskorrektur und Teilstorno bleiben bis zu einem eigenen fachlich und
 buchhalterisch freigegebenen Datenmodell gesperrt.
+
+Release-Abnahme: Code-Commit `36898b7`, Backup
+`/var/backups/workpilot360/before-jarvis-cancellation-20260731T164000Z`,
+lokal und produktiv jeweils 110/110 permanente Testfragen. Die produktive
+Ausführungs-QA bestätigte zusätzlich falsche-Phrase-Blockade, fail-closed
+Teilgutschrift, genau eine negative ST-Rechnung samt PDF, zwei
+Historienereignisse, einen Logbucheintrag und idempotentes Replay. Alle
+isolierten QA-Daten wurden anschließend vollständig bereinigt.
