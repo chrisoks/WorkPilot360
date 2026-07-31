@@ -97,6 +97,7 @@ import {
   createPersistedJarvisOfferFinalizationDraft,
   createPersistedJarvisOfferDeliveryDraft,
   createPersistedJarvisOfferDecisionDraft,
+  createPersistedJarvisOfferLifecycleDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -126,6 +127,8 @@ import {
   looksLikeOfferDeliveryRequest,
   looksLikeOfferDecisionRequest,
   extractOfferDecision,
+  looksLikeOfferLifecycleRequest,
+  extractOfferLifecycle,
 } from "@/lib/jarvis/offer-intake";
 import {
   extractInvoiceCompany,
@@ -621,6 +624,86 @@ async function buildJarvisOfferDecisionDraft(input: {
       type: "refusal" as const,
       topicId: "action.offer-decision.unavailable",
       message: `${error instanceof JarvisActionDraftError ? error.message : "Die Angebotsentscheidung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
+    };
+  }
+}
+
+async function buildJarvisOfferLifecycleDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-lifecycle.session-required",
+      message: "Für Löschen oder Wiederherstellen ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const offerNumber = extractOfferNumber(input.question);
+  const details = extractOfferLifecycle(input.question);
+  if (!details.action) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.offer-lifecycle.action-required",
+      message: "Soll das Angebot gelöscht oder wiederhergestellt werden? Es wurde noch nichts verändert.",
+    };
+  }
+  if (!offerNumber) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.offer-lifecycle.offer-required",
+      message: "Welche Angebotsnummer soll geändert werden? Nenne sie bitte im Format ANG-12345. Es wurde noch nichts verändert.",
+    };
+  }
+  if (!details.reason || details.reason.length < 3) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.offer-lifecycle.reason-required",
+      message: `${details.action === "delete" ? "Für die Löschung" : "Für die Wiederherstellung"} brauche ich einen nachvollziehbaren Grund, zum Beispiel: „${details.action === "delete" ? "Lösche" : "Stelle"} Angebot ${offerNumber}${details.action === "restore" ? " wieder her" : ""}. Grund: Irrtümlich doppelt angelegt.“ Es wurde nichts verändert.`,
+    };
+  }
+  const offer = await prisma.offer.findFirst({
+    where: { offerNumber: { equals: offerNumber, mode: "insensitive" }, organizationId: input.organizationId },
+    select: { id: true },
+  });
+  if (!offer) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-lifecycle.not-found",
+      message: `${offerNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts verändert.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "offer.delete",
+    payload: { offerId: offer.id, action: details.action, reason: details.reason },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return { type: "refusal" as const, topicId: "action.offer-lifecycle.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisOfferLifecycleDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.offer-lifecycle",
+      message: "Ich habe die Angebotsänderung serverseitig geprüft. Kontrolliere Angebot, Projekt, Kunde, Status, Summen, Grund, Verknüpfungen und die abgegrenzten Folgen. Erst die exakte Bestätigungsphrase löscht oder stellt das Angebot genau einmal wieder her.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-lifecycle.unavailable",
+      message: `${error instanceof JarvisActionDraftError ? error.message : "Die Angebotsänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
     };
   }
 }
@@ -2593,6 +2676,17 @@ export async function POST(req: Request) {
   if (looksLikeOfferDecisionRequest(message)) {
     return respond(
       await buildJarvisOfferDecisionDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "sales"
+    );
+  }
+  if (looksLikeOfferLifecycleRequest(message)) {
+    return respond(
+      await buildJarvisOfferLifecycleDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,

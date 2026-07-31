@@ -16,6 +16,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "offer.finalize",
   "offer.send",
   "offer.manage",
+  "offer.delete",
   "invoice.prepare",
   "invoice.finalize",
   "invoice.mark-paid",
@@ -220,6 +221,14 @@ const offerDecisionPreviewPayloadSchema = z
   })
   .strict();
 
+const offerLifecyclePreviewPayloadSchema = z
+  .object({
+    offerId: boundedId,
+    action: z.enum(["delete", "restore"]),
+    reason: boundedText(500),
+  })
+  .strict();
+
 const invoiceMarkPaidPreviewPayloadSchema = z
   .object({
     invoiceId: boundedId,
@@ -276,6 +285,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "offer.finalize": offerFinalizePreviewPayloadSchema,
   "offer.send": offerSendPreviewPayloadSchema,
   "offer.manage": offerDecisionPreviewPayloadSchema,
+  "offer.delete": offerLifecyclePreviewPayloadSchema,
   "invoice.prepare": invoicePreviewPayloadSchema,
   "invoice.finalize": invoiceFinalizePreviewPayloadSchema,
   "invoice.mark-paid": invoiceMarkPaidPreviewPayloadSchema,
@@ -297,6 +307,7 @@ export type JarvisActionPreviewPayloadMap = {
   "offer.finalize": z.infer<typeof offerFinalizePreviewPayloadSchema>;
   "offer.send": z.infer<typeof offerSendPreviewPayloadSchema>;
   "offer.manage": z.infer<typeof offerDecisionPreviewPayloadSchema>;
+  "offer.delete": z.infer<typeof offerLifecyclePreviewPayloadSchema>;
   "invoice.prepare": z.infer<typeof invoicePreviewPayloadSchema>;
   "invoice.finalize": z.infer<typeof invoiceFinalizePreviewPayloadSchema>;
   "invoice.mark-paid": z.infer<typeof invoiceMarkPaidPreviewPayloadSchema>;
@@ -921,6 +932,36 @@ export type JarvisOfferDecisionDraftView = {
   offerId: string;
   projectId: string;
   decision: "won" | "lost";
+  fields: Array<{ label: string; value: string }>;
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "ok" | "warning" | "blocked";
+    detail: string;
+  }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason: "ready" | "blocked" | "not_permitted" | "expired" | "cancelled" | "executing" | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: { entityType: "offer"; entityId: string; label: string };
+};
+
+export type JarvisOfferLifecycleDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "offer.delete";
+  title: "Angebot kontrolliert löschen oder wiederherstellen";
+  badge: "Prüfung" | "Bereit" | "Wird geändert" | "Abgebrochen" | "Abgelaufen" | "Ausgeführt";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  offerId: string;
+  projectId: string;
+  lifecycleAction: "delete" | "restore";
   fields: Array<{ label: string; value: string }>;
   checks: Array<{
     key: string;

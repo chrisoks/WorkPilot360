@@ -202,6 +202,25 @@ async function main() {
       qaDeliverableOfferId = deliverableOffer.id;
     }
   }
+  const lifecycleProject = await prisma.workPilotProject.findFirst({
+    where: { organizationId: actor.organizationId },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, projectNumber: true, title: true, customer: true },
+  });
+  const lifecycleOffer = lifecycleProject
+    ? await prisma.offer.create({
+        data: {
+          id: randomUUID(), organizationId: actor.organizationId,
+          projectId: lifecycleProject.id, projectNumber: lifecycleProject.projectNumber,
+          projectTitle: lifecycleProject.title, company: "OK solutions",
+          offerNumber: `ANG-${Date.now().toString().slice(-7)}2`, status: "Erstellt",
+          customerName: lifecycleProject.customer || "QA Kunde", plannedExecutionMonth: "2026-11",
+          netTotal: 100, vatRate: 19, grossTotal: 119,
+          pdfData: Buffer.from("QA lifecycle offer").toString("base64"),
+        },
+        select: { id: true, offerNumber: true, status: true, updatedAt: true },
+      })
+    : null;
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -225,6 +244,7 @@ async function main() {
   let invoiceCreditDraftPrepared = false;
   let offerFinalizationDraftPrepared = false;
   let offerDeliveryDraftPrepared = false;
+  let offerLifecycleDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -238,6 +258,7 @@ async function main() {
         const isCreditCase = item.question.includes("Teilgutschrift");
         const isOfferFinalizationCase = item.question.includes("Finalisiere Angebot");
         const isOfferDeliveryCase = item.question.includes("Versende Angebot");
+        const isOfferLifecycleCase = item.question.includes("Lösche Angebot");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -256,6 +277,8 @@ async function main() {
               ? `Finalisiere Angebot ${finalizableOffer.offerNumber} kontrolliert.`
             : isOfferDeliveryCase && deliverableOffer
               ? `Versende Angebot ${deliverableOffer.offerNumber} kontrolliert.`
+            : isOfferLifecycleCase && lifecycleOffer
+              ? `Lösche Angebot ${lifecycleOffer.offerNumber} kontrolliert. Grund: Irrtümlich doppelt angelegt.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -395,6 +418,27 @@ async function main() {
             });
           } else {
             offerDeliveryDraftPrepared = true;
+          }
+        }
+        if (isOfferLifecycleCase && lifecycleOffer) {
+          if (payload.actionDraft?.actionId !== "offer.delete") {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Angebotslöschfrage hat keine kontrollierte offer.delete-Vorschau erzeugt.",
+            });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length
+          ) {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Angebotslöschfrage hat keine vollständig prüfbare, unblockierte Bestätigungsvorschau erzeugt.",
+            });
+          } else {
+            offerLifecycleDraftPrepared = true;
           }
         }
       } catch (error) {
@@ -625,6 +669,9 @@ async function main() {
         where: { id: qaDeliverableOfferId, organizationId: actor.organizationId },
       });
     }
+    if (lifecycleOffer) {
+      await prisma.offer.deleteMany({ where: { id: lifecycleOffer.id, organizationId: actor.organizationId } });
+    }
     await prisma.authSession.deleteMany({ where: { id: sessionId } });
   }
 
@@ -644,11 +691,15 @@ async function main() {
     invoiceCreditDraftPrepared,
     offerFinalizationDraftPrepared,
     offerDeliveryDraftPrepared,
+    offerLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
       ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
       : 0,
     qaDeliverableOfferRemaining: qaDeliverableOfferId
       ? await prisma.offer.count({ where: { id: qaDeliverableOfferId } })
+      : 0,
+    qaLifecycleOfferRemaining: lifecycleOffer
+      ? await prisma.offer.count({ where: { id: lifecycleOffer.id } })
       : 0,
     executedActions: 0,
     failures,

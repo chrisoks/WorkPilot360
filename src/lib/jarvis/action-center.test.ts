@@ -125,6 +125,25 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     });
   });
 
+  it("creates an explicitly registered critical offer-lifecycle preview", () => {
+    const result = createJarvisActionPreview({
+      previewId: "preview-offer-delete",
+      actionId: "offer.delete",
+      payload: { offerId: "offer-1", action: "delete", reason: "Doppelt angelegt" },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-07-31T12:00:00.000Z",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        actionId: "offer.delete",
+        state: "awaiting_confirmation",
+        execution: { enabled: false, reason: "preview_only" },
+      },
+    });
+  });
+
   it("creates an explicitly registered critical invoice-delivery preview", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-invoice-send",

@@ -56,6 +56,31 @@ export function looksLikeOfferDecisionRequest(question: string) {
   );
 }
 
+export function looksLikeOfferLifecycleRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /\bangebot\w*\b/.test(value) &&
+    /\b(?:losch|loesch|entfern|wiederherstell|zuruckhol|reaktivier)\w*\b|\bwieder\s+her\b/.test(value) &&
+    !/\b(?:aufgabe|rechnung|termin)\w*\b/.test(value) &&
+    !/\b(?:zeig|liste|such|welche|warum|status)\w*\b/.test(value)
+  );
+}
+
+export function extractOfferLifecycle(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  const action = /\b(?:wiederherstell|zuruckhol|reaktivier)\w*\b|\bwieder\s+her\b/.test(value)
+    ? ("restore" as const)
+    : /\b(?:losch|loesch|entfern)\w*\b/.test(value)
+      ? ("delete" as const)
+      : undefined;
+  const reason = question
+    .match(/\b(?:Grund|weil|wegen)\s*[:\-]?\s*(.+)$/i)?.[1]
+    ?.trim()
+    .replace(/[.!?]+$/, "")
+    .trim();
+  return { action, reason: reason || undefined };
+}
+
 export function extractOfferDecision(question: string) {
   const value = normalizeJarvisIntentText(question);
   const decision = /\b(?:verloren|verlieren)\b/.test(value)

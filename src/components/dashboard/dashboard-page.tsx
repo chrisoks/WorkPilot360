@@ -74,6 +74,7 @@ import type {
   JarvisOfferFinalizationDraftView,
   JarvisOfferDeliveryDraftView,
   JarvisOfferDecisionDraftView,
+  JarvisOfferLifecycleDraftView,
   JarvisInvoiceDraftView,
   JarvisInvoiceDeliveryDraftView,
   JarvisInvoiceFinalizationDraftView,
@@ -684,6 +685,7 @@ type ManagementAiChatMessage = {
     | JarvisOfferFinalizationDraftView
     | JarvisOfferDeliveryDraftView
     | JarvisOfferDecisionDraftView
+    | JarvisOfferLifecycleDraftView
     | JarvisInvoiceDraftView
     | JarvisInvoiceDeliveryDraftView
     | JarvisInvoiceFinalizationDraftView
@@ -714,6 +716,7 @@ const jarvisPreviewActionIds = new Set([
   "offer.finalize",
   "offer.send",
   "offer.manage",
+  "offer.delete",
   "invoice.prepare",
   "invoice.finalize",
   "invoice.mark-paid",
@@ -2252,6 +2255,7 @@ function parseJarvisActionDraft(
   | JarvisOfferFinalizationDraftView
   | JarvisOfferDeliveryDraftView
   | JarvisOfferDecisionDraftView
+  | JarvisOfferLifecycleDraftView
   | JarvisInvoiceDraftView
   | JarvisInvoiceDeliveryDraftView
   | JarvisInvoiceFinalizationDraftView
@@ -2271,6 +2275,7 @@ function parseJarvisActionDraft(
     parseJarvisOfferFinalizationDraft(value) ??
     parseJarvisOfferDeliveryDraft(value) ??
     parseJarvisOfferDecisionDraft(value) ??
+    parseJarvisOfferLifecycleDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
     parseJarvisInvoiceDeliveryDraft(value) ??
     parseJarvisInvoicePaymentDraft(value) ??
@@ -2587,6 +2592,29 @@ function parseJarvisOfferDecisionDraft(
   const cancellation = candidate.cancellation as Record<string, unknown>;
   if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
   return candidate as unknown as JarvisOfferDecisionDraftView;
+}
+
+function parseJarvisOfferLifecycleDraft(
+  value: unknown
+): JarvisOfferLifecycleDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 || candidate.actionId !== "offer.delete" ||
+    typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
+    typeof candidate.offerId !== "string" || typeof candidate.projectId !== "string" ||
+    (candidate.lifecycleAction !== "delete" && candidate.lifecycleAction !== "restore") ||
+    !Array.isArray(candidate.fields) || !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) || !Array.isArray(candidate.blockingIssues) ||
+    !candidate.confirmation || typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation || typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
+  return candidate as unknown as JarvisOfferLifecycleDraftView;
 }
 
 function parseJarvisInvoiceFinalizationDraft(
@@ -3496,11 +3524,11 @@ function JarvisOfferFinalizationCard({
   onChange,
   onOpenOffer,
 }: {
-  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView;
+  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView;
   actorId: string;
   disabled: boolean;
-  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView, message?: string) => void;
-  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView) => void;
+  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView) => void;
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -3530,14 +3558,16 @@ function JarvisOfferFinalizationCard({
       const data = await response.json().catch(() => null);
       const next = draft.actionId === "offer.manage"
         ? parseJarvisOfferDecisionDraft(data?.actionDraft)
-        : parseJarvisOfferFinalizationDraft(data?.actionDraft);
+        : draft.actionId === "offer.delete"
+          ? parseJarvisOfferLifecycleDraft(data?.actionDraft)
+          : parseJarvisOfferFinalizationDraft(data?.actionDraft);
       if (!response.ok || !next) {
-        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
+        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
         return;
       }
       onChange(next, typeof data?.message === "string" ? data.message : undefined);
     } catch {
-      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
+      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
     } finally {
       setIsWorking(false);
     }
@@ -3552,7 +3582,7 @@ function JarvisOfferFinalizationCard({
         {draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}
       </div>
       {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
-      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>{draft.actionId === "offer.manage" ? "Entscheidung" : "Finalisierung"} ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>{draft.actionId === "offer.manage" ? "Entscheidung" : draft.actionId === "offer.delete" ? "Angebotsänderung" : "Finalisierung"} ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
       {draft.confirmation.enabled && isOpen ? (
         <div className={styles.jarvisActionDraftEditor}>
           <label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label>
@@ -3560,11 +3590,11 @@ function JarvisOfferFinalizationCard({
       ) : null}
       {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
       <div className={styles.jarvisActionDraftActions}>
-        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.actionId === "offer.manage" ? `Angebot als ${draft.decision === "won" ? "gewonnen" : "verloren"} markieren` : "Angebot jetzt finalisieren"}</button> : null}
-        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>{draft.actionId === "offer.manage" ? "Entscheidung abbrechen" : "Finalisierung abbrechen"}</button> : null}
+        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.actionId === "offer.manage" ? `Angebot als ${draft.decision === "won" ? "gewonnen" : "verloren"} markieren` : draft.actionId === "offer.delete" ? (draft.lifecycleAction === "delete" ? "Angebot jetzt löschen" : "Angebot jetzt wiederherstellen") : "Angebot jetzt finalisieren"}</button> : null}
+        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>{draft.actionId === "offer.manage" ? "Entscheidung abbrechen" : draft.actionId === "offer.delete" ? "Angebotsänderung abbrechen" : "Finalisierung abbrechen"}</button> : null}
         {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
       </div>
-      <footer>{draft.actionId === "offer.manage" ? (draft.state === "executed" ? "Das Angebot wurde genau einmal entschieden. Projektstatus, Termine, Aufgaben, Rechnungen und Versand blieben unverändert." : draft.state === "cancelled" ? "Die Entscheidung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Entscheidungsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : (draft.state === "executed" ? "Das Angebot wurde genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert." : draft.state === "cancelled" ? "Die Finalisierung wurde beendet. Das Angebot blieb ein Entwurf." : draft.state === "expired" ? "Die Angebotsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`)}</footer>
+      <footer>{draft.actionId === "offer.manage" ? (draft.state === "executed" ? "Das Angebot wurde genau einmal entschieden. Projektstatus, Termine, Aufgaben, Rechnungen und Versand blieben unverändert." : draft.state === "cancelled" ? "Die Entscheidung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Entscheidungsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "offer.delete" ? (draft.state === "executed" ? `Das Angebot wurde genau einmal ${draft.lifecycleAction === "delete" ? "gelöscht" : "wiederhergestellt"}. Projektstatus, Termine, Aufgaben, Rechnungen und Versandprotokolle blieben unverändert.` : draft.state === "cancelled" ? "Die Angebotsänderung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Angebotsänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : (draft.state === "executed" ? "Das Angebot wurde genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert." : draft.state === "cancelled" ? "Die Finalisierung wurde beendet. Das Angebot blieb ein Entwurf." : draft.state === "expired" ? "Die Angebotsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`)}</footer>
     </section>
   );
 }
@@ -13888,6 +13918,8 @@ export function DashboardPage() {
   const [catalogDraft, setCatalogDraft] = useState(emptyCatalogItemDraft);
   const [catalogError, setCatalogError] = useState("");
   const [offers, setOffers] = useState<OfferItem[]>([]);
+  const [deletedOffers, setDeletedOffers] = useState<OfferItem[]>([]);
+  const [showDeletedOffers, setShowDeletedOffers] = useState(false);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [legacyInvoices, setLegacyInvoices] = useState<LegacyInvoiceItem[]>([]);
   const [accountingDocumentSearch, setAccountingDocumentSearch] = useState("");
@@ -16021,6 +16053,18 @@ export function DashboardPage() {
     });
   }
 
+  async function loadDeletedOffers(projectId = "") {
+    if (!activeUserId) return;
+    const params: Record<string, string> = {};
+    if (projectId) params.projectId = projectId;
+    const res = await fetch(buildActorApiUrl("/api/offers/lifecycle", params), { cache: "no-store" });
+    if (!res.ok) {
+      setErrorMessage("Gelöschte Angebote konnten nicht geladen werden.");
+      return;
+    }
+    setDeletedOffers((await res.json()) as OfferItem[]);
+  }
+
   async function loadInvoices(projectId = "") {
     if (!activeUserId) return;
 
@@ -17334,6 +17378,12 @@ export function DashboardPage() {
     if (!selectedProjectFile) return;
     const confirmed = window.confirm(`Angebot ${offer.offerNumber} wirklich löschen?`);
     if (!confirmed) return;
+    const reason = window.prompt("Bitte dokumentiere den Grund für die Löschung (mindestens 3 Zeichen):", "");
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setErrorMessage("Bitte einen nachvollziehbaren Löschgrund mit mindestens 3 Zeichen angeben.");
+      return;
+    }
 
     const res = await fetch("/api/offers", {
       method: "DELETE",
@@ -17341,6 +17391,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: offer.id,
         actorId: activeUserId,
+        reason: reason.trim(),
       }),
     });
 
@@ -17351,12 +17402,33 @@ export function DashboardPage() {
     }
 
     setOffers((currentOffers) => currentOffers.filter((currentOffer) => currentOffer.id !== offer.id));
+    await loadDeletedOffers(selectedProjectFile.id);
     await loadOfferHistory(selectedProjectFile.id);
-    await addProjectLogbookEntry(
-      selectedProjectFile.id,
-      "Angebot",
-      `Angebot gelöscht: ${offer.offerNumber}.`
-    );
+  }
+
+  async function restoreDeletedOffer(offer: OfferItem) {
+    if (!selectedProjectFile) return;
+    const reason = window.prompt("Bitte dokumentiere den Grund für die Wiederherstellung (mindestens 3 Zeichen):", "");
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setErrorMessage("Bitte einen nachvollziehbaren Wiederherstellungsgrund mit mindestens 3 Zeichen angeben.");
+      return;
+    }
+    const res = await fetch("/api/offers/lifecycle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: activeUserId, offerId: offer.id, action: "restore", reason: reason.trim() }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Angebot konnte nicht wiederhergestellt werden.");
+      return;
+    }
+    await Promise.all([
+      loadOffers(selectedProjectFile.id),
+      loadDeletedOffers(selectedProjectFile.id),
+      loadOfferHistory(selectedProjectFile.id),
+    ]);
   }
 
   function openMarkOfferLostDialog(offer: OfferItem) {
@@ -39378,6 +39450,7 @@ await addProjectLogbookEntry(
       | JarvisOfferDraftView
       | JarvisOfferFinalizationDraftView
       | JarvisOfferDecisionDraftView
+      | JarvisOfferLifecycleDraftView
       | JarvisOfferDeliveryDraftView
       | JarvisInvoiceDraftView
       | JarvisInvoiceDeliveryDraftView
@@ -39417,7 +39490,8 @@ await addProjectLogbookEntry(
       } else if (
         nextDraft.actionId === "offer.finalize" ||
         nextDraft.actionId === "offer.send" ||
-        nextDraft.actionId === "offer.manage"
+        nextDraft.actionId === "offer.manage" ||
+        nextDraft.actionId === "offer.delete"
       ) {
         void loadOffers();
         void loadOfferHistory(nextDraft.projectId);
@@ -50465,6 +50539,10 @@ await addProjectLogbookEntry(
     };
     const displayedProjectOffers =
       selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? projectAddendumOffers : projectBaseOffers;
+    const displayedDeletedProjectOffers = deletedOffers.filter(
+      (offer) => offer.projectId === selectedProjectFile.id &&
+        (selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? offer.offerType === "addendum" : offer.offerType !== "addendum")
+    );
     const projectResponsibility = getEffectiveProjectResponsibility(selectedProjectFile);
     const projectResponsibleName = selectedProjectFile.responsibleName || activeUser?.name || "Christian Eid";
     const projectResponsibilityPillLabel = projectResponsibility.label;
@@ -51114,21 +51192,23 @@ await addProjectLogbookEntry(
                 <div className={styles.customerFileMainHeader}>
                   <h2>{selectedProjectDocumentType}</h2>
                   {selectedProjectDocumentType === "Angebote" ? (
-                    <button
-                      type="button"
-                      className={styles.primaryButton}
-                      onClick={() => openOfferModal(selectedProjectFile)}
-                    >
-                      + Angebot
-                    </button>
+                    <div className={styles.headerActions}>
+                      <button type="button" className={styles.primaryButton} onClick={() => openOfferModal(selectedProjectFile)}>+ Angebot</button>
+                      <button type="button" className={styles.timeEntryEditButton} onClick={() => {
+                        const next = !showDeletedOffers;
+                        setShowDeletedOffers(next);
+                        if (next) void loadDeletedOffers(selectedProjectFile.id);
+                      }}>{showDeletedOffers ? "Gelöschte ausblenden" : "Gelöschte Angebote"}</button>
+                    </div>
                   ) : selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? (
-                    <button
-                      type="button"
-                      className={styles.primaryButton}
-                      onClick={() => openOfferModal(selectedProjectFile, { asAddendum: true })}
-                    >
-                      + Nachtragsangebot
-                    </button>
+                    <div className={styles.headerActions}>
+                      <button type="button" className={styles.primaryButton} onClick={() => openOfferModal(selectedProjectFile, { asAddendum: true })}>+ Nachtragsangebot</button>
+                      <button type="button" className={styles.timeEntryEditButton} onClick={() => {
+                        const next = !showDeletedOffers;
+                        setShowDeletedOffers(next);
+                        if (next) void loadDeletedOffers(selectedProjectFile.id);
+                      }}>{showDeletedOffers ? "Gelöschte ausblenden" : "Gelöschte Nachträge"}</button>
+                    </div>
                   ) : selectedProjectDocumentType === "Rechnungen" ? (
                     <button
                       type="button"
@@ -51337,6 +51417,31 @@ await addProjectLogbookEntry(
                     </table>
                     </div>
                   )
+                ) : null}
+                {(selectedProjectDocumentType === "Angebote" || selectedProjectDocumentType === "Angebote: Nachtragsangebote") && showDeletedOffers ? (
+                  <section className={styles.customerDocumentEmpty}>
+                    <strong>Gelöschte {selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? "Nachtragsangebote" : "Angebote"}</strong>
+                    {displayedDeletedProjectOffers.length === 0 ? (
+                      <p>Keine gelöschten Dokumente in diesem Bereich.</p>
+                    ) : (
+                      <div className={styles.projectTableScroll}>
+                        <table className={styles.projectTimeTable}>
+                          <thead><tr><th>Nummer</th><th>Kunde</th><th>Status</th><th>Netto</th><th>Aktion</th></tr></thead>
+                          <tbody>
+                            {displayedDeletedProjectOffers.map((offer) => (
+                              <tr key={offer.id}>
+                                <td className={styles.number}>{offer.offerNumber}</td>
+                                <td>{offer.customerName || "-"}</td>
+                                <td>{renderOfferStatusChip(offer)}</td>
+                                <td>{formatMoney(offer.netTotal)}</td>
+                                <td><button type="button" className={styles.timeEntryEditButton} onClick={() => void restoreDeletedOffer(offer)}>Wiederherstellen</button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </section>
                 ) : null}
                 {selectedProjectDocumentType === "Rechnungen" ? (
                   visibleProjectInvoices.length === 0 ? (
@@ -75924,7 +76029,8 @@ await addProjectLogbookEntry(
                     ) : null}
                     {message.role === "assistant" &&
                     (message.actionDraft?.actionId === "offer.finalize" ||
-                      message.actionDraft?.actionId === "offer.manage") ? (
+                      message.actionDraft?.actionId === "offer.manage" ||
+                      message.actionDraft?.actionId === "offer.delete") ? (
                       <JarvisOfferFinalizationCard
                         draft={message.actionDraft}
                         actorId={activeUserId}

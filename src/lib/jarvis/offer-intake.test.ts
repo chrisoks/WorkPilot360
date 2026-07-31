@@ -8,6 +8,8 @@ import {
   looksLikeOfferDecisionRequest,
   extractOfferDecision,
   looksLikeOfferFinalizationRequest,
+  looksLikeOfferLifecycleRequest,
+  extractOfferLifecycle,
 } from "@/lib/jarvis/offer-intake";
 
 describe("JARVIS offer intake", () => {
@@ -38,6 +40,20 @@ describe("JARVIS offer intake", () => {
     expect(looksLikeOfferDeliveryRequest("Versende das Angebots-PDF ANG-10124")).toBe(true);
     expect(looksLikeOfferDeliveryRequest("Finalisiere und versende Angebot ANG-10124")).toBe(false);
     expect(looksLikeOfferDeliveryRequest("Markiere Angebot ANG-10124 als gewonnen")).toBe(false);
+  });
+
+  it("recognizes controlled deletion and restoration with a reason", () => {
+    expect(looksLikeOfferLifecycleRequest("Lösche Angebot ANG-10124. Grund: Doppelt angelegt.")).toBe(true);
+    expect(extractOfferLifecycle("Lösche Angebot ANG-10124. Grund: Doppelt angelegt.")).toEqual({
+      action: "delete",
+      reason: "Doppelt angelegt",
+    });
+    expect(extractOfferLifecycle("Stelle Angebot ANG-10124 wieder her. Grund: Irrtümlich gelöscht.")).toEqual({
+      action: "restore",
+      reason: "Irrtümlich gelöscht",
+    });
+    expect(looksLikeOfferLifecycleRequest("Zeig mir gelöschte Angebote")).toBe(false);
+    expect(looksLikeOfferLifecycleRequest("Lösche die Aufgabe Kunden wegen Angebot anrufen.")).toBe(false);
   });
 
   it("recognizes isolated finalization and excludes combined follow-up actions", () => {

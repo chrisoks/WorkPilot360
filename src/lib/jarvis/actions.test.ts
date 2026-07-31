@@ -102,6 +102,18 @@ describe("JARVIS action registry", () => {
     });
   });
 
+  it("releases offer deletion and restoration only as a critically confirmed action", () => {
+    const profile = createJarvisAccessProfile({ id: "gf", role: Role.GESCHAEFTSFUEHRER });
+    const decision = getJarvisActionDecision("offer.delete", profile);
+    expect(decision).toMatchObject({
+      permitted: true,
+      executable: true,
+      reason: "allowed",
+      requiresConfirmation: true,
+      action: { risk: "critical", confirmation: "critical" },
+    });
+  });
+
   it("releases invoice delivery only as a critical confirmed action", () => {
     const profile = createJarvisAccessProfile({
       id: "gf",

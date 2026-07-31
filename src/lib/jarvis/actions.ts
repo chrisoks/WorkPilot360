@@ -420,12 +420,12 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
   },
   {
     id: "offer.delete",
-    title: "Angebot löschen",
+    title: "Angebot kontrolliert löschen oder wiederherstellen",
     category: "offer",
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["customer"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canDeleteOffers,
   },
   {

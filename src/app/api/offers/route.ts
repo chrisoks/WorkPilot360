@@ -26,6 +26,10 @@ import {
   normalizeOfferUnit,
   roundOfferMoney,
 } from "@/lib/offers/offer-core";
+import {
+  executeOfferLifecycle,
+  OfferLifecycleServiceError,
+} from "@/lib/offers/offer-lifecycle-service";
 
 type OfferCompany = "OK solutions" | "OK immocare";
 type OfferType = "base" | "addendum";
@@ -1648,6 +1652,7 @@ export async function DELETE(req: Request) {
   await ensureOfferTables();
   const body = await req.json().catch(() => ({}));
   const id = cleanString(body.id);
+  const reason = cleanString(body.reason);
   const actorResult = await getSessionBoundActor(req, users, body.actorId);
   if (!actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
@@ -1662,35 +1667,26 @@ export async function DELETE(req: Request) {
   if (!id) {
     return NextResponse.json({ error: "Angebot fehlt." }, { status: 400 });
   }
-
-  const existingRows = await prisma.$queryRaw<OfferRow[]>`
-    SELECT *
-    FROM "Offer"
-    WHERE "organizationId" = ${organization.id} AND "id" = ${id}
-    LIMIT 1
-  `;
-  const existingOffer = existingRows[0];
-  if (!existingOffer) {
-    return NextResponse.json({ error: "Angebot wurde nicht gefunden." }, { status: 404 });
+  try {
+    const deleted = await prisma.$transaction(
+      (tx) => executeOfferLifecycle({
+        tx,
+        organizationId: organization.id,
+        offerId: id,
+        action: "delete",
+        reason,
+        actorId: actor.id,
+        actorName,
+        source: "ui",
+      }),
+      { isolationLevel: "Serializable" }
+    );
+    return NextResponse.json(serializeOffer(deleted as OfferRow, [], [], { includeInternalCosts }));
+  } catch (error) {
+    if (error instanceof OfferLifecycleServiceError) {
+      const status = error.code === "not_found" ? 404 : error.code === "blocked" || error.code === "invalid_input" ? 400 : 409;
+      return NextResponse.json({ error: error.message }, { status });
+    }
+    throw error;
   }
-
-  const rows = await prisma.$queryRaw<OfferRow[]>`
-    UPDATE "Offer"
-    SET "status" = 'Gelöscht', "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "organizationId" = ${organization.id} AND "id" = ${id}
-    RETURNING *
-  `;
-
-  await addOfferHistory({
-    organizationId: organization.id,
-    offerId: id,
-    projectId: existingOffer.projectId,
-    offerNumber: existingOffer.offerNumber,
-    eventType: "deleted",
-    title: "Angebot gelöscht",
-    note: `${existingOffer.offerNumber} wurde gelöscht.`,
-    actorName,
-  });
-
-  return NextResponse.json(serializeOffer(rows[0], [], [], { includeInternalCosts }));
 }
