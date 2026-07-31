@@ -38,6 +38,15 @@ export function looksLikeOfferFinalizationRequest(question: string) {
   );
 }
 
+export function looksLikeOfferDeliveryRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /\b(?:angebot|angebots-pdf|angebotsdokument|nachtragsangebot)\w*\b/.test(value) &&
+    /\b(?:send|sende|versend|schick)\w*\b/.test(value) &&
+    !/\b(?:finalisier|gewonnen|verloren|losch|loesch|archivier)\w*\b/.test(value)
+  );
+}
+
 export function extractOfferNumber(question: string) {
   return question.match(/\bANG-\d+\b/i)?.[0]?.toUpperCase();
 }

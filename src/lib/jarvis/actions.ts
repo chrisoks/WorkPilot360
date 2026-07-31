@@ -16,6 +16,7 @@ import {
   canManageProjects,
   canManageUsers,
   canSendInvoiceDocuments,
+  canSendOfferDocuments,
   canReadContacts,
   canReadOnlineRequests,
 } from "@/lib/permissions";
@@ -396,6 +397,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     dataClasses: ["customer"],
     implementation: "available",
     canUse: canManageOffers,
+  },
+  {
+    id: "offer.send",
+    title: "Finalisiertes Angebot kontrolliert versenden",
+    category: "offer",
+    risk: "critical",
+    confirmation: "critical",
+    dataClasses: ["customer"],
+    implementation: "available",
+    canUse: canSendOfferDocuments,
   },
   {
     id: "offer.manage",

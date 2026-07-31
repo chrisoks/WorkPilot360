@@ -14,6 +14,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "task-comment.prepare",
   "offer.prepare",
   "offer.finalize",
+  "offer.send",
   "invoice.prepare",
   "invoice.finalize",
   "invoice.mark-paid",
@@ -203,6 +204,12 @@ const offerFinalizePreviewPayloadSchema = z
   })
   .strict();
 
+const offerSendPreviewPayloadSchema = z
+  .object({
+    offerId: boundedId,
+  })
+  .strict();
+
 const invoiceMarkPaidPreviewPayloadSchema = z
   .object({
     invoiceId: boundedId,
@@ -257,6 +264,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "task-comment.prepare": taskCommentPreviewPayloadSchema,
   "offer.prepare": offerPreviewPayloadSchema,
   "offer.finalize": offerFinalizePreviewPayloadSchema,
+  "offer.send": offerSendPreviewPayloadSchema,
   "invoice.prepare": invoicePreviewPayloadSchema,
   "invoice.finalize": invoiceFinalizePreviewPayloadSchema,
   "invoice.mark-paid": invoiceMarkPaidPreviewPayloadSchema,
@@ -276,6 +284,7 @@ export type JarvisActionPreviewPayloadMap = {
   "task-comment.prepare": z.infer<typeof taskCommentPreviewPayloadSchema>;
   "offer.prepare": z.infer<typeof offerPreviewPayloadSchema>;
   "offer.finalize": z.infer<typeof offerFinalizePreviewPayloadSchema>;
+  "offer.send": z.infer<typeof offerSendPreviewPayloadSchema>;
   "invoice.prepare": z.infer<typeof invoicePreviewPayloadSchema>;
   "invoice.finalize": z.infer<typeof invoiceFinalizePreviewPayloadSchema>;
   "invoice.mark-paid": z.infer<typeof invoiceMarkPaidPreviewPayloadSchema>;
@@ -821,6 +830,68 @@ export type JarvisOfferFinalizationDraftView = {
   cancellation: { enabled: boolean };
   result?: {
     entityType: "offer";
+    entityId: string;
+    label: string;
+  };
+};
+
+export type JarvisOfferDeliveryDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "offer.send";
+  title: "Angebot kontrolliert versenden";
+  badge:
+    | "Prüfung"
+    | "Bereit"
+    | "Wird versendet"
+    | "Versand unklar"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Versendet";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  offerId: string;
+  projectId: string;
+  fields: Array<{ label: string; value: string }>;
+  editor: {
+    to: string;
+    cc: string;
+    bcc: string;
+    subject: string;
+    body: string;
+    includeAcceptanceLink: boolean;
+  };
+  attachments: Array<{
+    name: string;
+    contentType: string;
+    size: number;
+    sha256: string;
+  }>;
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "ok" | "warning" | "blocked";
+    detail: string;
+  }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "blocked"
+      | "not_permitted"
+      | "expired"
+      | "cancelled"
+      | "executing"
+      | "uncertain"
+      | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: {
+    entityType: "documentMailDispatch";
     entityId: string;
     label: string;
   };

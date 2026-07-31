@@ -20,6 +20,7 @@ import {
   type JarvisPlanningActionDraftView,
   type JarvisOfferDraftView,
   type JarvisOfferFinalizationDraftView,
+  type JarvisOfferDeliveryDraftView,
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
@@ -48,6 +49,7 @@ import {
   canManageOffers,
   canManageInvoices,
   canSendInvoiceDocuments,
+  canSendOfferDocuments,
 } from "@/lib/permissions";
 import {
   createProjectLogbookEntry,
@@ -111,6 +113,16 @@ import {
   matchesOfferFinalizationConfirmation,
   OfferFinalizationServiceError,
 } from "@/lib/offers/offer-finalization-service";
+import {
+  evaluateOfferDelivery,
+  getOfferDeliveryConfirmationText,
+  matchesOfferDeliveryConfirmation,
+  normalizeOfferDeliveryPayload,
+  offerDeliveryPayloadSchema,
+  OfferDeliveryServiceError,
+  sendOfferDelivery,
+  type OfferDeliveryEvaluation,
+} from "@/lib/offers/offer-delivery-service";
 import {
   createConfirmedInvoiceDraft,
   evaluateInvoiceDraft,
@@ -931,6 +943,58 @@ const invoiceDeliveryContextSchema = z
           .nullable(),
       })
       .strict(),
+    warnings: z.array(z.string()),
+    blockingIssues: z.array(z.string()),
+    fingerprint: z.string().length(64),
+  })
+  .strict();
+
+const offerDeliveryContextSchema = z
+  .object({
+    offer: z
+      .object({
+        id: z.string(),
+        offerNumber: z.string(),
+        status: z.string(),
+        projectId: z.string(),
+        projectNumber: z.string(),
+        projectTitle: z.string(),
+        customerName: z.string(),
+        company: z.string(),
+        netTotal: z.number(),
+        grossTotal: z.number(),
+        updatedAt: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    sender: z
+      .object({
+        userId: z.string(),
+        name: z.string(),
+        email: z.string(),
+        connected: z.boolean(),
+      })
+      .strict(),
+    payload: offerDeliveryPayloadSchema,
+    attachments: z.array(
+      z
+        .object({
+          name: z.string(),
+          contentType: z.string(),
+          size: z.number().int().nonnegative(),
+          sha256: z.string().length(64),
+        })
+        .strict()
+    ),
+    checks: z.array(
+      z
+        .object({
+          key: z.string(),
+          label: z.string(),
+          status: z.enum(["ok", "warning", "blocked"]),
+          detail: z.string(),
+        })
+        .strict()
+    ),
     warnings: z.array(z.string()),
     blockingIssues: z.array(z.string()),
     fingerprint: z.string().length(64),
@@ -3690,6 +3754,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "offer.finalize") {
     return getJarvisOfferFinalizationDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "offer.send") {
+    return getJarvisOfferDeliveryDraft(previewId, binding, now);
   }
   if (draft?.actionId === "invoice.finalize") {
     return getJarvisInvoiceFinalizationDraft(previewId, binding, now);
@@ -10515,6 +10582,756 @@ export async function confirmJarvisInvoiceCreditDraft(previewId: string, binding
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof InvoiceCreditServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     throw new JarvisActionDraftError("execution_failed", "Die Teilgutschrift wurde nicht erstellt und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function maySendOfferDelivery(binding: JarvisTaskDraftBinding) {
+  return (
+    canSendOfferDocuments(binding.profile.sessionActor) &&
+    canSendOfferDocuments(binding.profile.effectiveActor)
+  );
+}
+
+function validateOfferDeliveryBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Angebotsversandfreigabe gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit der Angebotsprüfung geändert. Bitte erstelle eine neue Versandfreigabe.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis der Angebotsversandfreigabe ist ungültig.",
+      409
+    );
+  }
+  const payload = offerDeliveryPayloadSchema.safeParse(draft.payload);
+  const context = offerDeliveryContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "offer.send" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash ||
+    hashJson(payload.data) !== hashJson(context.data.payload)
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Angebotsversanddaten oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundOfferDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Die Angebotsversandfreigabe wurde nicht gefunden.",
+      404
+    );
+  }
+  validateOfferDeliveryBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateOfferDeliveryBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function toJarvisOfferDeliveryDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisOfferDeliveryDraftView {
+  const { payload, context } = validateOfferDeliveryBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = maySendOfferDelivery(binding);
+  const uncertain =
+    state === "executing" && draft.lastErrorCode === "delivery_uncertain";
+  const ready =
+    state === "awaiting_confirmation" &&
+    permitted &&
+    context.blockingIssues.length === 0;
+  const reason: JarvisOfferDeliveryDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : uncertain
+            ? "uncertain"
+            : state === "executing"
+              ? "executing"
+              : !permitted
+                ? "not_permitted"
+                : context.blockingIssues.length
+                  ? "blocked"
+                  : "ready";
+  const currency = (value: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: "EUR",
+    }).format(value);
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "offer.send",
+    title: "Angebot kontrolliert versenden",
+    badge:
+      state === "executed"
+        ? "Versendet"
+        : uncertain
+          ? "Versand unklar"
+          : state === "executing"
+            ? "Wird versendet"
+            : state === "cancelled"
+              ? "Abgebrochen"
+              : state === "expired"
+                ? "Abgelaufen"
+                : ready
+                  ? "Bereit"
+                  : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    offerId: context.offer.id,
+    projectId: context.offer.projectId,
+    fields: [
+      { label: "Angebot", value: context.offer.offerNumber },
+      {
+        label: "Projekt",
+        value: `${context.offer.projectNumber} · ${context.offer.projectTitle}`,
+      },
+      { label: "Kunde", value: context.offer.customerName || "–" },
+      { label: "Absender", value: context.sender.email || "–" },
+      { label: "Netto", value: currency(context.offer.netTotal) },
+      { label: "Brutto", value: currency(context.offer.grossTotal) },
+    ],
+    editor: {
+      to: payload.to.join(", "),
+      cc: payload.cc.join(", "),
+      bcc: payload.bcc.join(", "),
+      subject: payload.subject,
+      body: payload.body,
+      includeAcceptanceLink: payload.includeAcceptanceLink,
+    },
+    attachments: context.attachments,
+    checks: context.checks,
+    warnings: context.warnings,
+    blockingIssues: [
+      ...context.blockingIssues,
+      ...(!permitted
+        ? ["Angebotsversand ist für diese Rollenkombination nicht freigegeben."]
+        : []),
+      ...(uncertain
+        ? [
+            "Der Zustellstatus ist technisch unklar. Nicht automatisch erneut senden; zuerst Microsoft 365 und Versandprotokoll prüfen.",
+          ]
+        : []),
+    ],
+    confirmation: {
+      enabled: ready,
+      reason,
+      requiredText: getOfferDeliveryConfirmationText(
+        context.offer.offerNumber,
+        payload.to[0] || ""
+      ),
+    },
+    cancellation: {
+      enabled:
+        state === "awaiting_input" || state === "awaiting_confirmation",
+    },
+    ...(state === "executed" && draft.resultEntityId
+      ? {
+          result: {
+            entityType: "documentMailDispatch" as const,
+            entityId: draft.resultEntityId,
+            label: "Versand protokolliert",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisOfferDeliveryDraft(input: {
+  preview: JarvisActionPreview<"offer.send">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für einen Angebotsversand ist eine aktuelle serverseitige Sitzung erforderlich.",
+      401
+    );
+  }
+  if (!maySendOfferDelivery(input)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf kein Angebot versenden.",
+      403
+    );
+  }
+  const actorUserId = input.profile.effectiveActor.id;
+  if (!actorUserId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für einen Angebotsversand ist eine eindeutig zugeordnete Sitzung erforderlich.",
+      401
+    );
+  }
+  let evaluation: OfferDeliveryEvaluation;
+  try {
+    evaluation = await evaluateOfferDelivery({
+      organizationId: input.organizationId,
+      actorUserId,
+      offerId: input.preview.payload.offerId,
+    });
+  } catch (error) {
+    if (error instanceof OfferDeliveryServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "not_found" ? "not_found" : "invalid_input",
+        error.message,
+        error.code === "not_found" ? 404 : 409
+      );
+    }
+    throw error;
+  }
+  const payload = offerDeliveryPayloadSchema.parse(evaluation.payload);
+  const context = offerDeliveryContextSchema.parse(evaluation);
+  const actorIds = getActorIds(input.profile);
+  const now = input.now ?? new Date();
+  const state = context.blockingIssues.length
+    ? "awaiting_input"
+    : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "offer.send",
+    state,
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_OFFER_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: context.blockingIssues.length ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft,
+      eventType: context.blockingIssues.length
+        ? "draft_created_blocked"
+        : "draft_created_ready",
+    });
+    return draft;
+  });
+  return toJarvisOfferDeliveryDraftView(created, input);
+}
+
+export async function getJarvisOfferDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundOfferDeliveryDraft(previewId, binding, now);
+  return toJarvisOfferDeliveryDraftView(draft, binding);
+}
+
+export async function completeJarvisOfferDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  rawInput: unknown,
+  now = new Date()
+) {
+  const completed = z
+    .object({
+      revision: z.number().int().min(1),
+      to: z.union([z.string(), z.array(z.string())]),
+      cc: z.union([z.string(), z.array(z.string())]).optional(),
+      bcc: z.union([z.string(), z.array(z.string())]).optional(),
+      subject: z.string(),
+      body: z.string(),
+      includeAcceptanceLink: z.boolean(),
+    })
+    .strict()
+    .safeParse(rawInput);
+  if (!completed.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Empfänger, Betreff, Nachricht und Annahmelink-Entscheidung müssen vollständig angegeben werden.",
+      400
+    );
+  }
+  const loaded = await loadBoundOfferDeliveryDraft(previewId, binding, now);
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as never)) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Angebotsversandfreigabe kann nicht mehr bearbeitet werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (completed.data.revision !== loaded.draft.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Angebotsversandfreigabe wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  let payload;
+  let evaluation;
+  try {
+    payload = normalizeOfferDeliveryPayload({
+      offerId: loaded.payload.offerId,
+      ...completed.data,
+    });
+    evaluation = await evaluateOfferDelivery({
+      organizationId: binding.organizationId,
+      actorUserId: loaded.draft.effectiveActorId,
+      offerId: loaded.payload.offerId,
+      payload,
+    });
+  } catch (error) {
+    if (error instanceof OfferDeliveryServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "not_found" ? "not_found" : "invalid_input",
+        error.message,
+        error.code === "not_found" ? 404 : 409
+      );
+    }
+    throw error;
+  }
+  const context = offerDeliveryContextSchema.parse(evaluation);
+  const state = context.blockingIssues.length
+    ? "awaiting_input"
+    : "awaiting_confirmation";
+  const revision = loaded.draft.revision + 1;
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state,
+    revision,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    lastErrorCode: context.blockingIssues.length ? "invalid_input" : null,
+  };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state,
+        revision,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        payloadHash: nextData.payloadHash,
+        contextHash: nextData.contextHash,
+        lastErrorCode: nextData.lastErrorCode,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Angebotsversandfreigabe wurde zwischenzeitlich verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: context.blockingIssues.length
+        ? "draft_validation_failed"
+        : "draft_recalculated",
+      ...(context.blockingIssues.length
+        ? { reasonCode: "invalid_input" }
+        : {}),
+    });
+    return current;
+  });
+  return toJarvisOfferDeliveryDraftView(updated, binding);
+}
+
+export async function cancelJarvisOfferDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundOfferDeliveryDraft(previewId, binding, now);
+  if (draft.state === "cancelled") {
+    return toJarvisOfferDeliveryDraftView(draft, binding);
+  }
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) {
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Angebotsversandfreigabe kann nicht mehr abgebrochen werden.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (expectedRevision !== draft.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Angebotsversandfreigabe wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Angebotsversandfreigabe wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisOfferDeliveryDraftView(cancelled, binding);
+}
+
+async function markOfferDeliveryDraftFailure(
+  draftId: string,
+  binding: JarvisTaskDraftBinding,
+  code: string
+) {
+  try {
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({
+        where: { id: draftId },
+      });
+      if (!current || current.state !== "executing" || !integrityMatches(current)) {
+        return;
+      }
+      const nextData: DraftIntegrityData = { ...current, lastErrorCode: code };
+      const changed = await tx.jarvisActionDraft.updateMany({
+        where: {
+          id: current.id,
+          state: "executing",
+          integrityTag: current.integrityTag,
+        },
+        data: {
+          lastErrorCode: code,
+          integrityTag: createIntegrityTag(nextData),
+        },
+      });
+      if (changed.count !== 1) return;
+      const updated = await tx.jarvisActionDraft.findUniqueOrThrow({
+        where: { id: current.id },
+      });
+      validateOfferDeliveryBinding(updated, binding);
+      await appendAuditEvent(tx, {
+        draft: updated,
+        eventType:
+          code === "delivery_uncertain"
+            ? "delivery_status_uncertain"
+            : "execution_failed",
+        reasonCode: code,
+      });
+    });
+  } catch {
+    // Der ursprüngliche Versandfehler bleibt maßgeblich.
+  }
+}
+
+export async function confirmJarvisOfferDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  confirmationText: string,
+  request: Request,
+  now = new Date()
+) {
+  const loaded = await loadBoundOfferDeliveryDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") {
+    return toJarvisOfferDeliveryDraftView(loaded.draft, binding);
+  }
+  if (
+    !matchesOfferDeliveryConfirmation(
+      loaded.context.offer.offerNumber,
+      loaded.payload.to[0] || "",
+      confirmationText
+    )
+  ) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      `Gib zur kritischen Bestätigung exakt „${getOfferDeliveryConfirmationText(
+        loaded.context.offer.offerNumber,
+        loaded.payload.to[0] || ""
+      )}“ ein.`,
+      400
+    );
+  }
+  if (
+    expectedRevision !== loaded.draft.revision ||
+    loaded.draft.state !== "awaiting_confirmation"
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Nur die aktuelle, vollständig geprüfte Angebotsversandfreigabe darf bestätigt werden.",
+      409
+    );
+  }
+  if (!maySendOfferDelivery(binding)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf kein Angebot versenden.",
+      403
+    );
+  }
+  let claimed: JarvisActionDraft | undefined;
+  try {
+    claimed = await prisma.$transaction(
+      async (tx) => {
+        const current = await tx.jarvisActionDraft.findUnique({
+          where: { id: loaded.draft.id },
+        });
+        if (!current) {
+          throw new JarvisActionDraftError(
+            "not_found",
+            "Die Angebotsversandfreigabe wurde nicht gefunden.",
+            404
+          );
+        }
+        const parsed = validateOfferDeliveryBinding(current, binding);
+        if (current.state === "executed") return current;
+        if (
+          current.state !== "awaiting_confirmation" ||
+          current.expiresAt.getTime() <= now.getTime()
+        ) {
+          throw new JarvisActionDraftError(
+            current.expiresAt.getTime() <= now.getTime()
+              ? "expired"
+              : "conflict",
+            "Die Angebotsversandfreigabe ist nicht mehr ausführbar.",
+            current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+          );
+        }
+        const actor = await tx.user.findFirst({
+          where: {
+            id: current.effectiveActorId,
+            organizationId: binding.organizationId,
+            isActive: true,
+          },
+        });
+        if (!actor || !canSendOfferDocuments(actor)) {
+          throw new JarvisActionDraftError(
+            "role_changed",
+            "Absender oder Angebotsversandberechtigung sind nicht mehr aktuell.",
+            409
+          );
+        }
+        if (parsed.context.blockingIssues.length) {
+          throw new JarvisActionDraftError(
+            "invalid_input",
+            parsed.context.blockingIssues.join(" · "),
+            409
+          );
+        }
+        const claimedData: DraftIntegrityData = {
+          ...current,
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+        };
+        const changed = await tx.jarvisActionDraft.updateMany({
+          where: {
+            id: current.id,
+            revision: current.revision,
+            state: "awaiting_confirmation",
+            integrityTag: current.integrityTag,
+          },
+          data: {
+            state: "executing",
+            confirmedAt: now,
+            lastErrorCode: null,
+            integrityTag: createIntegrityTag(claimedData),
+          },
+        });
+        if (changed.count !== 1) {
+          throw new JarvisActionDraftError(
+            "conflict",
+            "Der Angebotsversand wird bereits ausgeführt.",
+            409
+          );
+        }
+        return tx.jarvisActionDraft.findUniqueOrThrow({
+          where: { id: current.id },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    if (claimed.state === "executed") {
+      return toJarvisOfferDeliveryDraftView(claimed, binding);
+    }
+    const parsed = validateOfferDeliveryBinding(claimed, binding);
+    const delivery = await sendOfferDelivery({
+      organizationId: binding.organizationId,
+      actorUserId: claimed.effectiveActorId,
+      dispatchId: claimed.id,
+      offerId: parsed.payload.offerId,
+      payload: parsed.payload,
+      expectedFingerprint: parsed.context.fingerprint,
+      request,
+    });
+    const executedAt = new Date();
+    const executedData: DraftIntegrityData = {
+      ...claimed,
+      state: "executed",
+      executedAt,
+      resultEntityType: "documentMailDispatch",
+      resultEntityId: delivery.dispatch.id,
+      lastErrorCode: null,
+    };
+    const executed = await prisma.$transaction(async (tx) => {
+      const changed = await tx.jarvisActionDraft.updateMany({
+        where: {
+          id: claimed!.id,
+          state: "executing",
+          integrityTag: claimed!.integrityTag,
+        },
+        data: {
+          state: "executed",
+          executedAt,
+          resultEntityType: "documentMailDispatch",
+          resultEntityId: delivery.dispatch.id,
+          lastErrorCode: null,
+          integrityTag: createIntegrityTag(executedData),
+        },
+      });
+      if (changed.count !== 1) {
+        throw new OfferDeliveryServiceError(
+          "delivery_uncertain",
+          "Microsoft 365 hat den Versand angenommen, aber der JARVIS-Abschlussstatus ist technisch unklar. Nicht erneut senden."
+        );
+      }
+      const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+        where: { id: claimed!.id },
+      });
+      await appendAuditEvent(tx, {
+        draft: current,
+        eventType: "draft_confirmed_and_executed",
+        result: {
+          id: delivery.dispatch.id,
+          entityType: "documentMailDispatch",
+        },
+      });
+      return current;
+    });
+    return toJarvisOfferDeliveryDraftView(executed, binding);
+  } catch (error) {
+    const code =
+      error instanceof OfferDeliveryServiceError
+        ? error.code
+        : "execution_failed";
+    if (claimed) {
+      await markOfferDeliveryDraftFailure(
+        claimed.id,
+        binding,
+        code === "delivery_uncertain"
+          ? "delivery_uncertain"
+          : "delivery_failed"
+      );
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof OfferDeliveryServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "delivery_uncertain"
+          ? "conflict"
+          : error.code === "stale_context"
+            ? "stale_context"
+            : "execution_failed",
+        error.message,
+        error.code === "delivery_uncertain" || error.code === "stale_context"
+          ? 409
+          : 500
+      );
+    }
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Das Angebot wurde nicht versendet. Der Entwurf bleibt zur technischen Prüfung gesperrt.",
+      500
+    );
   }
 }
 

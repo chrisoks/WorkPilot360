@@ -95,6 +95,7 @@ import {
   createPersistedJarvisPlanningDraft,
   createPersistedJarvisOfferDraft,
   createPersistedJarvisOfferFinalizationDraft,
+  createPersistedJarvisOfferDeliveryDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -121,6 +122,7 @@ import {
   extractOfferNumber,
   looksLikeOfferDraftRequest,
   looksLikeOfferFinalizationRequest,
+  looksLikeOfferDeliveryRequest,
 } from "@/lib/jarvis/offer-intake";
 import {
   extractInvoiceCompany,
@@ -409,6 +411,119 @@ async function buildJarvisOfferFinalizationDraft(input: {
           ? error.message
           : "Die Angebotsvorschau konnte nicht sicher vorbereitet werden."
       } Es wurde nichts finalisiert.`,
+    };
+  }
+}
+
+async function buildJarvisOfferDeliveryDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-send.session-required",
+      message:
+        "Für einen kritischen Angebotsversand ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts versendet.",
+    };
+  }
+  const offerNumber = extractOfferNumber(input.question);
+  const offer = offerNumber
+    ? await prisma.offer.findFirst({
+        where: {
+          offerNumber: { equals: offerNumber, mode: "insensitive" },
+          organizationId: input.organizationId,
+        },
+        select: {
+          id: true,
+          offerNumber: true,
+          customerName: true,
+          status: true,
+          pdfData: true,
+        },
+      })
+    : null;
+  if (offerNumber && !offer) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-send.not-found",
+      message: `${offerNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts versendet.`,
+    };
+  }
+  if (!offer) {
+    const offers = await prisma.offer.findMany({
+      where: {
+        organizationId: input.organizationId,
+        status: "Erstellt",
+        pdfData: { not: null },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: { offerNumber: true, customerName: true },
+    });
+    return {
+      type: "clarification" as const,
+      topicId: "action.offer-send.choose",
+      message:
+        offers.length > 0
+          ? "Welches finalisierte Angebot soll kontrolliert versendet werden? Es wurde noch nichts versendet."
+          : "Es gibt aktuell kein finalisiertes Angebot mit PDF, das JARVIS versenden könnte.",
+      choices: offers.map((candidate) =>
+        createJarvisDialogChoice(
+          `offer-send-${candidate.offerNumber}`,
+          `${candidate.offerNumber} · ${candidate.customerName || "ohne Kunde"}`,
+          `Sende Angebot ${candidate.offerNumber}`
+        )
+      ),
+    };
+  }
+  if (offer.status !== "Erstellt" || !offer.pdfData) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-send.invalid-state",
+      message: `${offer.offerNumber} ist nicht finalisiert oder besitzt kein finales PDF. Finalisierung und Versand bleiben getrennte, ausdrücklich zu bestätigende Schritte. Es wurde nichts versendet.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "offer.send",
+    payload: { offerId: offer.id },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-send.refused",
+      message: `${preview.message} Es wurde nichts versendet.`,
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisOfferDeliveryDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.offer-send",
+      message:
+        "Ich habe eine kontrollierte Angebotsversandvorschau vorbereitet. Prüfe Empfänger, CC/BCC, Betreff, Nachricht, finales PDF und digitalen Annahmelink. Erst die exakt angezeigte kritische Bestätigungsphrase übergibt dieses Angebot einmalig an Microsoft 365. Gewonnen/Verloren, Aufgaben und Projektstatus bleiben getrennt.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-send.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Die Angebotsversandvorschau konnte nicht sicher vorbereitet werden."
+      } Es wurde nichts versendet.`,
     };
   }
 }
@@ -2370,6 +2485,17 @@ export async function POST(req: Request) {
   if (looksLikeOfferFinalizationRequest(message)) {
     return respond(
       await buildJarvisOfferFinalizationDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "sales"
+    );
+  }
+  if (looksLikeOfferDeliveryRequest(message)) {
+    return respond(
+      await buildJarvisOfferDeliveryDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,

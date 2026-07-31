@@ -4,6 +4,7 @@ import {
   extractOfferExecutionMonth,
   extractOfferNumber,
   looksLikeOfferDraftRequest,
+  looksLikeOfferDeliveryRequest,
   looksLikeOfferFinalizationRequest,
 } from "@/lib/jarvis/offer-intake";
 
@@ -12,6 +13,13 @@ describe("JARVIS offer intake", () => {
     expect(looksLikeOfferDraftRequest("Erstelle ein Angebot für Projekt GLR-449")).toBe(true);
     expect(looksLikeOfferDraftRequest("Zeig mir offene Angebote")).toBe(false);
     expect(looksLikeOfferDraftRequest("Versende das Angebot")).toBe(false);
+  });
+
+  it("recognizes isolated controlled offer delivery", () => {
+    expect(looksLikeOfferDeliveryRequest("Sende Angebot ANG-10124")).toBe(true);
+    expect(looksLikeOfferDeliveryRequest("Versende das Angebots-PDF ANG-10124")).toBe(true);
+    expect(looksLikeOfferDeliveryRequest("Finalisiere und versende Angebot ANG-10124")).toBe(false);
+    expect(looksLikeOfferDeliveryRequest("Markiere Angebot ANG-10124 als gewonnen")).toBe(false);
   });
 
   it("recognizes isolated finalization and excludes combined follow-up actions", () => {

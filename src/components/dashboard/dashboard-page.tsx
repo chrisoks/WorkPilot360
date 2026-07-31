@@ -72,6 +72,7 @@ import type {
   JarvisCommunicationActionDraftView,
   JarvisOfferDraftView,
   JarvisOfferFinalizationDraftView,
+  JarvisOfferDeliveryDraftView,
   JarvisInvoiceDraftView,
   JarvisInvoiceDeliveryDraftView,
   JarvisInvoiceFinalizationDraftView,
@@ -680,6 +681,7 @@ type ManagementAiChatMessage = {
     | JarvisCommunicationActionDraftView
     | JarvisOfferDraftView
     | JarvisOfferFinalizationDraftView
+    | JarvisOfferDeliveryDraftView
     | JarvisInvoiceDraftView
     | JarvisInvoiceDeliveryDraftView
     | JarvisInvoiceFinalizationDraftView
@@ -708,6 +710,7 @@ const jarvisPreviewActionIds = new Set([
   "time.prepare",
   "offer.prepare",
   "offer.finalize",
+  "offer.send",
   "invoice.prepare",
   "invoice.finalize",
   "invoice.mark-paid",
@@ -2244,6 +2247,7 @@ function parseJarvisActionDraft(
   | JarvisCommunicationActionDraftView
   | JarvisOfferDraftView
   | JarvisOfferFinalizationDraftView
+  | JarvisOfferDeliveryDraftView
   | JarvisInvoiceDraftView
   | JarvisInvoiceDeliveryDraftView
   | JarvisInvoiceFinalizationDraftView
@@ -2261,6 +2265,7 @@ function parseJarvisActionDraft(
     parseJarvisCommunicationActionDraft(value) ??
     parseJarvisOfferDraft(value) ??
     parseJarvisOfferFinalizationDraft(value) ??
+    parseJarvisOfferDeliveryDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
     parseJarvisInvoiceDeliveryDraft(value) ??
     parseJarvisInvoicePaymentDraft(value) ??
@@ -2425,6 +2430,51 @@ function parseJarvisInvoicePaymentDraft(
     typeof cancellation.enabled !== "boolean"
   ) return undefined;
   return candidate as unknown as JarvisInvoicePaymentDraftView;
+}
+
+function parseJarvisOfferDeliveryDraft(
+  value: unknown
+): JarvisOfferDeliveryDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "offer.send" ||
+    typeof candidate.previewId !== "string" ||
+    typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" ||
+    typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" ||
+    typeof candidate.expiresAt !== "string" ||
+    typeof candidate.offerId !== "string" ||
+    typeof candidate.projectId !== "string" ||
+    !Array.isArray(candidate.fields) ||
+    !Array.isArray(candidate.attachments) ||
+    !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) ||
+    !Array.isArray(candidate.blockingIssues) ||
+    !candidate.editor ||
+    typeof candidate.editor !== "object" ||
+    !candidate.confirmation ||
+    typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation ||
+    typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const editor = candidate.editor as Record<string, unknown>;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (
+    typeof editor.to !== "string" ||
+    typeof editor.cc !== "string" ||
+    typeof editor.bcc !== "string" ||
+    typeof editor.subject !== "string" ||
+    typeof editor.body !== "string" ||
+    typeof editor.includeAcceptanceLink !== "boolean" ||
+    typeof confirmation.enabled !== "boolean" ||
+    typeof confirmation.requiredText !== "string" ||
+    typeof cancellation.enabled !== "boolean"
+  ) return undefined;
+  return candidate as unknown as JarvisOfferDeliveryDraftView;
 }
 
 function parseJarvisInvoiceDeliveryDraft(
@@ -4410,6 +4460,219 @@ function JarvisInvoiceDeliveryCard({
                     hour: "2-digit",
                     minute: "2-digit",
                   })} Uhr an Rechnung, Dokumente, Empfänger und Sitzung gebunden.`}
+      </footer>
+    </section>
+  );
+}
+
+function JarvisOfferDeliveryCard({
+  draft,
+  actorId,
+  disabled,
+  onChange,
+}: {
+  draft: JarvisOfferDeliveryDraftView;
+  actorId: string;
+  disabled: boolean;
+  onChange: (next: JarvisOfferDeliveryDraftView, message?: string) => void;
+}) {
+  const [editor, setEditor] = useState(draft.editor);
+  const [confirmationText, setConfirmationText] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
+  const isOpen =
+    draft.state === "awaiting_input" ||
+    draft.state === "awaiting_confirmation";
+  const isDirty =
+    editor.to !== draft.editor.to ||
+    editor.cc !== draft.editor.cc ||
+    editor.bcc !== draft.editor.bcc ||
+    editor.subject !== draft.editor.subject ||
+    editor.body !== draft.editor.body ||
+    editor.includeAcceptanceLink !== draft.editor.includeAcceptanceLink;
+
+  useEffect(() => {
+    setEditor(draft.editor);
+    setConfirmationText("");
+    setError("");
+  }, [draft.previewId, draft.revision, draft.state, draft.editor]);
+
+  const sendRequest = async (
+    method: "PATCH" | "POST",
+    payload: Record<string, unknown>
+  ) => {
+    setIsWorking(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/jarvis/action-drafts/${encodeURIComponent(draft.previewId)}`,
+        {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Jarvis-Action": "jarvis-action-draft-v2",
+          },
+          body: JSON.stringify({
+            actorId,
+            actionId: "offer.send",
+            revision: draft.revision,
+            ...payload,
+          }),
+        }
+      );
+      const data = await response.json().catch(() => null);
+      const next = parseJarvisOfferDeliveryDraft(data?.actionDraft);
+      if (!response.ok || !next) {
+        setError(
+          data?.error ??
+            "Die Angebotsversandfreigabe konnte nicht sicher verarbeitet werden."
+        );
+        return;
+      }
+      onChange(next, typeof data?.message === "string" ? data.message : undefined);
+    } catch {
+      setError(
+        "Das Action Center ist gerade nicht erreichbar. Es wurde nichts versendet."
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  return (
+    <section
+      className={styles.jarvisActionPreview}
+      data-state={draft.state}
+      aria-label={`${draft.title} – ${draft.badge}`}
+    >
+      <header>
+        <div>
+          <span>Action Center · Kritische Außenwirkung</span>
+          <strong>{draft.title}</strong>
+        </div>
+        <em>{draft.badge}</em>
+      </header>
+      <dl>
+        {draft.fields.map((field) => (
+          <div key={`${field.label}-${field.value}`}>
+            <dt>{field.label}</dt>
+            <dd>{field.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {isOpen ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label>
+            <span>Empfänger (mehrere mit Komma trennen)</span>
+            <input value={editor.to} disabled={disabled || isWorking} onChange={(event) => setEditor((current) => ({ ...current, to: event.target.value }))} />
+          </label>
+          <label>
+            <span>CC</span>
+            <input value={editor.cc} disabled={disabled || isWorking} onChange={(event) => setEditor((current) => ({ ...current, cc: event.target.value }))} />
+          </label>
+          <label>
+            <span>BCC</span>
+            <input value={editor.bcc} disabled={disabled || isWorking} onChange={(event) => setEditor((current) => ({ ...current, bcc: event.target.value }))} />
+          </label>
+          <label>
+            <span>Betreff</span>
+            <input value={editor.subject} disabled={disabled || isWorking} onChange={(event) => setEditor((current) => ({ ...current, subject: event.target.value }))} />
+          </label>
+          <label>
+            <span>Nachricht</span>
+            <textarea value={editor.body} rows={5} disabled={disabled || isWorking} onChange={(event) => setEditor((current) => ({ ...current, body: event.target.value }))} />
+          </label>
+          <label>
+            <span>Digitale Angebotsannahme</span>
+            <select
+              value={editor.includeAcceptanceLink ? "yes" : "no"}
+              disabled={disabled || isWorking}
+              onChange={(event) => setEditor((current) => ({ ...current, includeAcceptanceLink: event.target.value === "yes" }))}
+            >
+              <option value="yes">30-Tage-Link mitsenden</option>
+              <option value="no">Ohne Annahmelink senden</option>
+            </select>
+          </label>
+          {isDirty ? (
+            <button
+              type="button"
+              disabled={disabled || isWorking}
+              onClick={() => void sendRequest("PATCH", editor)}
+            >
+              Versandpaket neu prüfen
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      <div className={styles.jarvisPlanningChecks}>
+        <strong>Angebot, PDF und Außenwirkung</strong>
+        {draft.attachments.map((attachment) => (
+          <div key={attachment.sha256} data-status="ok">
+            <span>✓</span>
+            <p>
+              <b>{attachment.name}</b>
+              <small>{Math.max(1, Math.round(attachment.size / 1024))} KB · SHA-256 gebunden</small>
+            </p>
+          </div>
+        ))}
+        {draft.checks.map((check) => (
+          <div key={check.key} data-status={check.status}>
+            <span>{check.status === "ok" ? "✓" : "!"}</span>
+            <p><b>{check.label}</b><small>{check.detail}</small></p>
+          </div>
+        ))}
+      </div>
+      {draft.warnings.map((warning) => (
+        <div key={warning} className={styles.jarvisActionPreviewMissing}>
+          <strong>Bewusster Prüfhinweis</strong><span>{warning}</span>
+        </div>
+      ))}
+      {draft.blockingIssues.length ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Versand ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span>
+        </div>
+      ) : null}
+      {draft.confirmation.enabled && isDirty ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Änderung noch nicht geprüft</strong><span>Prüfe das Versandpaket erneut.</span>
+        </div>
+      ) : null}
+      {draft.confirmation.enabled && isOpen && !isDirty ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label>
+            <span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span>
+            <input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} />
+          </label>
+        </div>
+      ) : null}
+      {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
+      <div className={styles.jarvisActionDraftActions}>
+        {draft.confirmation.enabled ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking || isDirty || confirmationText !== draft.confirmation.requiredText}
+            onClick={() => void sendRequest("POST", { command: "confirm", confirmationText })}
+          >
+            Angebot jetzt versenden
+          </button>
+        ) : null}
+        {draft.cancellation.enabled ? (
+          <button type="button" disabled={disabled || isWorking} onClick={() => void sendRequest("POST", { command: "cancel" })}>
+            Versand abbrechen
+          </button>
+        ) : null}
+      </div>
+      <footer>
+        {draft.state === "executed"
+          ? "Microsoft 365 hat den Angebotsversand angenommen; der Vorgang ist genau einmal protokolliert. Verkaufsentscheidung und Projektstatus blieben unverändert."
+          : draft.confirmation.reason === "uncertain"
+            ? "Der Versandstatus ist unklar. Nicht erneut senden; zuerst Microsoft 365 und das Versandprotokoll prüfen."
+            : draft.state === "cancelled"
+              ? "Die Freigabe wurde beendet. Es wurde keine E-Mail versendet."
+              : draft.state === "expired"
+                ? "Die Versandvorschau ist abgelaufen und muss neu erstellt werden."
+                : `Die Vorschau ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an Angebot, PDF, Empfänger und Sitzung gebunden.`}
       </footer>
     </section>
   );
@@ -39084,6 +39347,7 @@ await addProjectLogbookEntry(
       | JarvisCommunicationActionDraftView
       | JarvisOfferDraftView
       | JarvisOfferFinalizationDraftView
+      | JarvisOfferDeliveryDraftView
       | JarvisInvoiceDraftView
       | JarvisInvoiceDeliveryDraftView
       | JarvisInvoiceFinalizationDraftView
@@ -39119,6 +39383,13 @@ await addProjectLogbookEntry(
         void loadTasks();
       } else if (nextDraft.actionId === "offer.prepare") {
         void loadOffers();
+      } else if (
+        nextDraft.actionId === "offer.finalize" ||
+        nextDraft.actionId === "offer.send"
+      ) {
+        void loadOffers();
+        void loadOfferHistory(nextDraft.projectId);
+        void loadDocumentMailDispatches(nextDraft.projectId);
       } else if (
         nextDraft.actionId === "invoice.prepare" ||
         nextDraft.actionId === "invoice.finalize" ||
@@ -75522,6 +75793,17 @@ await addProjectLogbookEntry(
                             nextDraft,
                             nextMessage
                           )
+                        }
+                      />
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.actionDraft?.actionId === "offer.send" ? (
+                      <JarvisOfferDeliveryCard
+                        draft={message.actionDraft}
+                        actorId={activeUserId}
+                        disabled={isManagementAiSending}
+                        onChange={(nextDraft, nextMessage) =>
+                          updateJarvisActionDraftMessage(index, nextDraft, nextMessage)
                         }
                       />
                     ) : null}
