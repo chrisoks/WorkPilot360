@@ -21,6 +21,18 @@
   versendet keine E-Mail und löst weder Zahlung noch Storno aus; der bestehende
   kontrollierte Rechnungsversand bleibt ein separater, erneut zu bestätigender
   Schritt.
+  Produktiv abgenommen auf Code-Commit `965de20` mit Serverbackup
+  `/var/backups/workpilot360/before-jarvis-reminder-20260731T140442Z`.
+  Lokal sind 1.425 Tests, TypeScript, Mojibake-/Regressionschecks, Prisma-
+  Validierung, leerer Prisma-Diff und der Build mit 90 Seiten grün. Der
+  authentifizierte permanente Korpus bestand lokal und produktiv jeweils
+  110/110 Fragen; `invoice.remind` war eine unblockierte Vorschau und keine
+  Aktion wurde ausgeführt. Die echten lokalen und produktiven Klicktests
+  prüften sichtbare Rechnungsdaten, ungültige Frist, falsche exakte Phrase und
+  Abbruch. RE-10119 blieb produktiv `Fakturiert`, unbezahlt, auf Mahnstufe 0
+  und ohne Mahnhistorie oder Mahn-Logbuch; alle QA-Entwürfe und Sitzungen sind
+  bereinigt. WorkPilot läuft seit der Abnahme unter PID `469803`;
+  KlinikNavigator blieb unverändert unter PID `398228`.
 
 - JARVIS kontrollierte Bezahlt-Markierung 2026-07-31:
   Der achte Action-Center-Vertikalschnitt markiert ausschließlich offene,
