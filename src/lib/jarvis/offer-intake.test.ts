@@ -23,7 +23,12 @@ describe("JARVIS offer intake", () => {
     expect(extractOfferDecision(question)).toEqual({
       decision: "lost",
       reason: "Preis",
-      note: "Kunde hat abgesagt.",
+      note: "Kunde hat abgesagt",
+    });
+    expect(extractOfferDecision("Markiere Angebot ANG-10124 als gewonnen. Grund: Schriftliche Kundenzusage.")).toEqual({
+      decision: "won",
+      reason: "Schriftliche Kundenzusage",
+      note: undefined,
     });
     expect(looksLikeOfferDecisionRequest("Zeig mir verlorene Angebote")).toBe(false);
   });

@@ -63,8 +63,14 @@ export function extractOfferDecision(question: string) {
     : /\b(?:gewonnen|gewinnen)\b/.test(value)
       ? ("won" as const)
       : undefined;
-  const reason = question.match(/\b(?:Grund|weil|wegen)\s*[:\-]?\s*([^\n.]+(?:\.(?!\s*Kommentar\b)[^\n.]*)?)/i)?.[1]?.trim();
-  const note = question.match(/\bKommentar\s*[:\-]\s*(.+)$/i)?.[1]?.trim();
+  const cleanSentenceValue = (input: string | undefined) =>
+    input?.trim().replace(/[.!?]+$/, "").trim() || undefined;
+  const reason = cleanSentenceValue(
+    question.match(/\b(?:Grund|weil|wegen)\s*[:\-]?\s*([^\n.]+(?:\.(?!\s*Kommentar\b)[^\n.]*)?)/i)?.[1]
+  );
+  const note = cleanSentenceValue(
+    question.match(/\bKommentar\s*[:\-]\s*(.+)$/i)?.[1]
+  );
   return { decision, reason, note };
 }
 
