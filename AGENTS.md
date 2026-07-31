@@ -1,5 +1,38 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Angebotsfinalisierung 2026-07-31:
+  Der zwÃ¶lfte Action-Center-Vertikalschnitt finalisiert einen vorhandenen
+  Angebots- oder Nachtragsentwurf kontrolliert. JARVIS erkennt den Wunsch
+  getrennt von Entwurfserstellung, Versand, Gewonnen/Verloren, LÃ¶schung und
+  Statusfragen, lÃ¤dt Angebot, Projekt, Bezugsangebot, Positionen,
+  KatalogstÃ¤nde, AusfÃ¼hrungszeitraum und Summen im Mandanten neu und zeigt
+  alle PrÃ¼fungen sichtbar an. Fehlende Pflichtdaten, inkonsistente Summen,
+  anderer Status und veralteter Kontext blockieren fail-closed. Erst die
+  exakte, groÃŸ-/kleinschreibungssensitive Phrase
+  `ANGEBOT FINALISIEREN ANG-...` darf ausfÃ¼hren.
+  Normale Angebotsmaske und JARVIS verwenden dieselbe Angebotsvalidierung,
+  Kalkulation und PDF-Erzeugung. In einer serialisierbaren Transaktion unter
+  organisations- und angebotsgebundenem PostgreSQL-Advisory-Lock wechselt
+  genau ein unverÃ¤nderter Entwurf bedingt auf `Erstellt`, erhÃ¤lt sein finales
+  PDF und genau ein `finalized`-Historienereignis. Organisation, Sitzung,
+  Rollenpaar, Impersonation, Revision, TTL, HMAC, SHA-256-Fachfingerprint,
+  Audit und Exactly-once-Replay sichern die Aktion. Versand,
+  Gewonnen/Verloren, Aufgaben und automatische ProjektstatusÃ¤nderung werden
+  ausdrÃ¼cklich nicht ausgelÃ¶st.
+  Produktiv abgenommen auf Code-Commit `89d1d38` mit Serverbackup
+  `/var/backups/workpilot360/20260731-194809-jarvis-offer-finalization`.
+  Lokal und produktiv sind 136 Testdateien mit 1.454 Tests, TypeScript,
+  Regressionscheck, Prisma-Validierung, leerer Live-Diff und der
+  90-Seiten-Build grÃ¼n. Der permanente Korpus bestand jeweils 110/110 und
+  bereitete `offer.finalize` real vor, ohne eine Aktion auszufÃ¼hren oder
+  QA-Daten zu hinterlassen. Die isolierte echte Produktions-QA lehnte die
+  falsche Phrase ab, finalisierte danach genau `ANG-955424`, erzeugte ein
+  vollstÃ¤ndiges PDF und genau eine Historie und lieferte beim Replay dieselbe
+  EntitÃ¤t. Versand, Aufgaben, Projektstatus und Gewonnen/Verloren blieben
+  unverÃ¤ndert; alle QA-Daten wurden bereinigt. Dashboard, Online-Formular und
+  Angebots-API liefern HTTP 200. WorkPilot lÃ¤uft unter PID `510873`;
+  KlinikNavigator blieb unverÃ¤ndert unter PID `398228`.
+
 - JARVIS kontrollierte Teilgutschrift / Rechnungskorrektur 2026-07-31:
   Der elfte Action-Center-Vertikalschnitt erstellt eine finanzielle
   Teilgutschrift zu einer Rechnung im Status `Fakturiert` oder `Bezahlt` als
