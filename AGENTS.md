@@ -17,7 +17,15 @@
   Phrase sowie einen Doppelklick; Datenbank und Oberfläche bestätigten genau
   ein Fakturaereignis. Der authentifizierte permanente Korpus bestand 110/110
   Fragen mit null ausgeführten Entwurfsaktionen; alle QA-Daten wurden
-  rückstandsfrei bereinigt.
+  rückstandsfrei bereinigt. Produktiv abgenommen auf Code-Commit `5f1eb85`
+  mit Serverbackup
+  `/var/backups/workpilot360/before-jarvis-invoice-finalization-20260731T111839Z`.
+  Produktionsbuild mit 90 Seiten und leerer Prisma-Live-Differenz ist grün.
+  Der produktive echte Oberflächentest bestätigte dieselben Phrasen-,
+  Doppelklick-, Audit- und Nebenwirkungssperren; der produktive Korpus bestand
+  erneut 110/110 mit null Ausführungen. QA-Rückstände sind null. WorkPilot
+  läuft seit der Abnahme unter PID `441648`; KlinikNavigator blieb
+  unverändert unter PID `398228`.
 
 - JARVIS Angebots-/Nachtragsentwurf 2026-07-31:
   Der nächste Action-Center-Vertikalschnitt verwendet für normale

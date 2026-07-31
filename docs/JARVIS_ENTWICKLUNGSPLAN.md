@@ -1983,6 +1983,13 @@ Auditspur. Der anschließende authentifizierte Live-Korpus bestand 110/110
 Fragen; sieben sichere Entwurfsvorschauen wurden erzeugt, keine Aktion
 ausgeführt und alle QA-Daten vollständig bereinigt.
 
+Die produktive Wiederholung auf Code-Commit `5f1eb85` bestätigte die kritische
+Phrase und Exactly-once-Sperre im echten Browser sowie genau ein
+Fakturaereignis in der Datenbank. Der produktive 110-Fragen-Lauf bestand
+110/110 mit null ausgeführten Aktionen; Prisma-Diff und QA-Rückstände sind
+leer. Das zugehörige Server- und Datenbankbackup liegt unter
+`/var/backups/workpilot360/before-jarvis-invoice-finalization-20260731T111839Z`.
+
 Die bisher nur laufbezogen dokumentierten 110 menschenähnlichen Fragen sind
 nun als exakt 110 eindeutige, versionierte Fälle dauerhaft im Repository
 verankert. Sie decken Navigation, Projekte, Kunden, Aufgaben, Planung, Zeit,
