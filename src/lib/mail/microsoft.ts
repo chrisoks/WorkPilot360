@@ -117,3 +117,55 @@ export async function refreshMicrosoftAccessToken(userId: string, account: Micro
 
   return refreshedAccount;
 }
+
+export type MicrosoftGraphMailAttachment = {
+  "@odata.type": "#microsoft.graph.fileAttachment";
+  name: string;
+  contentType: string;
+  contentBytes: string;
+};
+
+export async function sendMicrosoftGraphMail(input: {
+  accessToken: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  htmlBody: string;
+  attachments: MicrosoftGraphMailAttachment[];
+}) {
+  const response = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: {
+        subject: input.subject,
+        body: {
+          contentType: "HTML",
+          content: input.htmlBody,
+        },
+        toRecipients: input.to.map((address) => ({
+          emailAddress: { address },
+        })),
+        ccRecipients: (input.cc ?? []).map((address) => ({
+          emailAddress: { address },
+        })),
+        bccRecipients: (input.bcc ?? []).map((address) => ({
+          emailAddress: { address },
+        })),
+        attachments: input.attachments,
+      },
+      saveToSentItems: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      errorText || "Microsoft Graph konnte die E-Mail nicht senden."
+    );
+  }
+}

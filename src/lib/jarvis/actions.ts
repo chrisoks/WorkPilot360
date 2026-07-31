@@ -15,7 +15,7 @@ import {
   canManageProjectTimeEntries,
   canManageProjects,
   canManageUsers,
-  canSendDocumentMails,
+  canSendInvoiceDocuments,
   canReadContacts,
   canReadOnlineRequests,
 } from "@/lib/permissions";
@@ -449,13 +449,13 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
   },
   {
     id: "document.send",
-    title: "Dokument per E-Mail versenden",
-    category: "document",
+    title: "Fakturierte Rechnung kontrolliert versenden",
+    category: "invoice",
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["customer"],
-    implementation: "planned",
-    canUse: canSendDocumentMails,
+    implementation: "available",
+    canUse: canSendInvoiceDocuments,
   },
   {
     id: "catalog.manage",

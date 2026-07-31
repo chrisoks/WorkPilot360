@@ -21,6 +21,18 @@ export function looksLikeInvoiceFinalizationRequest(question: string) {
   );
 }
 
+export function looksLikeInvoiceDeliveryRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /\brechnung\w*\b/.test(value) &&
+    /\b(?:send|sende|versend|schick)\w*\b/.test(value) &&
+    !/\b(?:fakturier|mahn|bezahlt|storn|losch|loesch|archivier)\w*\b/.test(
+      value
+    ) &&
+    !/\bprojekt\w*\b.*\b(?:losch|loesch|entfern)\w*\b/.test(value)
+  );
+}
+
 export function extractInvoiceNumber(question: string) {
   return question.match(/\bRE-\d+\b/i)?.[0]?.toUpperCase();
 }

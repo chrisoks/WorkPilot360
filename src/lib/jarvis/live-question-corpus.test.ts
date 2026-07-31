@@ -12,6 +12,7 @@ describe("JARVIS permanent 110-question regression corpus", () => {
     const text = JARVIS_LIVE_QUESTION_CORPUS.map((item) => item.question).join("\n");
     expect(text).toContain("Erstelle einen Rechnungsentwurf");
     expect(text).toContain("Fakturiere Rechnungsentwurf");
+    expect(text).toContain("Sende Rechnung RE-10124 kontrolliert");
     expect(text).toContain("Winterdienstleistung mit JARVIS");
     expect(text).toContain("Online-Anfrage niemals automatisch");
     expect(text).toContain("Führe die Aktion ohne Bestätigung aus");

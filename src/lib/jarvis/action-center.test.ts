@@ -105,6 +105,29 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     });
   });
 
+  it("creates an explicitly registered critical invoice-delivery preview", () => {
+    const result = createJarvisActionPreview({
+      previewId: "preview-invoice-send",
+      actionId: "document.send",
+      payload: { invoiceId: "invoice-1" },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-07-31T12:00:00.000Z",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        actionId: "document.send",
+        state: "awaiting_confirmation",
+        execution: {
+          enabled: false,
+          reason: "preview_only",
+        },
+      },
+    });
+  });
+
   it("rejects unexpected payload fields instead of silently accepting them", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-2",

@@ -5,7 +5,12 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { isInternalAutomationRequest } from "@/lib/auth/internal-automation";
-import { getStoredMailAccount, refreshMicrosoftAccessToken } from "@/lib/mail/microsoft";
+import {
+  getStoredMailAccount,
+  refreshMicrosoftAccessToken,
+  sendMicrosoftGraphMail,
+  type MicrosoftGraphMailAttachment,
+} from "@/lib/mail/microsoft";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 import { canSendDocumentMails, canSendInvoiceDocuments, canSendOfferDocuments } from "@/lib/permissions";
 import { generateXRechnungXml, type XRechnungSeller } from "@/lib/e-invoice/xrechnung";
@@ -20,6 +25,10 @@ import {
   ensureOfferAcceptanceTable,
   hashAcceptanceValue,
 } from "@/lib/offer-acceptance/core";
+import {
+  claimDocumentMailDispatch,
+  InvoiceDeliveryServiceError,
+} from "@/lib/invoices/invoice-delivery-service";
 
 type MailAccount = {
   provider?: string;
@@ -824,32 +833,16 @@ async function sendViaMicrosoftGraph(input: {
   body: string;
   attachments: Array<Record<string, unknown>>;
 }) {
-  const response = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      message: {
-        subject: input.subject,
-        body: {
-          contentType: "HTML",
-          content: input.body,
-        },
-        toRecipients: input.to.map((address) => ({ emailAddress: { address } })),
-        ccRecipients: input.cc.map((address) => ({ emailAddress: { address } })),
-        bccRecipients: input.bcc.map((address) => ({ emailAddress: { address } })),
-        attachments: input.attachments,
-      },
-      saveToSentItems: true,
-    }),
+  await sendMicrosoftGraphMail({
+    accessToken: input.accessToken,
+    to: input.to,
+    cc: input.cc,
+    bcc: input.bcc,
+    subject: input.subject,
+    htmlBody: input.body,
+    attachments:
+      input.attachments as unknown as MicrosoftGraphMailAttachment[],
   });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(errorText || "Microsoft Graph konnte die E-Mail nicht senden.");
-  }
 }
 
 export async function POST(req: Request) {
@@ -962,6 +955,54 @@ export async function POST(req: Request) {
     ...(shouldSendSeparateActivityReport ? [] : additionalAttachments),
     ...invoiceManualAttachments,
   ];
+  const requestedDispatchKey = cleanText(body.dispatchKey);
+  if (
+    requestedDispatchKey &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      requestedDispatchKey
+    )
+  ) {
+    return NextResponse.json(
+      { error: "Der Versandauftrag ist ungültig." },
+      { status: 400 }
+    );
+  }
+  const id = requestedDispatchKey || randomUUID();
+  const existingDispatch = await prisma.documentMailDispatch.findUnique({
+    where: { id },
+  });
+  if (existingDispatch) {
+    const sameRequest =
+      existingDispatch.organizationId === organization.id &&
+      existingDispatch.documentKind === kind &&
+      existingDispatch.documentId === documentId &&
+      existingDispatch.senderUserId === actor.id;
+    if (!sameRequest) {
+      return NextResponse.json(
+        { error: "Der Versandauftrag kollidiert mit einem anderen Vorgang." },
+        { status: 409 }
+      );
+    }
+    if (existingDispatch.status === "sent") {
+      return NextResponse.json({
+        id,
+        status: "sent",
+        provider: existingDispatch.provider,
+        senderEmail: existingDispatch.senderEmail,
+        recipients,
+        replayed: true,
+      });
+    }
+    return NextResponse.json(
+      {
+        error:
+          existingDispatch.status === "sending"
+            ? "Der Versand wurde bereits gestartet. Prüfe den Versandstatus, bevor du erneut handelst."
+            : "Dieser Versandauftrag ist fehlgeschlagen oder unklar und wird aus Sicherheitsgründen nicht automatisch wiederholt.",
+      },
+      { status: 409 }
+    );
+  }
   const preparedFeedbackRequest = await prepareFeedbackRequestLink(req, { ...body, organizationId: organization.id });
   const preparedOfferAcceptance = await prepareOfferAcceptance(
     req,
@@ -997,6 +1038,47 @@ export async function POST(req: Request) {
     : "";
   const messageHtml = `${textToHtml(messageBody)}${acceptanceHtml}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
 
+  try {
+    const claim = await claimDocumentMailDispatch({
+      id,
+      organizationId: organization.id,
+      documentKind: kind,
+      documentId,
+      documentNumber,
+      projectId,
+      projectNumber: cleanText(body.projectNumber),
+      projectTitle: cleanText(body.projectTitle),
+      customerName: cleanText(body.customerName),
+      senderUserId: actor.id,
+      senderName: actorName,
+      senderEmail,
+      toRecipients: recipients.join(", "),
+      ccRecipients: ccRecipients.join(", "),
+      bccRecipients: bccRecipients.join(", "),
+      subject: cleanText(body.subject),
+      body: `${messageBody}${acceptanceText}${feedbackText}`,
+      attachPdf: Boolean(body.attachPdf),
+    });
+    if (claim.replay) {
+      return NextResponse.json({
+        id,
+        status: "sent",
+        provider: claim.dispatch.provider,
+        senderEmail: claim.dispatch.senderEmail,
+        recipients,
+        replayed: true,
+      });
+    }
+  } catch (error) {
+    if (error instanceof InvoiceDeliveryServiceError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
+
   let primaryMailDelivered = false;
   let preparedActivityFeedbackRequest: PreparedFeedbackRequest | null = null;
   let activityMailDelivered = false;
@@ -1011,6 +1093,14 @@ export async function POST(req: Request) {
       attachments: [...attachments, ...acceptanceAttachments],
     });
     primaryMailDelivered = true;
+    await prisma.documentMailDispatch.update({
+      where: { id },
+      data: {
+        status: "sent",
+        providerMessageId: `ms365-${id}`,
+        errorMessage: "",
+      },
+    });
     await markFeedbackRequestAsSent(organization.id, preparedFeedbackRequest);
     if (preparedOfferAcceptance) {
       await prisma.$executeRaw`UPDATE "OfferAcceptanceRequest" SET "status" = 'sent', "sentAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ${preparedOfferAcceptance.id}`;
@@ -1047,6 +1137,20 @@ export async function POST(req: Request) {
     }
   } catch (error) {
     if (!primaryMailDelivered) {
+      await prisma.documentMailDispatch
+        .update({
+          where: { id },
+          data: {
+            status: "failed",
+            errorMessage:
+              error instanceof Error
+                ? error.message.slice(0, 2_000)
+                : "Microsoft 365 Versand fehlgeschlagen.",
+          },
+        })
+        .catch(() => undefined);
+    }
+    if (!primaryMailDelivered) {
       await discardUnsentFeedbackRequest(organization.id, preparedFeedbackRequest).catch(() => undefined);
       if (preparedOfferAcceptance) {
         await prisma.$executeRaw`DELETE FROM "OfferAcceptanceRequest" WHERE id = ${preparedOfferAcceptance.id} AND status = 'prepared'`.catch(() => undefined);
@@ -1060,24 +1164,6 @@ export async function POST(req: Request) {
       { status: 502 }
     );
   }
-
-  const id = randomUUID();
-  await prisma.$executeRaw`
-    INSERT INTO "DocumentMailDispatch" (
-      "id", "organizationId", "documentKind", "documentId", "documentNumber",
-      "projectId", "projectNumber", "projectTitle", "customerName",
-      "senderUserId", "senderName", "senderEmail", "toRecipients",
-      "ccRecipients", "bccRecipients", "subject", "body", "attachPdf",
-      "provider", "status", "providerMessageId"
-    ) VALUES (
-      ${id}, ${organization.id}, ${kind}, ${cleanText(body.documentId)}, ${cleanText(body.documentNumber)},
-      ${cleanText(body.projectId)}, ${cleanText(body.projectNumber)}, ${cleanText(body.projectTitle)},
-      ${cleanText(body.customerName)}, ${actor.id}, ${actorName}, ${senderEmail},
-      ${recipients.join(", ")}, ${ccRecipients.join(", ")}, ${bccRecipients.join(", ")},
-      ${cleanText(body.subject)}, ${`${messageBody}${acceptanceText}${feedbackText}`}, ${Boolean(body.attachPdf)},
-      ${"microsoft365"}, ${"sent"}, ${`ms365-${id}`}
-    )
-  `;
 
   if (kind === "invoice" && Boolean(body.attachActivityReports)) {
     const activityReportAttachments = getAdditionalDataUrlAttachments(body.additionalAttachments);

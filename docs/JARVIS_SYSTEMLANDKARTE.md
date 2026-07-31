@@ -168,6 +168,16 @@ Aktionen werden getrennt über das Action Center abgesichert:
   transaktional erzeugt; Doppelklick und Replay schreiben nicht ein zweites
   Mal. Dieser Schnitt ist absichtlich textbasiert: Anhänge und autonome
   E-Mail-Aktionen werden weder vorbereitet noch ausgeführt.
+- Kontrollierter Rechnungsversand: Nur bereits fakturierte Rechnungen dürfen
+  einen Versandentwurf erzeugen. Empfänger, CC/BCC, Betreff, Nachricht,
+  Dokumentformat, konkrete Anhänge, Hashes und technische E-Rechnungsprüfung
+  werden serverseitig angezeigt und an Sitzung, beide Rollen, Organisation,
+  Rechnung, Absenderkonto, Revision, TTL und HMAC gebunden. Die exakte
+  Bestätigungsphrase enthält Rechnungsnummer und erste Empfängeradresse.
+  Normale Versandmaske und JARVIS beanspruchen den Versand vor Microsoft Graph
+  über denselben advisory-lock-geschützten Dispatch-Service. Ein bestätigter
+  Versand wird nur als Replay zurückgegeben; laufende, fehlgeschlagene oder
+  technisch unklare Versuche werden niemals automatisch wiederholt.
 
 Ein JARVIS-Entwurf darf weder Organisation, Projektart, Projektstand,
 Mitarbeiterzugehörigkeit noch Kontingent aus seinem eigenen Payload bestimmen.

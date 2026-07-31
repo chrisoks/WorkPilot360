@@ -15,6 +15,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "offer.prepare",
   "invoice.prepare",
   "invoice.finalize",
+  "document.send",
 ] as const;
 
 export type JarvisPreviewActionId = (typeof JARVIS_PREVIEW_ACTION_IDS)[number];
@@ -191,6 +192,12 @@ const invoiceFinalizePreviewPayloadSchema = z
   })
   .strict();
 
+const documentSendPreviewPayloadSchema = z
+  .object({
+    invoiceId: boundedId,
+  })
+  .strict();
+
 const PREVIEW_PAYLOAD_SCHEMAS = {
   "task.prepare": taskPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
@@ -200,6 +207,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "offer.prepare": offerPreviewPayloadSchema,
   "invoice.prepare": invoicePreviewPayloadSchema,
   "invoice.finalize": invoiceFinalizePreviewPayloadSchema,
+  "document.send": documentSendPreviewPayloadSchema,
 } satisfies Record<JarvisPreviewActionId, z.ZodType>;
 
 export type JarvisActionPreviewPayloadMap = {
@@ -213,6 +221,7 @@ export type JarvisActionPreviewPayloadMap = {
   "offer.prepare": z.infer<typeof offerPreviewPayloadSchema>;
   "invoice.prepare": z.infer<typeof invoicePreviewPayloadSchema>;
   "invoice.finalize": z.infer<typeof invoiceFinalizePreviewPayloadSchema>;
+  "document.send": z.infer<typeof documentSendPreviewPayloadSchema>;
 };
 
 export type JarvisActionPreviewAuditEvent = {
@@ -705,6 +714,80 @@ export type JarvisInvoiceFinalizationDraftView = {
   cancellation: { enabled: boolean };
   result?: {
     entityType: "invoice";
+    entityId: string;
+    label: string;
+  };
+};
+
+export type JarvisInvoiceDeliveryDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "document.send";
+  title: "Rechnung und Versand kontrolliert freigeben";
+  badge:
+    | "Prüfung"
+    | "Bereit"
+    | "Wird versendet"
+    | "Versand unklar"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Versendet";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  invoiceId: string;
+  projectId: string;
+  fields: Array<{ label: string; value: string }>;
+  editor: {
+    to: string;
+    cc: string;
+    bcc: string;
+    subject: string;
+    body: string;
+    format: "pdf" | "xrechnung" | "pdf-xrechnung" | "zugferd";
+    formatOptions: Array<{
+      value: "pdf" | "xrechnung" | "pdf-xrechnung" | "zugferd";
+      label: string;
+    }>;
+  };
+  attachments: Array<{
+    name: string;
+    contentType: string;
+    size: number;
+    sha256: string;
+  }>;
+  validation: {
+    technical: { valid: boolean; issues: string[] } | null;
+    kosit: {
+      available: boolean;
+      valid: boolean;
+      message: string;
+    } | null;
+    zugferd: {
+      converted: boolean;
+      conversionMessage: string;
+      validated: boolean;
+      validationMessage: string;
+    } | null;
+  };
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "blocked"
+      | "not_permitted"
+      | "expired"
+      | "cancelled"
+      | "executing"
+      | "executed"
+      | "uncertain";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: {
+    entityType: "documentMailDispatch";
     entityId: string;
     label: string;
   };

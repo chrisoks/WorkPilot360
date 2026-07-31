@@ -21,6 +21,7 @@ import {
   type JarvisOfferDraftView,
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
+  type JarvisInvoiceDeliveryDraftView,
   type JarvisTaskActionDraftState,
   type JarvisTaskActionDraftView,
   type JarvisTimeActionDraftCheck,
@@ -41,6 +42,7 @@ import {
   canManageProjects,
   canManageOffers,
   canManageInvoices,
+  canSendInvoiceDocuments,
 } from "@/lib/permissions";
 import {
   createProjectLogbookEntry,
@@ -112,6 +114,16 @@ import {
   matchesInvoiceFinalizationConfirmation,
 } from "@/lib/invoices/invoice-finalization-service";
 import { syncInvoiceInventoryMovements } from "@/lib/inventory/catalog-inventory";
+import {
+  evaluateInvoiceDelivery,
+  getInvoiceDeliveryConfirmationText,
+  invoiceDeliveryPayloadSchema,
+  InvoiceDeliveryServiceError,
+  matchesInvoiceDeliveryConfirmation,
+  normalizeInvoiceDeliveryPayload,
+  sendInvoiceDelivery,
+  type InvoiceDeliveryEvaluation,
+} from "@/lib/invoices/invoice-delivery-service";
 
 const JARVIS_TASK_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_TASK_DRAFT_MAX_FUTURE_MS = 5 * 365 * 24 * 60 * 60 * 1000;
@@ -562,6 +574,100 @@ const invoiceFinalizationContextSchema = z
   })
   .strict();
 
+const invoiceDeliveryContextSchema = z
+  .object({
+    invoice: z
+      .object({
+        id: z.string(),
+        invoiceNumber: z.string(),
+        status: z.string(),
+        projectId: z.string(),
+        projectNumber: z.string(),
+        projectTitle: z.string(),
+        customerName: z.string(),
+        company: z.string(),
+        serviceDate: z.string(),
+        dueDate: z.string(),
+        netTotal: z.number(),
+        grossTotal: z.number(),
+        updatedAt: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    sender: z
+      .object({
+        userId: z.string(),
+        name: z.string(),
+        email: z.string(),
+        connected: z.boolean(),
+      })
+      .strict(),
+    payload: invoiceDeliveryPayloadSchema,
+    attachments: z.array(
+      z
+        .object({
+          name: z.string(),
+          contentType: z.string(),
+          size: z.number().int().nonnegative(),
+          sha256: z.string().length(64),
+        })
+        .strict()
+    ),
+    validation: z
+      .object({
+        technical: z
+          .object({
+            valid: z.boolean(),
+            issues: z.array(
+              z
+                .object({
+                  severity: z.enum(["error", "warning", "info"]),
+                  code: z.string(),
+                  message: z.string(),
+                })
+                .strict()
+            ),
+          })
+          .strict()
+          .nullable(),
+        kosit: z
+          .object({
+            available: z.boolean(),
+            valid: z.boolean(),
+            status: z.enum([
+              "not-configured",
+              "accepted",
+              "rejected",
+              "failed",
+            ]),
+            message: z.string(),
+            issues: z.array(
+              z
+                .object({
+                  severity: z.enum(["error", "warning", "info"]),
+                  message: z.string(),
+                })
+                .strict()
+            ),
+          })
+          .strict()
+          .nullable(),
+        zugferd: z
+          .object({
+            converted: z.boolean(),
+            conversionMessage: z.string(),
+            validated: z.boolean(),
+            validationMessage: z.string(),
+          })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
+    warnings: z.array(z.string()),
+    blockingIssues: z.array(z.string()),
+    fingerprint: z.string().length(64),
+  })
+  .strict();
+
 export type JarvisTaskDraftBinding = {
   organizationId: string;
   sessionId: string;
@@ -796,6 +902,7 @@ async function appendAuditEvent(
         | "vehicleCalculation"
         | "offer"
         | "invoice"
+        | "documentMailDispatch"
         | "projectLogbookEntry"
         | "taskComment";
     };
@@ -3314,6 +3421,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "invoice.finalize") {
     return getJarvisInvoiceFinalizationDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "document.send") {
+    return getJarvisInvoiceDeliveryDraft(previewId, binding, now);
   }
   if (
     draft?.actionId === "project-logbook.prepare" ||
@@ -8349,6 +8459,813 @@ export async function confirmJarvisInvoiceFinalizationDraft(
     throw new JarvisActionDraftError(
       "execution_failed",
       "Die Rechnung wurde nicht fakturiert und die Vorschau bleibt zur Prüfung erhalten.",
+      500
+    );
+  }
+}
+
+function maySendInvoiceDelivery(binding: JarvisTaskDraftBinding) {
+  return (
+    canSendInvoiceDocuments(binding.profile.sessionActor) &&
+    canSendInvoiceDocuments(binding.profile.effectiveActor)
+  );
+}
+
+function validateInvoiceDeliveryBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Versandfreigabe gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit der Dokumentprüfung geändert. Bitte erstelle eine neue Versandfreigabe.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis der Versandfreigabe ist ungültig.",
+      409
+    );
+  }
+  const payload = invoiceDeliveryPayloadSchema.safeParse(draft.payload);
+  const context = invoiceDeliveryContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "document.send" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash ||
+    hashJson(payload.data) !== hashJson(context.data.payload)
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Versanddaten oder Dokumentprüfkontext stimmen nicht mit dem Integritätsnachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundInvoiceDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Die Versandfreigabe wurde nicht gefunden.",
+      404
+    );
+  }
+  validateInvoiceDeliveryBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateInvoiceDeliveryBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function toJarvisInvoiceDeliveryDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisInvoiceDeliveryDraftView {
+  const { payload, context } = validateInvoiceDeliveryBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = maySendInvoiceDelivery(binding);
+  const uncertain =
+    state === "executing" && draft.lastErrorCode === "delivery_uncertain";
+  const ready =
+    state === "awaiting_confirmation" &&
+    permitted &&
+    context.blockingIssues.length === 0;
+  const reason: JarvisInvoiceDeliveryDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : uncertain
+            ? "uncertain"
+            : state === "executing"
+              ? "executing"
+              : !permitted
+                ? "not_permitted"
+                : context.blockingIssues.length
+                  ? "blocked"
+                  : "ready";
+  const currency = (value: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: "EUR",
+    }).format(value);
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "document.send",
+    title: "Rechnung und Versand kontrolliert freigeben",
+    badge:
+      state === "executed"
+        ? "Versendet"
+        : uncertain
+          ? "Versand unklar"
+          : state === "executing"
+            ? "Wird versendet"
+            : state === "cancelled"
+              ? "Abgebrochen"
+              : state === "expired"
+                ? "Abgelaufen"
+                : ready
+                  ? "Bereit"
+                  : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    invoiceId: context.invoice.id,
+    projectId: context.invoice.projectId,
+    fields: [
+      { label: "Rechnung", value: context.invoice.invoiceNumber },
+      {
+        label: "Projekt",
+        value: `${context.invoice.projectNumber} · ${context.invoice.projectTitle}`,
+      },
+      { label: "Kunde", value: context.invoice.customerName || "–" },
+      { label: "Absender", value: context.sender.email || "–" },
+      { label: "Netto", value: currency(context.invoice.netTotal) },
+      { label: "Brutto", value: currency(context.invoice.grossTotal) },
+    ],
+    editor: {
+      to: payload.to.join(", "),
+      cc: payload.cc.join(", "),
+      bcc: payload.bcc.join(", "),
+      subject: payload.subject,
+      body: payload.body,
+      format: payload.format,
+      formatOptions: [
+        { value: "pdf", label: "PDF" },
+        { value: "xrechnung", label: "XRechnung XML" },
+        { value: "pdf-xrechnung", label: "PDF + XRechnung" },
+        { value: "zugferd", label: "ZUGFeRD PDF" },
+      ],
+    },
+    attachments: context.attachments,
+    validation: {
+      technical: context.validation.technical
+        ? {
+            valid: context.validation.technical.valid,
+            issues: context.validation.technical.issues.map(
+              (issue) => issue.message
+            ),
+          }
+        : null,
+      kosit: context.validation.kosit
+        ? {
+            available: context.validation.kosit.available,
+            valid: context.validation.kosit.valid,
+            message: context.validation.kosit.message,
+          }
+        : null,
+      zugferd: context.validation.zugferd,
+    },
+    warnings: context.warnings,
+    blockingIssues: [
+      ...context.blockingIssues,
+      ...(!permitted
+        ? ["Rechnungsversand ist für diese Rollenkombination nicht freigegeben."]
+        : []),
+      ...(uncertain
+        ? [
+            "Der Zustellstatus ist technisch unklar. Nicht automatisch erneut senden; zuerst Microsoft 365 und Versandprotokoll prüfen.",
+          ]
+        : []),
+    ],
+    confirmation: {
+      enabled: ready,
+      reason,
+      requiredText: getInvoiceDeliveryConfirmationText(
+        context.invoice.invoiceNumber,
+        payload.to[0] || ""
+      ),
+    },
+    cancellation: {
+      enabled:
+        state === "awaiting_input" || state === "awaiting_confirmation",
+    },
+    ...(state === "executed" && draft.resultEntityId
+      ? {
+          result: {
+            entityType: "documentMailDispatch" as const,
+            entityId: draft.resultEntityId,
+            label: "Versandprotokoll öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisInvoiceDeliveryDraft(input: {
+  preview: JarvisActionPreview<"document.send">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für einen Rechnungsversand ist eine aktuelle serverseitige Sitzung erforderlich.",
+      401
+    );
+  }
+  if (!maySendInvoiceDelivery(input)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keine Rechnung versenden.",
+      403
+    );
+  }
+  const actorUserId = input.profile.effectiveActor.id;
+  if (!actorUserId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für einen Rechnungsversand ist eine eindeutig zugeordnete Sitzung erforderlich.",
+      401
+    );
+  }
+  const now = input.now ?? new Date();
+  let evaluation: InvoiceDeliveryEvaluation;
+  try {
+    evaluation = await evaluateInvoiceDelivery({
+      organizationId: input.organizationId,
+      actorUserId,
+      invoiceId: input.preview.payload.invoiceId,
+    });
+  } catch (error) {
+    if (error instanceof InvoiceDeliveryServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "not_found" ? "not_found" : "invalid_input",
+        error.message,
+        error.code === "not_found" ? 404 : 409
+      );
+    }
+    throw error;
+  }
+  const payload = invoiceDeliveryPayloadSchema.parse(evaluation.payload);
+  const context = invoiceDeliveryContextSchema.parse(evaluation);
+  const actorIds = getActorIds(input.profile);
+  const state =
+    context.blockingIssues.length === 0
+      ? "awaiting_confirmation"
+      : "awaiting_input";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "document.send",
+    state,
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode:
+      context.blockingIssues.length > 0 ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft,
+      eventType:
+        state === "awaiting_confirmation"
+          ? "draft_created_ready"
+          : "draft_created_blocked",
+    });
+    return draft;
+  });
+  return toJarvisInvoiceDeliveryDraftView(created, input);
+}
+
+export async function getJarvisInvoiceDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundInvoiceDeliveryDraft(
+    previewId,
+    binding,
+    now
+  );
+  return toJarvisInvoiceDeliveryDraftView(draft, binding);
+}
+
+export async function completeJarvisInvoiceDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  rawInput: unknown,
+  now = new Date()
+) {
+  const completed = z
+    .object({
+      revision: z.number().int().min(1),
+      to: z.union([z.string(), z.array(z.string())]),
+      cc: z.union([z.string(), z.array(z.string())]).optional(),
+      bcc: z.union([z.string(), z.array(z.string())]).optional(),
+      subject: z.string(),
+      body: z.string(),
+      format: z.enum(["pdf", "xrechnung", "pdf-xrechnung", "zugferd"]),
+    })
+    .strict()
+    .safeParse(rawInput);
+  if (!completed.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Empfänger, Betreff, Nachricht und Rechnungsformat müssen vollständig angegeben werden.",
+      400
+    );
+  }
+  const loaded = await loadBoundInvoiceDeliveryDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as never)) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Versandfreigabe kann nicht mehr bearbeitet werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (completed.data.revision !== loaded.draft.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Versandfreigabe wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  let payload;
+  let evaluation;
+  try {
+    payload = normalizeInvoiceDeliveryPayload({
+      invoiceId: loaded.payload.invoiceId,
+      ...completed.data,
+    });
+    evaluation = await evaluateInvoiceDelivery({
+      organizationId: binding.organizationId,
+      actorUserId: loaded.draft.effectiveActorId,
+      invoiceId: loaded.payload.invoiceId,
+      payload,
+    });
+  } catch (error) {
+    if (error instanceof InvoiceDeliveryServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "not_found" ? "not_found" : "invalid_input",
+        error.message,
+        error.code === "not_found" ? 404 : 409
+      );
+    }
+    throw error;
+  }
+  const context = invoiceDeliveryContextSchema.parse(evaluation);
+  const state =
+    context.blockingIssues.length === 0
+      ? "awaiting_confirmation"
+      : "awaiting_input";
+  const revision = loaded.draft.revision + 1;
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state,
+    revision,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    lastErrorCode:
+      context.blockingIssues.length > 0 ? "invalid_input" : null,
+  };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state,
+        revision,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        payloadHash: nextData.payloadHash,
+        contextHash: nextData.contextHash,
+        lastErrorCode: nextData.lastErrorCode,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Versandfreigabe wurde zwischenzeitlich verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType:
+        state === "awaiting_confirmation"
+          ? "draft_recalculated"
+          : "draft_validation_failed",
+      ...(state !== "awaiting_confirmation"
+        ? { reasonCode: "invalid_input" }
+        : {}),
+    });
+    return current;
+  });
+  return toJarvisInvoiceDeliveryDraftView(updated, binding);
+}
+
+export async function cancelJarvisInvoiceDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundInvoiceDeliveryDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (draft.state === "cancelled") {
+    return toJarvisInvoiceDeliveryDraftView(draft, binding);
+  }
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) {
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Versandfreigabe kann nicht mehr abgebrochen werden.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (expectedRevision !== draft.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Versandfreigabe wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Versandfreigabe wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisInvoiceDeliveryDraftView(cancelled, binding);
+}
+
+async function markInvoiceDeliveryDraftFailure(
+  draftId: string,
+  binding: JarvisTaskDraftBinding,
+  code: string
+) {
+  try {
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({
+        where: { id: draftId },
+      });
+      if (
+        !current ||
+        current.state !== "executing" ||
+        !integrityMatches(current)
+      ) {
+        return;
+      }
+      const nextData: DraftIntegrityData = {
+        ...current,
+        lastErrorCode: code,
+      };
+      const changed = await tx.jarvisActionDraft.updateMany({
+        where: {
+          id: current.id,
+          state: "executing",
+          integrityTag: current.integrityTag,
+        },
+        data: {
+          lastErrorCode: code,
+          integrityTag: createIntegrityTag(nextData),
+        },
+      });
+      if (changed.count !== 1) return;
+      const updated = await tx.jarvisActionDraft.findUniqueOrThrow({
+        where: { id: current.id },
+      });
+      validateInvoiceDeliveryBinding(updated, binding);
+      await appendAuditEvent(tx, {
+        draft: updated,
+        eventType:
+          code === "delivery_uncertain"
+            ? "delivery_status_uncertain"
+            : "execution_failed",
+        reasonCode: code,
+      });
+    });
+  } catch {
+    // Der ursprüngliche Versandfehler bleibt maßgeblich.
+  }
+}
+
+export async function confirmJarvisInvoiceDeliveryDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  confirmationText: string,
+  request?: Request,
+  now = new Date()
+) {
+  const loaded = await loadBoundInvoiceDeliveryDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (loaded.draft.state === "executed") {
+    return toJarvisInvoiceDeliveryDraftView(loaded.draft, binding);
+  }
+  if (
+    !matchesInvoiceDeliveryConfirmation(
+      loaded.context.invoice.invoiceNumber,
+      loaded.payload.to[0] || "",
+      confirmationText
+    )
+  ) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      `Gib zur kritischen Bestätigung exakt „${getInvoiceDeliveryConfirmationText(
+        loaded.context.invoice.invoiceNumber,
+        loaded.payload.to[0] || ""
+      )}“ ein.`,
+      400
+    );
+  }
+  if (
+    expectedRevision !== loaded.draft.revision ||
+    loaded.draft.state !== "awaiting_confirmation"
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Nur die aktuelle, vollständig geprüfte Versandfreigabe darf bestätigt werden.",
+      409
+    );
+  }
+  if (!maySendInvoiceDelivery(binding)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keine Rechnung versenden.",
+      403
+    );
+  }
+  let claimed: JarvisActionDraft | undefined;
+  try {
+    claimed = await prisma.$transaction(
+      async (tx) => {
+        const current = await tx.jarvisActionDraft.findUnique({
+          where: { id: loaded.draft.id },
+        });
+        if (!current) {
+          throw new JarvisActionDraftError(
+            "not_found",
+            "Die Versandfreigabe wurde nicht gefunden.",
+            404
+          );
+        }
+        const parsed = validateInvoiceDeliveryBinding(current, binding);
+        if (current.state === "executed") return current;
+        if (
+          current.state !== "awaiting_confirmation" ||
+          current.expiresAt.getTime() <= now.getTime()
+        ) {
+          throw new JarvisActionDraftError(
+            current.expiresAt.getTime() <= now.getTime()
+              ? "expired"
+              : "conflict",
+            "Die Versandfreigabe ist nicht mehr ausführbar.",
+            current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+          );
+        }
+        const actor = await tx.user.findFirst({
+          where: {
+            id: current.effectiveActorId,
+            organizationId: binding.organizationId,
+            isActive: true,
+          },
+        });
+        if (!actor || !canSendInvoiceDocuments(actor)) {
+          throw new JarvisActionDraftError(
+            "role_changed",
+            "Absender oder Rechnungsversandberechtigung sind nicht mehr aktuell.",
+            409
+          );
+        }
+        if (parsed.context.blockingIssues.length) {
+          throw new JarvisActionDraftError(
+            "invalid_input",
+            parsed.context.blockingIssues.join(" · "),
+            409
+          );
+        }
+        const claimedData: DraftIntegrityData = {
+          ...current,
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+        };
+        const changed = await tx.jarvisActionDraft.updateMany({
+          where: {
+            id: current.id,
+            revision: current.revision,
+            state: "awaiting_confirmation",
+            integrityTag: current.integrityTag,
+          },
+          data: {
+            state: "executing",
+            confirmedAt: now,
+            lastErrorCode: null,
+            integrityTag: createIntegrityTag(claimedData),
+          },
+        });
+        if (changed.count !== 1) {
+          throw new JarvisActionDraftError(
+            "conflict",
+            "Der Rechnungsversand wird bereits ausgeführt.",
+            409
+          );
+        }
+        return tx.jarvisActionDraft.findUniqueOrThrow({
+          where: { id: current.id },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    const claimedDraft = claimed;
+    if (claimedDraft.state === "executed") {
+      return toJarvisInvoiceDeliveryDraftView(claimedDraft, binding);
+    }
+    const parsed = validateInvoiceDeliveryBinding(claimedDraft, binding);
+    const actorName = parsed.context.sender.name || "JARVIS";
+    const delivery = await sendInvoiceDelivery({
+      organizationId: binding.organizationId,
+      actorUserId: claimedDraft.effectiveActorId,
+      actorName,
+      dispatchId: claimedDraft.id,
+      invoiceId: parsed.payload.invoiceId,
+      payload: parsed.payload,
+      expectedFingerprint: parsed.context.fingerprint,
+      request,
+      source: "jarvis",
+    });
+    const executedAt = new Date();
+    const executedData: DraftIntegrityData = {
+      ...claimedDraft,
+      state: "executed",
+      executedAt,
+      resultEntityType: "documentMailDispatch",
+      resultEntityId: delivery.dispatch.id,
+      lastErrorCode: null,
+    };
+    const executed = await prisma.$transaction(async (tx) => {
+      const changed = await tx.jarvisActionDraft.updateMany({
+        where: {
+          id: claimedDraft.id,
+          state: "executing",
+          integrityTag: claimedDraft.integrityTag,
+        },
+        data: {
+          state: "executed",
+          executedAt,
+          resultEntityType: "documentMailDispatch",
+          resultEntityId: delivery.dispatch.id,
+          lastErrorCode: null,
+          integrityTag: createIntegrityTag(executedData),
+        },
+      });
+      if (changed.count !== 1) {
+        throw new InvoiceDeliveryServiceError(
+          "delivery_uncertain",
+          "Microsoft 365 hat den Versand angenommen, aber der JARVIS-Abschlussstatus ist technisch unklar. Nicht erneut senden."
+        );
+      }
+      const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+        where: { id: claimedDraft.id },
+      });
+      await appendAuditEvent(tx, {
+        draft: current,
+        eventType: "draft_confirmed_and_executed",
+        result: {
+          id: delivery.dispatch.id,
+          entityType: "documentMailDispatch",
+        },
+      });
+      return current;
+    });
+    return toJarvisInvoiceDeliveryDraftView(executed, binding);
+  } catch (error) {
+    const code =
+      error instanceof InvoiceDeliveryServiceError
+        ? error.code
+        : "execution_failed";
+    if (typeof claimed !== "undefined") {
+      await markInvoiceDeliveryDraftFailure(
+        claimed.id,
+        binding,
+        code === "delivery_uncertain"
+          ? "delivery_uncertain"
+          : "delivery_failed"
+      );
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof InvoiceDeliveryServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "delivery_uncertain"
+          ? "conflict"
+          : error.code === "stale_context"
+            ? "stale_context"
+            : "execution_failed",
+        error.message,
+        error.code === "delivery_uncertain" ||
+          error.code === "stale_context"
+          ? 409
+          : 500
+      );
+    }
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Die Rechnung wurde nicht versendet. Der Entwurf bleibt zur technischen Prüfung gesperrt.",
       500
     );
   }

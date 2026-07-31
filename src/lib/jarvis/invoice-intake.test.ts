@@ -4,6 +4,7 @@ import {
   extractInvoiceNumber,
   extractInvoiceServiceDate,
   looksLikeInvoiceDraftRequest,
+  looksLikeInvoiceDeliveryRequest,
   looksLikeInvoiceFinalizationRequest,
 } from "@/lib/jarvis/invoice-intake";
 
@@ -13,6 +14,22 @@ describe("JARVIS invoice intake", () => {
     expect(looksLikeInvoiceDraftRequest("Zeig mir offene Rechnungen")).toBe(false);
     expect(looksLikeInvoiceDraftRequest("Fakturiere und versende die Rechnung")).toBe(false);
     expect(looksLikeInvoiceDraftRequest("Storniere die Rechnung")).toBe(false);
+  });
+
+  it("recognizes an isolated invoice delivery and rejects action chains", () => {
+    expect(
+      looksLikeInvoiceDeliveryRequest("Sende Rechnung RE-10124")
+    ).toBe(true);
+    expect(
+      looksLikeInvoiceDeliveryRequest(
+        "Fakturiere und versende Rechnung RE-10124"
+      )
+    ).toBe(false);
+    expect(
+      looksLikeInvoiceDeliveryRequest(
+        "Sende Rechnung RE-10124 und lösche das Projekt"
+      )
+    ).toBe(false);
   });
 
   it("recognizes isolated finalization and excludes combined critical actions", () => {

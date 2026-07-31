@@ -2249,6 +2249,36 @@ mit dem `projectPrefix` des gewählten Gewerks und bildet den Titel als
 `SON`. Die öffentliche Leistungsauswahl zeigt zuerst Grünpflege,
 Objektbetreuung und Hausmeisterservice; 13 weitere freigegebene Optionen liegen
 hinter einem deutlichen Aufklapper.
+
+## 19. Kontrollierte Rechnungszustellung
+
+Rechnungsfakturierung und Rechnungsversand sind zwei getrennte kritische
+Aktionen. Ein Versandwunsch kann nur für eine bereits fakturierte
+organisationsgebundene Rechnung eine persistente Vorschau erzeugen. Die
+Vorschau zeigt und bindet:
+
+- wirksamen Absender und verbundenes Microsoft-365-Konto,
+- Empfänger, CC, BCC, Betreff und Nachricht,
+- PDF, XRechnung, PDF plus XRechnung oder validiertes ZUGFeRD,
+- konkrete Anhangsnamen, Größen und SHA-256-Hashes,
+- technische XRechnungs-, optionale KoSIT- und ZUGFeRD/PDF-A-3-Prüfung,
+- Rechnung, Projekt, Kunde, Betrag, Status und aktuellen Änderungsstand.
+
+Nach jeder Bearbeitung wird das gesamte Paket serverseitig neu erzeugt und
+geprüft. Erst die exakt angezeigte Phrase
+`SENDEN <Rechnungsnummer> AN <erste Empfängeradresse>` gibt den gebundenen
+Stand frei. Vor Microsoft Graph wird ein Versanddatensatz unter globalem
+Advisory-Lock mit `sending` beansprucht. Ein bereits als `sent` bestätigter
+Auftrag ist ein sicherer Replay ohne zweite Mail. `sending`, `failed` oder ein
+nach externer Annahme nicht eindeutig speicherbarer Status werden niemals
+automatisch wiederholt. Die normale Versandmaske verwendet denselben
+Versand-Claim und denselben Microsoft-Graph-Adapter.
+
+Der Vertikalschnitt übernimmt keine Mahnung, Bezahlt-Markierung, Stornierung
+oder Projektänderung. Kombinierte kritische Aktionsketten bleiben fail-closed.
+Der permanente Korpus behält exakt 110 Fälle und enthält nun zusätzlich den
+kontrollierten Rechnungsversand mit sichtbarer Empfänger- und
+Dokumentvorschau.
 # Aktueller Ausbau: Projektbestand und fachlicher Prüfstatus
 
 - Der organisationsgebundene Projektbestandsadapter beantwortet Zähl-,

@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisInvoiceDraft: vi.fn(),
   cancelJarvisInvoiceFinalizationDraft: vi.fn(),
   confirmJarvisInvoiceFinalizationDraft: vi.fn(),
+  completeJarvisInvoiceDeliveryDraft: vi.fn(),
+  cancelJarvisInvoiceDeliveryDraft: vi.fn(),
+  confirmJarvisInvoiceDeliveryDraft: vi.fn(),
   completeJarvisTimeDraft: vi.fn(),
   cancelJarvisTimeDraft: vi.fn(),
   confirmJarvisTimeDraft: vi.fn(),
@@ -60,6 +63,12 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.cancelJarvisInvoiceFinalizationDraft,
   confirmJarvisInvoiceFinalizationDraft:
     mocks.confirmJarvisInvoiceFinalizationDraft,
+  completeJarvisInvoiceDeliveryDraft:
+    mocks.completeJarvisInvoiceDeliveryDraft,
+  cancelJarvisInvoiceDeliveryDraft:
+    mocks.cancelJarvisInvoiceDeliveryDraft,
+  confirmJarvisInvoiceDeliveryDraft:
+    mocks.confirmJarvisInvoiceDeliveryDraft,
   completeJarvisTimeDraft: mocks.completeJarvisTimeDraft,
   cancelJarvisTimeDraft: mocks.cancelJarvisTimeDraft,
   confirmJarvisTimeDraft: mocks.confirmJarvisTimeDraft,
@@ -227,6 +236,25 @@ describe("JARVIS action-draft API", () => {
         entityType: "invoice",
         entityId: "invoice-1",
         label: "Öffnen",
+      },
+    });
+    mocks.completeJarvisInvoiceDeliveryDraft.mockResolvedValue({
+      ...draft,
+      actionId: "document.send",
+    });
+    mocks.cancelJarvisInvoiceDeliveryDraft.mockResolvedValue({
+      ...draft,
+      actionId: "document.send",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisInvoiceDeliveryDraft.mockResolvedValue({
+      ...draft,
+      actionId: "document.send",
+      state: "executed",
+      result: {
+        entityType: "documentMailDispatch",
+        entityId: "dispatch-1",
+        label: "Versandprotokoll öffnen",
       },
     });
     mocks.completeJarvisTimeDraft.mockResolvedValue({
@@ -925,6 +953,38 @@ describe("JARVIS action-draft API", () => {
     );
     expect(mocks.confirmJarvisInvoiceDraft).not.toHaveBeenCalled();
     expect(mocks.confirmJarvisTaskDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the bound phrase and request to invoice delivery", async () => {
+    const requestValue = request(
+      "POST",
+      {
+        actorId: "user-1",
+        actionId: "document.send",
+        command: "confirm",
+        revision: 3,
+        confirmationText: "SENDEN RE-10124 AN rechnung@kunde.de",
+        replaceRecipientAfterConfirmation: "attacker@example.com",
+      },
+      {
+        "x-jarvis-action": "jarvis-action-draft-v2",
+        origin: "https://workpilot.example",
+      }
+    ) as never;
+    const response = (await POST(requestValue, context))!;
+
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisInvoiceDeliveryDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.anything(),
+      3,
+      "SENDEN RE-10124 AN rechnung@kunde.de",
+      requestValue
+    );
+    expect(
+      mocks.confirmJarvisInvoiceFinalizationDraft
+    ).not.toHaveBeenCalled();
+    expect(mocks.confirmJarvisInvoiceDraft).not.toHaveBeenCalled();
   });
 
   it("rejects unknown commands without touching draft state", async () => {

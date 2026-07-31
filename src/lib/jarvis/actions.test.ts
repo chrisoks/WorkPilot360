@@ -46,6 +46,21 @@ describe("JARVIS action registry", () => {
     });
   });
 
+  it("releases invoice delivery only as a critical confirmed action", () => {
+    const profile = createJarvisAccessProfile({
+      id: "gf",
+      role: Role.GESCHAEFTSFUEHRER,
+    });
+    const decision = getJarvisActionDecision("document.send", profile);
+
+    expect(decision).toMatchObject({
+      permitted: true,
+      executable: true,
+      reason: "allowed",
+      requiresConfirmation: true,
+    });
+  });
+
   it("exposes the released, service-guarded action-center slices to employees", () => {
     const profile = createJarvisAccessProfile({
       id: "employee",

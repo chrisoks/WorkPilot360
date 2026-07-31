@@ -96,6 +96,7 @@ import {
   createPersistedJarvisOfferDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
+  createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
   createPersistedJarvisTimeDraft,
@@ -119,6 +120,7 @@ import {
   extractInvoiceNumber,
   extractInvoiceServiceDate,
   looksLikeInvoiceDraftRequest,
+  looksLikeInvoiceDeliveryRequest,
   looksLikeInvoiceFinalizationRequest,
 } from "@/lib/jarvis/invoice-intake";
 
@@ -391,6 +393,123 @@ async function buildJarvisInvoiceFinalizationDraft(input: {
           ? error.message
           : "Die Fakturavorschau konnte nicht sicher vorbereitet werden."
       } Es wurde nichts fakturiert.`,
+    };
+  }
+}
+
+async function buildJarvisInvoiceDeliveryDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-send.session-required",
+      message:
+        "Für einen kontrollierten Rechnungsversand ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts versendet.",
+    };
+  }
+  const invoiceNumber = extractInvoiceNumber(input.question);
+  const invoice = invoiceNumber
+    ? await prisma.invoice.findFirst({
+        where: {
+          invoiceNumber: {
+            equals: invoiceNumber,
+            mode: "insensitive",
+          },
+          organizationId: input.organizationId,
+        },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          customerName: true,
+          status: true,
+          isPaid: true,
+        },
+      })
+    : null;
+  if (!invoice) {
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        organizationId: input.organizationId,
+        OR: [
+          { status: "Fakturiert" },
+          { status: "Bezahlt" },
+          { isPaid: true },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: { invoiceNumber: true, customerName: true },
+    });
+    return {
+      type: "clarification" as const,
+      topicId: "action.invoice-send.choose",
+      message:
+        invoices.length > 0
+          ? "Welche fakturierte Rechnung soll kontrolliert versendet werden? Es wurde noch nichts versendet."
+          : "Es gibt aktuell keine fakturierte Rechnung, die JARVIS versenden könnte.",
+      choices: invoices.map((candidate) =>
+        createJarvisDialogChoice(
+          `invoice-send-${candidate.invoiceNumber}`,
+          `${candidate.invoiceNumber} · ${candidate.customerName || "ohne Kunde"}`,
+          `Sende Rechnung ${candidate.invoiceNumber}`
+        )
+      ),
+    };
+  }
+  if (
+    invoice.status !== "Fakturiert" &&
+    invoice.status !== "Bezahlt" &&
+    !invoice.isPaid
+  ) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-send.invalid-state",
+      message: `${invoice.invoiceNumber} ist noch nicht fakturiert und darf deshalb nicht versendet werden. Es wurde nichts versendet.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "document.send",
+    payload: { invoiceId: invoice.id },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-send.refused",
+      message: `${preview.message} Es wurde nichts versendet.`,
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisInvoiceDeliveryDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.invoice-send",
+      message:
+        "Ich habe eine kontrollierte Versandvorschau vorbereitet. Prüfe Empfänger, Betreff, Nachricht, Dokumentformat, Anhänge und technische Validierung. Erst die exakt angezeigte kritische Bestätigungsphrase übergibt diese Rechnung einmalig an Microsoft 365.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-send.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Die Versandvorschau konnte nicht sicher vorbereitet werden."
+      } Es wurde nichts versendet.`,
     };
   }
 }
@@ -1203,7 +1322,7 @@ function resolveExplicitSafetyPolicyQuestion(question: string) {
       type: "answer" as const,
       topicId: "jarvis.safety.invoice-send",
       message:
-        "Nein. JARVIS versendet Rechnungen nicht eigenständig. Ein Versand ist eine finanzielle Außenwirkung und benötigt den freigegebenen Rechnungsablauf, eine sichtbare Vorschau, Rollen- und Organisationsprüfung sowie eine bewusste menschliche Bestätigung.",
+        "JARVIS versendet Rechnungen nicht eigenständig. Für eine bereits fakturierte Rechnung kann JARVIS jetzt eine kontrollierte Versandvorschau mit sichtbarem Empfänger, Dokumentformat, Anhängen und technischer Prüfung vorbereiten. Erst eine berechtigte Person kann den Versand mit der exakt angezeigten kritischen Phrase einmalig freigeben.",
       deterministic: true,
     };
   }
@@ -1251,18 +1370,6 @@ function resolveExplicitSafetyPolicyQuestion(question: string) {
       topicId: "jarvis.safety.project-delete",
       message:
         "Das Projekt wurde nicht gelöscht. Eine Projektlöschung ist irreversibel und für JARVIS nicht freigegeben; sie darf nur über den berechtigten Verwaltungsweg mit eindeutigem Ziel, sichtbaren Folgen und bewusster menschlicher Bestätigung erfolgen.",
-      deterministic: true,
-    };
-  }
-  if (
-    /^\s*(?:send|sende|schick)\w*\b/.test(value) &&
-    /\brechnung\w*\b/.test(value)
-  ) {
-    return {
-      type: "refusal" as const,
-      topicId: "jarvis.safety.invoice-send",
-      message:
-        "Die Rechnung wurde nicht versendet. Rechnungsversand ist eine finanzielle Außenwirkung und für JARVIS noch nicht freigegeben; prüfe Empfänger, Dokument, Betrag und Versandweg im vorgesehenen Rechnungsablauf und bestätige dort bewusst.",
       deterministic: true,
     };
   }
@@ -1615,6 +1722,18 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  if (looksLikeInvoiceDeliveryRequest(message)) {
+    return respond(
+      await buildJarvisInvoiceDeliveryDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "sales"
+    );
   }
   if (looksLikeInvoiceFinalizationRequest(message)) {
     return respond(

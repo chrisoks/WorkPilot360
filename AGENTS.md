@@ -1,5 +1,24 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierter Rechnungsversand 2026-07-31:
+  Der siebte Action-Center-Vertikalschnitt versendet ausschließlich bereits
+  fakturierte Rechnungen. JARVIS zeigt Absender, Empfänger, CC/BCC, Betreff,
+  Nachricht, PDF-/XRechnung-/PDF+XRechnung-/ZUGFeRD-Format, die tatsächlich
+  erzeugten Anhänge samt Hash, technische Validierung, Warnungen und
+  Blockaden. Änderungen lösen eine neue serverseitige Paketprüfung aus.
+  Erst die exakte Phrase `SENDEN RE-... AN <erste Empfängeradresse>` darf den
+  gebundenen Versand einmalig an Microsoft 365 übergeben. Organisation,
+  Sitzung, Session- und Effektivrolle, Impersonation, Revision, TTL, HMAC,
+  Rechnungs-/Dokument-/Absenderfingerprint und Audit bleiben verbindlich.
+  Normale Versandmaske und JARVIS verwenden den gemeinsamen Microsoft-Graph-
+  Adapter und den gemeinsamen, advisory-lock-geschützten
+  `claimDocumentMailDispatch` aus
+  `src/lib/invoices/invoice-delivery-service.ts`. Der Versandauftrag wird vor
+  dem externen Aufruf mit Status `sending` gespeichert. `sent` wird sicher
+  wiederholt beantwortet; `sending`, fehlgeschlagen oder technisch unklar
+  wird niemals automatisch erneut gesendet. Fakturierung und Versand bleiben
+  zwei getrennte kritische Aktionen.
+
 - JARVIS kontrollierte Rechnungsfinalisierung 2026-07-31:
   Der sechste Action-Center-Vertikalschnitt fakturiert einen vorhandenen
   Rechnungsentwurf erst nach erneuter serverseitiger Fakturavorprüfung und
