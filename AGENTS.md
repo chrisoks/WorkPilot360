@@ -16,6 +16,18 @@
   Revision, TTL, HMAC, Mandant, Doppelklick und Replay bleiben fail-closed.
   Teilzahlungen sind im aktuellen Datenmodell ausdrücklich nicht enthalten;
   Mahnung, Versand und Storno werden nicht ausgelöst.
+  Produktiv abgenommen auf Code-Commit `5ed8f4e` mit Serverbackup
+  `/var/backups/workpilot360/before-jarvis-paid-status-20260731T124740Z`.
+  Lokal sind 1.413 Tests, TypeScript, Mojibake-/Regressionschecks, Prisma-
+  Validierung, leerer Prisma-Diff und der Build mit 90 Seiten grün. Der
+  authentifizierte permanente Korpus bestand lokal und produktiv jeweils
+  110/110 Fragen; `invoice.mark-paid` wurde als Vorschau erkannt und keine
+  Aktion ausgeführt. Der echte produktive Klicktest prüfte vollständigen
+  Betrag, leeres und erneut gültiges Zahlungsdatum, falsche Bestätigungsphrase
+  und Abbruch. RE-10119 blieb `Fakturiert`, unbezahlt und ohne
+  Zahlungshistorie; der einzige QA-Entwurf wurde vollständig bereinigt.
+  WorkPilot läuft seit der Abnahme unter PID `453840`; KlinikNavigator blieb
+  unverändert unter PID `398228`.
 
 - JARVIS kontrollierter Rechnungsversand 2026-07-31:
   Der siebte Action-Center-Vertikalschnitt versendet ausschließlich bereits
