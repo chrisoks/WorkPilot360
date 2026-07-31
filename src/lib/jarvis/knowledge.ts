@@ -1193,7 +1193,7 @@ const TOPICS: JarvisTopic[] = [
     keywords: ["winterdienst kalkulieren", "winterdienstrechner", "winterdienst paket", "streueinsatz kalkulieren"],
     surfaces: ["Kalkulations-Rechner"],
     answer:
-      "Öffne „Kalkulations-Rechner“ und wähle „Winterdienst“. Erfasse die Kalkulationsgrundlagen und berechne die Varianten. Rechnen ist ohne Zuordnung möglich; dauerhaft speichern oder als Paket in ein Angebot übernehmen kannst du erst nach Auswahl eines Projekts. Der Kunde wird daraus automatisch übernommen.",
+      "Du kannst JARVIS direkt mit „Kalkuliere Winterdienst …“ und den bekannten Grundlagen starten. JARVIS übernimmt nur ausdrücklich genannte Werte, fragt den Rest nach und rechnet alle Varianten mit der zentralen WorkPilot-Logik. Alternativ öffnest du „Kalkulations-Rechner“ und wählst „Winterdienst“. Rechnen ist ohne Zuordnung möglich; dauerhaft speichern kannst du erst nach Auswahl eines aktuellen Kundenprojekts und bewusster Bestätigung.",
   },
   {
     id: "vehicle.calculate",
@@ -1201,7 +1201,7 @@ const TOPICS: JarvisTopic[] = [
     keywords: ["fahrt kalkulieren", "fahrtenrechner", "fahrzeugkosten", "kilometer kalkulieren"],
     surfaces: ["Kalkulations-Rechner"],
     answer:
-      "Öffne „Kalkulations-Rechner“ und wähle „Fahrten“. Wähle ein Fahrzeug, trage die Gesamtstrecke ein und übernimm bei Bedarf einen aktuellen Kraftstoffpreis. Der Rechner berücksichtigt bewusst nur Fahrzeug- und Kraftstoffkosten, keine Personalkosten.",
+      "Du kannst JARVIS direkt nach den Kosten einer Fahrt mit benanntem Fahrzeug und Strecke fragen. JARVIS übernimmt eindeutige Angaben, lädt die aktuellen Fahrzeugwerte und verwendet transparent den Live-Kraftstoffpreis oder deine ausdrückliche manuelle Preisangabe. Alternativ öffnest du „Kalkulations-Rechner“ und wählst „Fahrten“. Der Rechner berücksichtigt bewusst nur Fahrzeug- und Kraftstoffkosten, keine Personalkosten.",
   },
 ];
 

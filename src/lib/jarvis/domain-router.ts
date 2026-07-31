@@ -7,6 +7,7 @@ import {
   type JarvisDialogState,
 } from "@/lib/jarvis/dialog-state";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
+import { looksLikeJarvisCalculatorRequest } from "@/lib/jarvis/calculator-intake";
 
 export type JarvisDomain = JarvisIntentDomain;
 
@@ -44,6 +45,7 @@ export function resolveJarvisDomain(
   question: string,
   previousState?: JarvisDialogState
 ): JarvisDomain {
+  if (looksLikeJarvisCalculatorRequest(question)) return "system";
   if (isNamedMainNavigationQuestion(question)) return "system";
   if (previousState) {
     return resolveJarvisConversationDomain(question, previousState);

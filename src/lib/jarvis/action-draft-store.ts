@@ -267,9 +267,32 @@ const winterCalculationInputSchema = z
   })
   .strict();
 
+const WINTER_CALCULATION_INPUT_KEYS = [
+  "areaSqm",
+  "readinessPricePerSqmPerMonth",
+  "seasonMonths",
+  "expectedDeployments",
+  "baseServiceMinutes",
+  "laborSalesRatePerHour",
+  "saltGramsPerSqm",
+  "saltSalesPricePerKg",
+  "plowTimeIncreasePercent",
+  "plowSaltIncreasePercent",
+  "mixedSpreadingPercent",
+  "mixedPlowingPercent",
+] as const satisfies readonly (keyof WinterServiceCalculationInput)[];
+
+const winterCalculationProvidedFieldSchema = z.enum(
+  WINTER_CALCULATION_INPUT_KEYS
+);
+
 const winterCalculationPayloadSchema = z
   .object({
     input: winterCalculationInputSchema,
+    providedFields: z
+      .array(winterCalculationProvidedFieldSchema)
+      .max(WINTER_CALCULATION_INPUT_KEYS.length)
+      .optional(),
     projectId: z.string().trim().max(120).optional(),
     note: z.string().trim().max(2000).optional(),
   })
@@ -279,6 +302,10 @@ const completeWinterCalculationDraftSchema = z
   .object({
     revision: z.number().int().min(1),
     input: winterCalculationInputSchema,
+    providedFields: z
+      .array(winterCalculationProvidedFieldSchema)
+      .max(WINTER_CALCULATION_INPUT_KEYS.length)
+      .optional(),
     projectId: z.string().trim().max(120),
     note: z.string().trim().max(2000),
   })
@@ -4920,7 +4947,21 @@ function maySaveWinterCalculation(binding: JarvisTaskDraftBinding) {
   );
 }
 
-function evaluateWinterCalculation(input: WinterServiceCalculationInput) {
+function evaluateWinterCalculation(
+  input: WinterServiceCalculationInput,
+  providedFields: readonly (keyof WinterServiceCalculationInput)[] =
+    WINTER_CALCULATION_INPUT_KEYS
+) {
+  const provided = new Set(providedFields);
+  const omittedFields = WINTER_CALCULATION_INPUT_KEYS.filter(
+    (field) => !provided.has(field)
+  ).map((field) => WINTER_INPUT_LABELS[field]);
+  if (omittedFields.length > 0) {
+    return {
+      result: undefined,
+      invalidFields: omittedFields,
+    };
+  }
   try {
     return {
       result: calculateWinterService(input),
@@ -5050,7 +5091,8 @@ export async function toJarvisWinterCalculationDraftView(
 ): Promise<JarvisWinterCalculationDraftView> {
   const { payload } = validateWinterCalculationBinding(draft, binding);
   const evaluation = evaluateWinterCalculation(
-    payload.input as WinterServiceCalculationInput
+    payload.input as WinterServiceCalculationInput,
+    payload.providedFields ?? WINTER_CALCULATION_INPUT_KEYS
   );
   const projectOptions = await getWinterCalculationProjectOptions(binding);
   const selectedProject = payload.projectId
@@ -5231,6 +5273,7 @@ export async function createPersistedJarvisWinterCalculationDraft(input: {
   }
   const payload = winterCalculationPayloadSchema.parse({
     input: EMPTY_WINTER_CALCULATION_INPUT,
+    providedFields: [],
     ...(projectId ? { projectId } : {}),
   });
   const payloadHash = hashJson(payload);
@@ -5344,7 +5387,8 @@ export async function completeJarvisWinterCalculationDraft(
     }
   }
   const calculation = evaluateWinterCalculation(
-    completed.data.input as WinterServiceCalculationInput
+    completed.data.input as WinterServiceCalculationInput,
+    completed.data.providedFields ?? WINTER_CALCULATION_INPUT_KEYS
   );
   const savePermitted = maySaveWinterCalculation(binding);
   let context: WinterCalculationContext = {};
@@ -5372,6 +5416,11 @@ export async function completeJarvisWinterCalculationDraft(
   }
   const nextPayload = winterCalculationPayloadSchema.parse({
     input: completed.data.input,
+    providedFields: Array.from(
+      new Set(
+        completed.data.providedFields ?? WINTER_CALCULATION_INPUT_KEYS
+      )
+    ),
     ...(savePermitted && completed.data.projectId
       ? { projectId: completed.data.projectId }
       : {}),

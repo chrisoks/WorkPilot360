@@ -1449,6 +1449,42 @@ describe("persistent JARVIS winter calculation drafts", () => {
     ).rejects.toMatchObject({ code: "scope_mismatch" });
   });
 
+  it("does not treat omitted zero-capable fields as explicit calculator assumptions", async () => {
+    const created = await createWinterDraft();
+    const partial = await completeJarvisWinterCalculationDraft(
+      created.previewId,
+      winterBinding(),
+      {
+        revision: created.revision,
+        input: winterInput,
+        providedFields: [
+          "areaSqm",
+          "seasonMonths",
+          "expectedDeployments",
+          "baseServiceMinutes",
+          "mixedSpreadingPercent",
+          "mixedPlowingPercent",
+        ],
+        projectId: "project-1",
+        note: "",
+      },
+      baseNow
+    );
+
+    expect(partial.state).toBe("awaiting_input");
+    expect(partial.calculation).toBeUndefined();
+    expect(partial.missingFields).toEqual(
+      expect.arrayContaining([
+        "Bereitschaftspreis",
+        "Stundenverrechnungssatz",
+        "Streugutmenge",
+        "Streugutpreis",
+        "Zeitaufschlag Räumen",
+        "Streugutaufschlag Räumen",
+      ])
+    );
+  });
+
   it("lets employees calculate with the central engine but strips project persistence", async () => {
     const created = await createWinterDraft(Role.MITARBEITER);
     expect(created.editor.projectId).toBe("");

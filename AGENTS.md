@@ -1,5 +1,26 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Kalkulationsrechner-Dialog 2026-07-31:
+  Das verbindliche Inventar in
+  `docs/JARVIS_KALKULATIONSRECHNER_INVENTAR.md` grenzt die zwei produktiv
+  freigegebenen Rechner Winterdienst und Fahrt/Fahrzeugkosten von
+  Fahrzeugstammdaten, vorbereiteter Vermietung, Katalog-Stammdatenkalkulation,
+  geschützten Mitarbeiterkosten und reinen Analysen ab. JARVIS erkennt
+  konkrete freie Sprachwünsche, übernimmt nur eindeutig genannte Werte und
+  zeigt die verbleibenden Pflichtangaben; ein allgemeiner Kalkulationsstart
+  bietet zuerst die beiden freigegebenen Rechner an. Winterdienst führt
+  zusätzlich einen expliziten Nachweis der vom Benutzer angegebenen Felder,
+  damit fachlich erlaubte Nullwerte möglich bleiben, leere Entwurfsnullen aber
+  niemals als stillschweigende Annahme berechnet werden. Fahrten lösen ein
+  eindeutig benanntes aktives Fahrzeug auf, übernehmen Strecke sowie
+  ausdrücklichen manuellen Preis oder Livepreiswunsch und verwenden weiterhin
+  ausschließlich aktuellen Fahrzeugstamm und zentrale Kraftstoffquelle.
+  Rechen-, Rollen-, Organisations-, Sitzungs-, Impersonations-, Revisions-,
+  HMAC-, TTL-, Snapshot-, Audit- und Exactly-once-Vertrag bleiben
+  unverändert. Fahrzeugvermietung, Katalogpreisänderungen und
+  Mitarbeiterkostendaten bleiben fail-closed beziehungsweise getrennte,
+  noch nicht freigegebene Hochrisikoaktionen.
+
 - JARVIS manuelle Zeiterfassung 2026-07-30:
   Der dritte produktive Action-Center-Vertikalschnitt bereitet natürliche
   Wünsche für manuelle Projektzeit, unproduktive Zeit und rückwirkend

@@ -90,6 +90,8 @@ import {
   extractJarvisTaskPreviewTitle,
 } from "@/lib/jarvis/action-center";
 import {
+  completeJarvisVehicleTripCalculationDraft,
+  completeJarvisWinterCalculationDraft,
   createPersistedJarvisPlanningDraft,
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
@@ -98,6 +100,12 @@ import {
   createPersistedJarvisWinterCalculationDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
+import {
+  extractJarvisVehicleCalculationIntake,
+  extractJarvisWinterCalculationIntake,
+  looksLikeGenericJarvisCalculatorStart,
+  matchJarvisVehicleOption,
+} from "@/lib/jarvis/calculator-intake";
 
 export const dynamic = "force-dynamic";
 
@@ -310,10 +318,10 @@ async function buildJarvisCommunicationDraft(input: {
 }
 
 function looksLikeWinterCalculationStartRequest(question: string) {
-  const value = normalizeJarvisIntentText(question);
+  const value = normalizePersonLabel(question);
   if (
     !/\bwinterdienst\w*\b/.test(value) ||
-    !/\b(?:kalkulier|berechne|rechne|rechnung|kalkulation|rechner)\w*\b/.test(
+    !/\b(?:kalkulier|berechne|rechne|rechnung|kalkulation|rechner|kostet|kosten)\w*\b/.test(
       value
     )
   ) {
@@ -324,7 +332,8 @@ function looksLikeWinterCalculationStartRequest(question: string) {
       value
     ) ||
     /\bich mochte\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value) ||
-    /\bmit jarvis\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value)
+    /\bmit jarvis\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value) ||
+    /^\s*was kostet\b/.test(value)
   );
 }
 
@@ -503,9 +512,9 @@ async function buildJarvisTimeDraft(input: {
 }
 
 function looksLikeVehicleTripCalculationStartRequest(question: string) {
-  const value = normalizeJarvisIntentText(question);
+  const value = normalizePersonLabel(question);
   const hasCalculation =
-    /\b\w*(?:kalkulier|berechne|rechne|rechnung|kalkulation|rechner)\w*\b/.test(
+    /\b\w*(?:kalkulier|berechne|rechne|rechnung|kalkulation|rechner|kostet)\w*\b/.test(
       value
     );
   const hasVehicleTripScope =
@@ -519,12 +528,13 @@ function looksLikeVehicleTripCalculationStartRequest(question: string) {
       value
     ) ||
     /\bich mochte\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value) ||
-    /\bmit jarvis\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value)
+    /\bmit jarvis\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value) ||
+    /^\s*was kostet\b/.test(value)
   );
 }
 
 function looksLikeVehicleRentalRequest(question: string) {
-  const value = normalizeJarvisIntentText(question);
+  const value = normalizePersonLabel(question);
   return (
     /\b\w*(?:vermiet|mietfahrzeug|mietpreis|fahrzeugmiete)\w*\b/.test(
       value
@@ -536,6 +546,7 @@ function looksLikeVehicleRentalRequest(question: string) {
 }
 
 async function buildJarvisVehicleTripCalculationDraft(input: {
+  question: string;
   organizationId: string;
   sessionId: string | null;
   accessProfile: ReturnType<typeof createJarvisAccessProfile>;
@@ -549,17 +560,45 @@ async function buildJarvisVehicleTripCalculationDraft(input: {
     };
   }
   try {
-    const actionDraft =
+    let actionDraft =
       await createPersistedJarvisVehicleTripCalculationDraft({
         organizationId: input.organizationId,
         sessionId: input.sessionId,
         profile: input.accessProfile,
       });
+    const intake = extractJarvisVehicleCalculationIntake(input.question);
+    const vehicle = matchJarvisVehicleOption(
+      input.question,
+      actionDraft.editor.vehicleOptions
+    );
+    if (vehicle || Object.keys(intake).length > 0) {
+      actionDraft = await completeJarvisVehicleTripCalculationDraft(
+        actionDraft.previewId,
+        {
+          organizationId: input.organizationId,
+          sessionId: input.sessionId,
+          profile: input.accessProfile,
+        },
+        {
+          revision: actionDraft.revision,
+          vehicleId: vehicle?.id ?? "",
+          distanceKm: intake.distanceKm ?? 0,
+          fuelPriceMode: intake.fuelPriceMode ?? "live",
+          manualFuelPricePerLiter:
+            intake.manualFuelPricePerLiter ?? 0,
+          note: "",
+        }
+      );
+    }
+    const missing =
+      actionDraft.missingFields.length > 0
+        ? ` Noch offen: ${actionDraft.missingFields.join(", ")}.`
+        : "";
     return {
       type: "answer" as const,
       topicId: "action.draft.vehicle-trip-calculation",
       message:
-        "Ich habe eine sichere Fahrten- und Fahrzeugkostenkalkulation vorbereitet. Wähle ein aktives Fahrzeug und die Strecke; JARVIS verwendet die aktuellen WorkPilot-Fahrzeugwerte und wahlweise den Live-Kraftstoffpreis oder einen transparenten manuellen Preis. Personalkosten sind in diesem Rechner ausdrücklich nicht enthalten. Erst deine ausdrückliche Bestätigung darf eine unveränderliche Kalkulationsversion speichern.",
+        `Ich habe die ausdrücklich genannten Angaben in eine sichere Fahrten- und Fahrzeugkostenkalkulation übernommen. JARVIS verwendet die aktuellen WorkPilot-Fahrzeugwerte und wahlweise den Live-Kraftstoffpreis oder einen transparenten manuellen Preis. Personalkosten sind in diesem Rechner ausdrücklich nicht enthalten.${missing} Erst deine ausdrückliche Bestätigung darf eine unveränderliche Kalkulationsversion speichern.`,
       actionDraft,
     };
   } catch (error) {
@@ -576,6 +615,7 @@ async function buildJarvisVehicleTripCalculationDraft(input: {
 }
 
 async function buildJarvisWinterCalculationDraft(input: {
+  question: string;
   organizationId: string;
   sessionId: string | null;
   accessProfile: ReturnType<typeof createJarvisAccessProfile>;
@@ -590,18 +630,45 @@ async function buildJarvisWinterCalculationDraft(input: {
     };
   }
   try {
-    const actionDraft =
+    let actionDraft =
       await createPersistedJarvisWinterCalculationDraft({
         organizationId: input.organizationId,
         sessionId: input.sessionId,
         profile: input.accessProfile,
         context: input.context,
       });
+    const intake = extractJarvisWinterCalculationIntake(input.question);
+    if (Object.keys(intake).length > 0) {
+      actionDraft = await completeJarvisWinterCalculationDraft(
+        actionDraft.previewId,
+        {
+          organizationId: input.organizationId,
+          sessionId: input.sessionId,
+          profile: input.accessProfile,
+        },
+        {
+          revision: actionDraft.revision,
+          input: {
+            ...actionDraft.editor.input,
+            ...intake,
+          },
+          providedFields: Object.keys(intake) as Array<
+            keyof typeof actionDraft.editor.input
+          >,
+          projectId: actionDraft.editor.projectId,
+          note: "",
+        }
+      );
+    }
+    const missing =
+      actionDraft.missingFields.length > 0
+        ? ` Noch offen: ${actionDraft.missingFields.join(", ")}.`
+        : "";
     return {
       type: "answer" as const,
       topicId: "action.draft.winter-calculation",
       message:
-        "Ich habe eine sichere Winterdienst-Kalkulation vorbereitet. Trage die Rechengrundlagen ein und lasse alle drei Varianten mit der zentralen WorkPilot-Logik berechnen. Die Berechnung selbst verändert keine Geschäftsdaten; dauerhaftes Speichern benötigt ein passendes Kundenprojekt, die vorhandene Rollenberechtigung und deine ausdrückliche Bestätigung.",
+        `Ich habe die ausdrücklich genannten Rechengrundlagen in eine sichere Winterdienst-Kalkulation übernommen; fehlende Werte wurden nicht geschätzt.${missing} Alle drei Varianten werden ausschließlich mit der zentralen WorkPilot-Logik berechnet. Die Vorschau verändert keine Geschäftsdaten; dauerhaftes Speichern benötigt ein passendes Kundenprojekt, die vorhandene Rollenberechtigung und deine ausdrückliche Bestätigung.`,
       actionDraft,
     };
   } catch (error) {
@@ -1267,6 +1334,59 @@ export async function POST(req: Request) {
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
   }
+  if (looksLikeWinterCalculationStartRequest(message)) {
+    return respond(
+      await buildJarvisWinterCalculationDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "system"
+    );
+  }
+  if (looksLikeVehicleTripCalculationStartRequest(message)) {
+    return respond(
+      await buildJarvisVehicleTripCalculationDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "system"
+    );
+  }
+  if (looksLikeVehicleRentalRequest(message)) {
+    return respond({
+      type: "refusal",
+      topicId: "action.vehicle-rental-not-released",
+      message:
+        "Fahrzeugvermietung, Mietpreise, Verfügbarkeit, Verträge und Rückgabechecks sind für JARVIS noch nicht fachlich freigegeben. Ich habe deshalb weder eine Kalkulation gestartet noch Daten verändert. Der sichere Fahrten- und Fahrzeugkostenrechner ohne Personalkosten bleibt davon getrennt verfügbar.",
+      deterministic: true,
+    });
+  }
+  if (looksLikeGenericJarvisCalculatorStart(message)) {
+    return respond({
+      type: "answer",
+      topicId: "action.calculator-choice",
+      message:
+        "Welchen freigegebenen Rechner soll ich verwenden? Winterdienst berechnet Bereitschaft, Einsatz-, Zeit- und Streugutvarianten. Fahrten/Fahrzeugkosten berechnet eine Strecke mit einem aktiven Fahrzeug und weist Fahrzeug- und Kraftstoffkosten ohne Personalkosten aus. Die Fahrzeugvermietung ist noch kein fachlich freigegebener Rechner.",
+      choices: [
+        createJarvisDialogChoice(
+          "calculator-winter",
+          "Winterdienst kalkulieren",
+          "Starte eine Winterdienst-Kalkulation"
+        ),
+        createJarvisDialogChoice(
+          "calculator-vehicle-trip",
+          "Fahrt kalkulieren",
+          "Starte eine Fahrtenkalkulation"
+        ),
+      ],
+      deterministic: true,
+    });
+  }
   const projectTypeOverview = resolveJarvisProjectTypeOverview(message);
   if (projectTypeOverview) {
     return respond(projectTypeOverview, "system");
@@ -1461,36 +1581,6 @@ export async function POST(req: Request) {
       }),
       "system"
     );
-  }
-  if (looksLikeWinterCalculationStartRequest(message)) {
-    return respond(
-      await buildJarvisWinterCalculationDraft({
-        organizationId: organization.id,
-        sessionId: actorResult.sessionId,
-        accessProfile,
-        context,
-      }),
-      "system"
-    );
-  }
-  if (looksLikeVehicleTripCalculationStartRequest(message)) {
-    return respond(
-      await buildJarvisVehicleTripCalculationDraft({
-        organizationId: organization.id,
-        sessionId: actorResult.sessionId,
-        accessProfile,
-      }),
-      "system"
-    );
-  }
-  if (looksLikeVehicleRentalRequest(message)) {
-    return respond({
-      type: "refusal",
-      topicId: "action.vehicle-rental-not-released",
-      message:
-        "Fahrzeugvermietung, Mietpreise, Verfügbarkeit, Verträge und Rückgabechecks sind für JARVIS noch nicht fachlich freigegeben. Ich habe deshalb weder eine Kalkulation gestartet noch Daten verändert. Der sichere Fahrten- und Fahrzeugkostenrechner ohne Personalkosten bleibt davon getrennt verfügbar.",
-      deterministic: true,
-    });
   }
   if (looksLikeManualTimeEntryRequest(message)) {
     return respond(

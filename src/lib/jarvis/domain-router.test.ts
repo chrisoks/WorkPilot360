@@ -27,6 +27,15 @@ describe("JARVIS domain router", () => {
   });
 
   it.each([
+    "Starte eine Kalkulation.",
+    "Kalkuliere Winterdienst: 1250 qm, 5 Saisonmonate, 18 Einsätze, Stundensatz 68 Euro pro Stunde.",
+    "Was kostet die Fahrt mit dem Crafter über 180 Kilometer?",
+    "Berechne mir einen Mietpreis für die Fahrzeugvermietung.",
+  ])("keeps calculator requests on the secure system route: %s", (question) => {
+    expect(resolveJarvisDomain(question)).toBe("system");
+  });
+
+  it.each([
     "Welche Prinzipien leiten dich?",
     "Wie helfen dir deine Prinzipien bei Entscheidungen im Alltag?",
     "Welchen Auftrag hast du gegenüber den Menschen im Unternehmen?",

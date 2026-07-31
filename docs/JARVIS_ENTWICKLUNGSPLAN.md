@@ -1145,6 +1145,24 @@ Umsetzungsstand 30.07.2026:
   fail-closed und wird erst nach eigener fachlicher Freigabe chronologisch
   fortgesetzt.
 
+Fortschreibung 31.07.2026:
+
+- Das vollständige Rechnerinventar ist in
+  `docs/JARVIS_KALKULATIONSRECHNER_INVENTAR.md` festgeschrieben. Produktiv
+  freigegebene Fachrechner sind Winterdienst und Fahrt/Fahrzeugkosten.
+  Fahrzeuge sind Stammdaten, keine weitere Formel; Vermietung bleibt
+  eingeschränkt. Katalog- und Mitarbeiterkostenmasken werden nicht als
+  freigegebene Snapshot-Rechner umgedeutet.
+- JARVIS übernimmt nun eindeutige Rechengrundlagen aus natürlicher Sprache.
+  Ein allgemeiner Startwunsch fragt zunächst nach dem gewünschten Rechner.
+  Ein konkreter Wunsch kann Fläche, Einsätze, Zeiten, Preise, Zuschläge und
+  Mischanteile beziehungsweise Fahrzeug, Strecke und Preisquelle vorbelegen.
+  Nur tatsächlich fehlende Angaben bleiben sichtbar offen.
+- Winterdienst-Nulleingaben besitzen einen expliziten Eingabenachweis.
+  Fachlich zulässige `0` ist weiterhin möglich, eine aus dem leeren Entwurf
+  stammende Null kann aber nicht mehr unbemerkt als Benutzerannahme in eine
+  berechenbare Vorschau gelangen.
+
 ### 7.16 Firmeneinstellungen
 
 - passende Einstellung öffnen,

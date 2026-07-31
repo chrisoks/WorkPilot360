@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
   createPersistedJarvisVehicleTripCalculationDraft: vi.fn(),
+  completeJarvisWinterCalculationDraft: vi.fn(),
+  completeJarvisVehicleTripCalculationDraft: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -97,6 +99,10 @@ vi.mock("@/lib/jarvis/project-dialog-intent", () => ({
 }));
 
 vi.mock("@/lib/jarvis/action-draft-store", () => ({
+  completeJarvisWinterCalculationDraft:
+    mocks.completeJarvisWinterCalculationDraft,
+  completeJarvisVehicleTripCalculationDraft:
+    mocks.completeJarvisVehicleTripCalculationDraft,
   createPersistedJarvisTaskDraft: mocks.createPersistedJarvisTaskDraft,
   createPersistedJarvisCommunicationDraft:
     mocks.createPersistedJarvisCommunicationDraft,
@@ -2693,6 +2699,82 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 
+  it("prefills explicitly stated winter values and leaves omitted values open", async () => {
+    mocks.completeJarvisWinterCalculationDraft.mockResolvedValue({
+      version: 2,
+      previewId: "winter-preview-1",
+      actionId: "winter-calculation.prepare",
+      state: "awaiting_input",
+      revision: 2,
+      missingFields: ["Saisonmonate", "Einsatzzeit"],
+      editor: { input: {}, projectId: "", note: "", projectOptions: [] },
+      confirmation: { enabled: false, reason: "missing_fields" },
+    });
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Kalkuliere Winterdienst für 850 qm und 14 Einsätze.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.message).toContain(
+      "Noch offen: Saisonmonate, Einsatzzeit"
+    );
+    expect(mocks.completeJarvisWinterCalculationDraft).toHaveBeenCalledWith(
+      "winter-preview-1",
+      expect.objectContaining({
+        organizationId: "organization-1",
+        sessionId: "session-1",
+      }),
+      expect.objectContaining({
+        revision: 1,
+        input: expect.objectContaining({
+          areaSqm: 850,
+          expectedDeployments: 14,
+        }),
+        providedFields: ["areaSqm", "expectedDeployments"],
+      })
+    );
+  });
+
+  it("routes a fully specified natural winter calculation deterministically", async () => {
+    mocks.completeJarvisWinterCalculationDraft.mockResolvedValue({
+      version: 2,
+      previewId: "winter-preview-full",
+      actionId: "winter-calculation.prepare",
+      state: "awaiting_confirmation",
+      revision: 2,
+      missingFields: ["Projekt zum dauerhaften Speichern"],
+      editor: { input: {}, projectId: "", note: "", projectOptions: [] },
+      confirmation: { enabled: false, reason: "missing_fields" },
+    });
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Kalkuliere Winterdienst für 1.250 m²: Bereitschaft 0,45 €/m² pro Monat, 5 Saisonmonate, 18 Einsätze, Einsatzzeit 55 Minuten, Stundensatz 68 €/h, 22 g/m², Salzpreis 1,35 €/kg, Zeitaufschlag 25 %, Salzaufschlag 50 %, Mischung 65/35.",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "action.draft.winter-calculation",
+    });
+    expect(mocks.completeJarvisWinterCalculationDraft).toHaveBeenCalled();
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
   it("opens a secure vehicle trip calculation draft without inventing vehicle values", async () => {
     const response = await POST(
       new Request("http://localhost/api/jarvis/chat", {
@@ -2733,6 +2815,93 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.createPersistedJarvisPlanningDraft).not.toHaveBeenCalled();
     expect(mocks.createPersistedJarvisTaskDraft).not.toHaveBeenCalled();
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("prefills a named vehicle, distance and explicit fuel price", async () => {
+    mocks.createPersistedJarvisVehicleTripCalculationDraft.mockResolvedValueOnce({
+      version: 2,
+      previewId: "vehicle-trip-preview-2",
+      actionId: "vehicle-trip-calculation.prepare",
+      state: "awaiting_input",
+      revision: 1,
+      missingFields: ["Aktives Fahrzeug", "Gesamtstrecke"],
+      editor: {
+        vehicleId: "",
+        distanceKm: 0,
+        fuelPriceMode: "live",
+        manualFuelPricePerLiter: 0,
+        note: "",
+        vehicleOptions: [
+          { id: "vehicle-1", label: "F-01 · Crafter · BI-OK 123" },
+        ],
+      },
+    });
+    mocks.completeJarvisVehicleTripCalculationDraft.mockResolvedValue({
+      version: 2,
+      previewId: "vehicle-trip-preview-2",
+      actionId: "vehicle-trip-calculation.prepare",
+      state: "awaiting_confirmation",
+      revision: 2,
+      missingFields: [],
+      editor: {
+        vehicleId: "vehicle-1",
+        distanceKm: 180,
+        fuelPriceMode: "manual",
+        manualFuelPricePerLiter: 1.72,
+        note: "",
+        vehicleOptions: [],
+      },
+      confirmation: { enabled: true, reason: "ready" },
+    });
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Was kostet die Fahrt mit dem Crafter über 180 km bei Dieselpreis 1,72 €/l?",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.completeJarvisVehicleTripCalculationDraft).toHaveBeenCalledWith(
+      "vehicle-trip-preview-2",
+      expect.objectContaining({ organizationId: "organization-1" }),
+      expect.objectContaining({
+        vehicleId: "vehicle-1",
+        distanceKm: 180,
+        fuelPriceMode: "manual",
+        manualFuelPricePerLiter: 1.72,
+      })
+    );
+  });
+
+  it("asks which released calculator to use for a generic start request", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Starte eine Kalkulation.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.calculator-choice",
+      deterministic: true,
+    });
+    expect(payload.choices).toHaveLength(2);
+    expect(mocks.createPersistedJarvisWinterCalculationDraft).not.toHaveBeenCalled();
+    expect(
+      mocks.createPersistedJarvisVehicleTripCalculationDraft
+    ).not.toHaveBeenCalled();
   });
 
   it("keeps vehicle rental fail-closed instead of opening the trip calculator", async () => {
