@@ -108,7 +108,7 @@ export async function evaluateOfferDecision(input: {
 
   const blockingIssues: string[] = [];
   if (offer.status === "Entwurf") blockingIssues.push("Angebotsentwürfe können noch nicht entschieden werden.");
-  if (["Gelöscht", "GelÃ¶scht"].includes(offer.status)) blockingIssues.push("Gelöschte Angebote können nicht entschieden werden.");
+  if (["Gelöscht", "Gel\u00c3\u00b6scht"].includes(offer.status)) blockingIssues.push("Gelöschte Angebote können nicht entschieden werden.");
   if (offer.wonAt) blockingIssues.push(`${offer.offerNumber} ist bereits als gewonnen markiert.`);
   if (offer.lostAt || ["Verloren", "Angebot verloren"].includes(offer.status)) {
     blockingIssues.push(`${offer.offerNumber} ist bereits als verloren markiert.`);
@@ -122,7 +122,7 @@ export async function evaluateOfferDecision(input: {
     ? await db.invoice.findMany({
         where: {
           organizationId: input.organizationId,
-          status: { notIn: ["Entwurf", "Gelöscht", "GelÃ¶scht", "Storniert"] },
+          status: { notIn: ["Entwurf", "Gelöscht", "Gel\u00c3\u00b6scht", "Storniert"] },
           OR: [
             { sourceOfferId: offer.id },
             { sourceOfferNumber: { equals: offer.offerNumber, mode: "insensitive" } },
@@ -234,7 +234,7 @@ export async function executeOfferDecision(input: {
     where: {
       id: input.offerId,
       organizationId: input.organizationId,
-      status: { notIn: ["Entwurf", "Gelöscht", "GelÃ¶scht", "Verloren", "Angebot verloren"] },
+      status: { notIn: ["Entwurf", "Gelöscht", "Gel\u00c3\u00b6scht", "Verloren", "Angebot verloren"] },
       wonAt: null,
       lostAt: null,
     },

@@ -15,6 +15,8 @@ import {
   extractInvoiceCancellationReason,
   extractInvoiceCreditNetAmount,
   extractInvoiceCreditReason,
+  looksLikeInvoiceLifecycleRequest,
+  extractInvoiceLifecycle,
 } from "@/lib/jarvis/invoice-intake";
 
 describe("JARVIS invoice intake", () => {
@@ -99,6 +101,21 @@ describe("JARVIS invoice intake", () => {
     expect(extractInvoiceCreditNetAmount("Gutschrift netto 20,50 EUR")).toBe(20.5);
     expect(extractInvoiceCreditNetAmount("Gutschrift über 20 Euro brutto")).toBeUndefined();
     expect(extractInvoiceCreditReason("Teilgutschrift zu RE-10119 wegen Preisnachlass")).toBe("Preisnachlass");
+  });
+
+  it("recognizes isolated invoice lifecycle commands without reading the reason as a command", () => {
+    expect(looksLikeInvoiceLifecycleRequest("Lösche Rechnungsentwurf RE-10124. Grund: Doppelt angelegt.")).toBe(true);
+    expect(extractInvoiceLifecycle("Lösche Rechnung RE-10124. Grund: Doppelt angelegt.")).toEqual({
+      action: "delete",
+      reason: "Doppelt angelegt",
+    });
+    expect(extractInvoiceLifecycle("Stelle Rechnung RE-10124 wieder her. Grund: Irrtümlich gelöscht.")).toEqual({
+      action: "restore",
+      reason: "Irrtümlich gelöscht",
+    });
+    expect(looksLikeInvoiceLifecycleRequest("Zeig mir gelöschte Rechnungen")).toBe(false);
+    expect(looksLikeInvoiceLifecycleRequest("Lösche Rechnung RE-10124. Grund: Sichtbarer Listen-Test.")).toBe(true);
+    expect(looksLikeInvoiceLifecycleRequest("Sende Rechnung RE-10124 und lösche das Projekt")).toBe(false);
   });
 
   it("extracts service date and company", () => {

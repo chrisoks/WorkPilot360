@@ -54,6 +54,10 @@ import {
   InvoiceCreditServiceError,
   type InvoiceCreditItemInput,
 } from "@/lib/invoices/invoice-credit-service";
+import {
+  executeInvoiceLifecycle,
+  InvoiceLifecycleServiceError,
+} from "@/lib/invoices/invoice-lifecycle-service";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -627,25 +631,6 @@ async function markStampedHoursAsInvoiced(input: {
       AND "mode" = 'project'
       AND "id" IN (${Prisma.join(input.stampEntryIds)})
       AND ("invoiceId" IS NULL OR "invoiceId" = '')
-  `;
-}
-
-async function releaseStampedHoursFromInvoice(input: {
-  organizationId: string;
-  invoiceId: string;
-  invoiceNumber: string;
-}) {
-  await ensureInvoiceTimeEntryColumns();
-  await prisma.$executeRaw`
-    UPDATE "ProjectTimeEntry"
-    SET "invoiceId" = NULL,
-        "invoiceNumber" = NULL,
-        "invoicedAt" = NULL
-    WHERE "organizationId" = ${input.organizationId}
-      AND (
-        "invoiceId" = ${input.invoiceId}
-        OR "invoiceNumber" = ${input.invoiceNumber}
-      )
   `;
 }
 
@@ -2827,6 +2812,7 @@ export async function DELETE(req: Request) {
   const actor = actorResult.actor;
   const includeInternalCosts = canViewInternalCostData(actor);
   const actorName = getUserName(actor);
+  const reason = cleanString(body.reason);
 
   if (!id) {
     return NextResponse.json({ error: "Rechnung fehlt." }, { status: 400 });
@@ -2839,51 +2825,28 @@ export async function DELETE(req: Request) {
     );
   }
 
-  const existingRows = await prisma.$queryRaw<InvoiceRow[]>`
-    SELECT *
-    FROM "Invoice"
-    WHERE "organizationId" = ${organization.id} AND "id" = ${id}
-    LIMIT 1
-  `;
-  const existingInvoice = existingRows[0];
-  if (!existingInvoice) {
-    return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
+  try {
+    const invoice = await prisma.$transaction(
+      (tx) => executeInvoiceLifecycle({
+        tx,
+        organizationId: organization.id,
+        invoiceId: id,
+        action: "delete",
+        reason,
+        actorId: actor.id,
+        actorName,
+        source: "ui",
+      }),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    return NextResponse.json(serializeInvoice(invoice as InvoiceRow, [], [], { includeInternalCosts }));
+  } catch (error) {
+    if (error instanceof InvoiceLifecycleServiceError) {
+      const status = error.code === "not_found" ? 404 : error.code === "blocked" || error.code === "invalid_input" ? 400 : 409;
+      return NextResponse.json({ error: error.message, code: error.code }, { status });
+    }
+    return NextResponse.json({ error: "Die Rechnung konnte nicht sicher gelöscht werden." }, { status: 500 });
   }
-
-  const rows = await prisma.$queryRaw<InvoiceRow[]>`
-    UPDATE "Invoice"
-    SET "status" = ${DELETED_INVOICE_STATUS}, "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "organizationId" = ${organization.id} AND "id" = ${id}
-    RETURNING *
-  `;
-
-
-  await releaseStampedHoursFromInvoice({
-    organizationId: organization.id,
-    invoiceId: id,
-    invoiceNumber: existingInvoice.invoiceNumber,
-  });
-
-  await addInvoiceHistory({
-    organizationId: organization.id,
-    invoiceId: id,
-    projectId: existingInvoice.projectId,
-    invoiceNumber: existingInvoice.invoiceNumber,
-    eventType: "deleted",
-    title: "Rechnung gel\u00f6scht",
-    note: `${existingInvoice.invoiceNumber} wurde gel\u00f6scht.`,
-    actorName,
-  });
-
-  await syncInvoiceInventoryMovements({
-    db: prisma,
-    organizationId: organization.id,
-    invoiceId: id,
-    actorUserId: actor.id,
-    actorName,
-  });
-
-  return NextResponse.json(serializeInvoice(rows[0], [], [], { includeInternalCosts }));
 }
 
 

@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   const offers = await prisma.offer.findMany({
     where: {
       organizationId: organization.id,
-      status: { in: ["Gelöscht", "GelÃ¶scht"] },
+      status: { in: ["Gelöscht", "Gel\u00c3\u00b6scht"] },
       ...(projectId ? { projectId } : {}),
     },
     orderBy: { updatedAt: "desc" },

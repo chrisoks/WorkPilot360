@@ -221,6 +221,20 @@ async function main() {
         select: { id: true, offerNumber: true, status: true, updatedAt: true },
       })
     : null;
+  const lifecycleInvoice = lifecycleProject
+    ? await prisma.invoice.create({
+        data: {
+          id: randomUUID(), organizationId: actor.organizationId,
+          projectId: lifecycleProject.id, projectNumber: lifecycleProject.projectNumber,
+          projectTitle: lifecycleProject.title, company: "OK solutions",
+          invoiceNumber: `RE-${Date.now().toString().slice(-7)}3`, status: "Entwurf",
+          customerName: lifecycleProject.customer || "QA Kunde", serviceDate: "2026-07-31",
+          plannedExecutionMonth: "2026-07", netTotal: 100, vatRate: 19, grossTotal: 119,
+          pdfData: Buffer.from("QA lifecycle invoice draft").toString("base64"),
+        },
+        select: { id: true, invoiceNumber: true, status: true, updatedAt: true },
+      })
+    : null;
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -245,6 +259,7 @@ async function main() {
   let offerFinalizationDraftPrepared = false;
   let offerDeliveryDraftPrepared = false;
   let offerLifecycleDraftPrepared = false;
+  let invoiceLifecycleDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -259,6 +274,7 @@ async function main() {
         const isOfferFinalizationCase = item.question.includes("Finalisiere Angebot");
         const isOfferDeliveryCase = item.question.includes("Versende Angebot");
         const isOfferLifecycleCase = item.question.includes("Lösche Angebot");
+        const isInvoiceLifecycleCase = item.question.includes("Lösche Rechnungsentwurf");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -279,6 +295,8 @@ async function main() {
               ? `Versende Angebot ${deliverableOffer.offerNumber} kontrolliert.`
             : isOfferLifecycleCase && lifecycleOffer
               ? `Lösche Angebot ${lifecycleOffer.offerNumber} kontrolliert. Grund: Irrtümlich doppelt angelegt.`
+            : isInvoiceLifecycleCase && lifecycleInvoice
+              ? `Lösche Rechnungsentwurf ${lifecycleInvoice.invoiceNumber} kontrolliert. Grund: Irrtümlich doppelt angelegt.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -439,6 +457,27 @@ async function main() {
             });
           } else {
             offerLifecycleDraftPrepared = true;
+          }
+        }
+        if (isInvoiceLifecycleCase && lifecycleInvoice) {
+          if (payload.actionDraft?.actionId !== "invoice.delete") {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Rechnungsentwurf-Löschfrage hat keine kontrollierte invoice.delete-Vorschau erzeugt.",
+            });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length
+          ) {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Rechnungsentwurf-Löschfrage hat keine vollständig prüfbare, unblockierte Bestätigungsvorschau erzeugt.",
+            });
+          } else {
+            invoiceLifecycleDraftPrepared = true;
           }
         }
       } catch (error) {
@@ -649,6 +688,26 @@ async function main() {
         });
       }
     }
+    if (lifecycleInvoice) {
+      const [currentInvoice, lifecycleHistoryCount] = await Promise.all([
+        prisma.invoice.findUnique({ where: { id: lifecycleInvoice.id }, select: { status: true, updatedAt: true } }),
+        prisma.invoiceHistory.count({
+          where: { organizationId: actor.organizationId, invoiceId: lifecycleInvoice.id, eventType: { in: ["deleted", "restored"] }, createdAt: { gte: now } },
+        }),
+      ]);
+      if (
+        !currentInvoice ||
+        currentInvoice.status !== lifecycleInvoice.status ||
+        currentInvoice.updatedAt.toISOString() !== lifecycleInvoice.updatedAt.toISOString() ||
+        lifecycleHistoryCount !== 0
+      ) {
+        failures.push({
+          id: "side-effect-invoice-lifecycle",
+          status: 0,
+          error: "Die 110-Fragen-Prüfung hat unerwartet einen Rechnungsentwurf gelöscht oder wiederhergestellt.",
+        });
+      }
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -672,6 +731,9 @@ async function main() {
     if (lifecycleOffer) {
       await prisma.offer.deleteMany({ where: { id: lifecycleOffer.id, organizationId: actor.organizationId } });
     }
+    if (lifecycleInvoice) {
+      await prisma.invoice.deleteMany({ where: { id: lifecycleInvoice.id, organizationId: actor.organizationId } });
+    }
     await prisma.authSession.deleteMany({ where: { id: sessionId } });
   }
 
@@ -692,6 +754,7 @@ async function main() {
     offerFinalizationDraftPrepared,
     offerDeliveryDraftPrepared,
     offerLifecycleDraftPrepared,
+    invoiceLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
       ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
       : 0,
@@ -700,6 +763,9 @@ async function main() {
       : 0,
     qaLifecycleOfferRemaining: lifecycleOffer
       ? await prisma.offer.count({ where: { id: lifecycleOffer.id } })
+      : 0,
+    qaLifecycleInvoiceRemaining: lifecycleInvoice
+      ? await prisma.invoice.count({ where: { id: lifecycleInvoice.id } })
       : 0,
     executedActions: 0,
     failures,

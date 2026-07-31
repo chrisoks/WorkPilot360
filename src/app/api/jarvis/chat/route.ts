@@ -98,6 +98,7 @@ import {
   createPersistedJarvisOfferDeliveryDraft,
   createPersistedJarvisOfferDecisionDraft,
   createPersistedJarvisOfferLifecycleDraft,
+  createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -146,6 +147,8 @@ import {
   looksLikeInvoiceReminderRequest,
   looksLikeInvoiceCancellationRequest,
   looksLikeInvoiceCreditRequest,
+  looksLikeInvoiceLifecycleRequest,
+  extractInvoiceLifecycle,
 } from "@/lib/jarvis/invoice-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
@@ -704,6 +707,86 @@ async function buildJarvisOfferLifecycleDraft(input: {
       type: "refusal" as const,
       topicId: "action.offer-lifecycle.unavailable",
       message: `${error instanceof JarvisActionDraftError ? error.message : "Die Angebotsänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
+    };
+  }
+}
+
+async function buildJarvisInvoiceLifecycleDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-lifecycle.session-required",
+      message: "Für Löschen oder Wiederherstellen ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const invoiceNumber = extractInvoiceNumber(input.question);
+  const details = extractInvoiceLifecycle(input.question);
+  if (!details.action) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.invoice-lifecycle.action-required",
+      message: "Soll der Rechnungsentwurf gelöscht oder wiederhergestellt werden? Es wurde noch nichts verändert.",
+    };
+  }
+  if (!invoiceNumber) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.invoice-lifecycle.invoice-required",
+      message: "Welche Rechnungsnummer soll geändert werden? Nenne sie bitte im Format RE-12345. Es wurde noch nichts verändert.",
+    };
+  }
+  if (!details.reason || details.reason.length < 3) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.invoice-lifecycle.reason-required",
+      message: `${details.action === "delete" ? "Für die Löschung" : "Für die Wiederherstellung"} brauche ich einen nachvollziehbaren Grund, zum Beispiel: „${details.action === "delete" ? "Lösche" : "Stelle"} Rechnungsentwurf ${invoiceNumber}${details.action === "restore" ? " wieder her" : ""}. Grund: Irrtümlich doppelt angelegt.“ Es wurde nichts verändert.`,
+    };
+  }
+  const invoice = await prisma.invoice.findFirst({
+    where: { invoiceNumber: { equals: invoiceNumber, mode: "insensitive" }, organizationId: input.organizationId },
+    select: { id: true },
+  });
+  if (!invoice) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-lifecycle.not-found",
+      message: `${invoiceNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts verändert.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "invoice.delete",
+    payload: { invoiceId: invoice.id, action: details.action, reason: details.reason },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return { type: "refusal" as const, topicId: "action.invoice-lifecycle.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisInvoiceLifecycleDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.invoice-lifecycle",
+      message: "Ich habe die Rechnungsänderung serverseitig geprüft. Kontrolliere Rechnung, Projekt, Kunde, Status, Summen, Grund, Stempel-, Lager- und Versandverknüpfungen sowie die abgegrenzten Folgen. Nur ein unverarbeiteter Entwurf darf gelöscht oder wiederhergestellt werden; erst die exakte Bestätigungsphrase führt die Änderung genau einmal aus.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-lifecycle.unavailable",
+      message: `${error instanceof JarvisActionDraftError ? error.message : "Die Rechnungsänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
     };
   }
 }
@@ -2577,6 +2660,17 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  if (looksLikeInvoiceLifecycleRequest(message)) {
+    return respond(
+      await buildJarvisInvoiceLifecycleDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "sales"
+    );
   }
   if (looksLikeInvoiceCreditRequest(message)) {
     return respond(

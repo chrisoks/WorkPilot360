@@ -5,8 +5,8 @@ import { prisma } from "@/lib/db/client";
 type OfferLifecycleDb = Prisma.TransactionClient | typeof prisma;
 export type OfferLifecycleAction = "delete" | "restore";
 
-const DELETED_STATUSES = ["Gelöscht", "GelÃ¶scht"];
-const INACTIVE_INVOICE_STATUSES = ["Gelöscht", "GelÃ¶scht", "Storniert", "Stornorechnung", "Gutschrift"];
+const DELETED_STATUSES = ["Gelöscht", "Gel\u00c3\u00b6scht"];
+const INACTIVE_INVOICE_STATUSES = ["Gelöscht", "Gel\u00c3\u00b6scht", "Storniert", "Stornorechnung", "Gutschrift"];
 const PREVIOUS_STATUS_MARKER = "Vorheriger Status: ";
 
 export class OfferLifecycleServiceError extends Error {

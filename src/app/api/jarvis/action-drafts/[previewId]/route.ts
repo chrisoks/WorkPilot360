@@ -8,6 +8,7 @@ import {
   cancelJarvisOfferDeliveryDraft,
   cancelJarvisOfferDecisionDraft,
   cancelJarvisOfferLifecycleDraft,
+  cancelJarvisInvoiceLifecycleDraft,
   cancelJarvisInvoiceDraft,
   cancelJarvisInvoiceFinalizationDraft,
   cancelJarvisInvoicePaymentDraft,
@@ -40,6 +41,7 @@ import {
   confirmJarvisOfferDeliveryDraft,
   confirmJarvisOfferDecisionDraft,
   confirmJarvisOfferLifecycleDraft,
+  confirmJarvisInvoiceLifecycleDraft,
   confirmJarvisInvoiceDraft,
   confirmJarvisInvoiceFinalizationDraft,
   confirmJarvisInvoicePaymentDraft,
@@ -193,6 +195,7 @@ export async function PATCH(
     const isOfferDelivery = body.actionId === "offer.send";
     const isOfferDecision = body.actionId === "offer.manage";
     const isOfferLifecycle = body.actionId === "offer.delete";
+    const isInvoiceLifecycle = body.actionId === "invoice.delete";
     const isInvoice = body.actionId === "invoice.prepare";
     const isInvoiceFinalization = body.actionId === "invoice.finalize";
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
@@ -208,7 +211,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceFinalization
+    const actionDraft = isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -401,6 +404,8 @@ export async function PATCH(
           ? "Die Angebotsentscheidung ist fest an Angebot, Entscheidungsart und Dokumentation gebunden. Änderungen erfordern eine neue Vorschau."
           : isOfferLifecycle
           ? "Die Angebotsänderung ist fest an Status, Verknüpfungen und dokumentierten Grund gebunden. Änderungen erfordern eine neue Vorschau."
+          : isInvoiceLifecycle
+          ? "Die Rechnungsänderung ist fest an Entwurfsstatus, Stempel-, Lager- und Versandverknüpfungen sowie den dokumentierten Grund gebunden. Änderungen erfordern eine neue Vorschau."
           : isInvoiceFinalization
           ? "Die Fakturavorschau ist fest an den aktuellen Rechnungs- und Prüfstand gebunden. Änderungen erfordern eine neue Vorschau."
           : isOfferDelivery
@@ -460,6 +465,7 @@ export async function POST(
     const isOfferDelivery = body.actionId === "offer.send";
     const isOfferDecision = body.actionId === "offer.manage";
     const isOfferLifecycle = body.actionId === "offer.delete";
+    const isInvoiceLifecycle = body.actionId === "invoice.delete";
     const isInvoice = body.actionId === "invoice.prepare";
     const isInvoiceFinalization = body.actionId === "invoice.finalize";
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
@@ -496,6 +502,12 @@ export async function POST(
           )
         : isOfferLifecycle
         ? await cancelJarvisOfferLifecycleDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isInvoiceLifecycle
+        ? await cancelJarvisInvoiceLifecycleDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -590,6 +602,8 @@ export async function POST(
           ? "Die Angebotsentscheidung wurde abgebrochen. Angebot und Projekt blieben unverändert."
           : isOfferLifecycle
           ? "Die Angebotsänderung wurde abgebrochen. Angebot und Verknüpfungen blieben unverändert."
+          : isInvoiceLifecycle
+          ? "Die Rechnungsänderung wurde abgebrochen. Rechnung, Zeiten, Lager, Zahlungen und Versand blieben unverändert."
           : isOfferDelivery
           ? "Der Angebotsversand wurde abgebrochen. Es wurde keine E-Mail versendet."
           : isInvoiceFinalization
@@ -655,6 +669,13 @@ export async function POST(
         )
       : isOfferLifecycle
       ? await confirmJarvisOfferLifecycleDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isInvoiceLifecycle
+      ? await confirmJarvisInvoiceLifecycleDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -787,6 +808,8 @@ export async function POST(
             ? "Das Angebot wurde nach deiner exakten Bestätigung genau einmal entschieden. Angebotshistorie und Projektlogbuch wurden geschrieben; Projektstatus, Termine, Aufgaben, Rechnungen und Versand blieben unverändert."
             : isOfferLifecycle
             ? "Das Angebot wurde nach deiner exakten Bestätigung genau einmal gelöscht oder wiederhergestellt. Angebotshistorie und Projektlogbuch wurden geschrieben; Projektstatus, Termine, Aufgaben, Rechnungen und Versandprotokolle blieben unverändert."
+            : isInvoiceLifecycle
+            ? "Der Rechnungsentwurf wurde nach deiner exakten Bestätigung genau einmal gelöscht oder wiederhergestellt. Rechnungshistorie und Projektlogbuch wurden geschrieben; Stempelungen, Lager, Zahlungen, Mahnungen, Versand, Angebote und Projektstatus blieben unverändert."
             : isInvoiceFinalization
             ? "Die Rechnung wurde nach deiner kritischen Bestätigung genau einmal fakturiert. Sie wurde weder versendet noch gemahnt oder als bezahlt markiert."
             : isInvoicePayment
@@ -820,6 +843,8 @@ export async function POST(
             ? "Das Angebot wurde nicht entschieden."
             : isOfferLifecycle
             ? "Das Angebot wurde nicht gelöscht oder wiederhergestellt."
+            : isInvoiceLifecycle
+            ? "Der Rechnungsentwurf wurde nicht gelöscht oder wiederhergestellt."
             : isOfferDelivery
             ? "Das Angebot wurde nicht versendet."
             : isInvoiceFinalization

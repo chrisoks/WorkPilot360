@@ -23,6 +23,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "invoice.remind",
   "invoice.cancel",
   "invoice.credit",
+  "invoice.delete",
   "document.send",
 ] as const;
 
@@ -229,6 +230,14 @@ const offerLifecyclePreviewPayloadSchema = z
   })
   .strict();
 
+const invoiceLifecyclePreviewPayloadSchema = z
+  .object({
+    invoiceId: boundedId,
+    action: z.enum(["delete", "restore"]),
+    reason: boundedText(500),
+  })
+  .strict();
+
 const invoiceMarkPaidPreviewPayloadSchema = z
   .object({
     invoiceId: boundedId,
@@ -292,6 +301,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "invoice.remind": invoiceReminderPreviewPayloadSchema,
   "invoice.cancel": invoiceCancellationPreviewPayloadSchema,
   "invoice.credit": invoiceCreditPreviewPayloadSchema,
+  "invoice.delete": invoiceLifecyclePreviewPayloadSchema,
   "document.send": documentSendPreviewPayloadSchema,
 } satisfies Record<JarvisPreviewActionId, z.ZodType>;
 
@@ -314,6 +324,7 @@ export type JarvisActionPreviewPayloadMap = {
   "invoice.remind": z.infer<typeof invoiceReminderPreviewPayloadSchema>;
   "invoice.cancel": z.infer<typeof invoiceCancellationPreviewPayloadSchema>;
   "invoice.credit": z.infer<typeof invoiceCreditPreviewPayloadSchema>;
+  "invoice.delete": z.infer<typeof invoiceLifecyclePreviewPayloadSchema>;
   "document.send": z.infer<typeof documentSendPreviewPayloadSchema>;
 };
 
@@ -978,6 +989,36 @@ export type JarvisOfferLifecycleDraftView = {
   };
   cancellation: { enabled: boolean };
   result?: { entityType: "offer"; entityId: string; label: string };
+};
+
+export type JarvisInvoiceLifecycleDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "invoice.delete";
+  title: "Rechnungsentwurf kontrolliert löschen oder wiederherstellen";
+  badge: "Prüfung" | "Bereit" | "Wird geändert" | "Abgebrochen" | "Abgelaufen" | "Ausgeführt";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  invoiceId: string;
+  projectId: string;
+  lifecycleAction: "delete" | "restore";
+  fields: Array<{ label: string; value: string }>;
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "ok" | "warning" | "blocked";
+    detail: string;
+  }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason: "ready" | "blocked" | "not_permitted" | "expired" | "cancelled" | "executing" | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: { entityType: "invoice"; entityId: string; label: string };
 };
 
 export type JarvisInvoicePaymentDraftView = {

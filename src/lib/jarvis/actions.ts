@@ -490,12 +490,12 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
   },
   {
     id: "invoice.delete",
-    title: "Rechnung löschen",
+    title: "Rechnungsentwurf kontrolliert löschen oder wiederherstellen",
     category: "invoice",
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["financial"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canDeleteInvoices,
   },
   {

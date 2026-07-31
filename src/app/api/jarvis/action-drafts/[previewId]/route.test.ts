@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => ({
   completeJarvisInvoiceCreditDraft: vi.fn(),
   cancelJarvisInvoiceCreditDraft: vi.fn(),
   confirmJarvisInvoiceCreditDraft: vi.fn(),
+  cancelJarvisInvoiceLifecycleDraft: vi.fn(),
+  confirmJarvisInvoiceLifecycleDraft: vi.fn(),
   completeJarvisInvoiceDeliveryDraft: vi.fn(),
   cancelJarvisInvoiceDeliveryDraft: vi.fn(),
   confirmJarvisInvoiceDeliveryDraft: vi.fn(),
@@ -105,6 +107,10 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.cancelJarvisInvoiceCreditDraft,
   confirmJarvisInvoiceCreditDraft:
     mocks.confirmJarvisInvoiceCreditDraft,
+  cancelJarvisInvoiceLifecycleDraft:
+    mocks.cancelJarvisInvoiceLifecycleDraft,
+  confirmJarvisInvoiceLifecycleDraft:
+    mocks.confirmJarvisInvoiceLifecycleDraft,
   completeJarvisInvoiceDeliveryDraft:
     mocks.completeJarvisInvoiceDeliveryDraft,
   cancelJarvisInvoiceDeliveryDraft:
@@ -279,6 +285,17 @@ describe("JARVIS action-draft API", () => {
         entityId: "invoice-1",
         label: "Öffnen",
       },
+    });
+    mocks.cancelJarvisInvoiceLifecycleDraft.mockResolvedValue({
+      ...draft,
+      actionId: "invoice.delete",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisInvoiceLifecycleDraft.mockResolvedValue({
+      ...draft,
+      actionId: "invoice.delete",
+      state: "executed",
+      result: { entityType: "invoice", entityId: "invoice-1", label: "Öffnen" },
     });
     mocks.completeJarvisInvoiceDeliveryDraft.mockResolvedValue({
       ...draft,
@@ -541,6 +558,31 @@ describe("JARVIS action-draft API", () => {
       expect.anything(),
       2
     );
+  });
+
+  it("routes invoice lifecycle confirmation only with the exact submitted phrase", async () => {
+    const response = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "invoice.delete",
+          command: "confirm",
+          revision: 3,
+          confirmationText: "RECHNUNG LÖSCHEN RE-10119",
+        },
+        { "x-jarvis-action": "jarvis-action-draft-v2" }
+      ) as never,
+      context
+    ))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisInvoiceLifecycleDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.objectContaining({ organizationId: "org-1", sessionId: "session-1" }),
+      3,
+      "RECHNUNG LÖSCHEN RE-10119"
+    );
+    expect(mocks.confirmJarvisInvoiceCancellationDraft).not.toHaveBeenCalled();
   });
 
   it("executes planning confirmation only through the existing planning service", async () => {

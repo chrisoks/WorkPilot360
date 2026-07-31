@@ -54,6 +54,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisInvoiceReminderDraft: vi.fn(),
   createPersistedJarvisInvoiceCancellationDraft: vi.fn(),
   createPersistedJarvisInvoiceCreditDraft: vi.fn(),
+  createPersistedJarvisInvoiceLifecycleDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -133,6 +134,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisInvoiceCancellationDraft,
   createPersistedJarvisInvoiceCreditDraft:
     mocks.createPersistedJarvisInvoiceCreditDraft,
+  createPersistedJarvisInvoiceLifecycleDraft:
+    mocks.createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3249,6 +3252,43 @@ describe("POST /api/jarvis/chat", () => {
       preview: expect.objectContaining({ payload: expect.objectContaining({ projectId: "project-1", company: "OK immocare", serviceDate: "2026-07-31" }) }),
     }));
     expect(mocks.createPersistedJarvisOfferDraft).not.toHaveBeenCalled();
+  });
+
+  it("prepares controlled invoice draft deletion without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const invoiceLookup = vi.spyOn(prisma.invoice, "findFirst").mockResolvedValueOnce({ id: "invoice-1" } as never);
+    mocks.createPersistedJarvisInvoiceLifecycleDraft.mockImplementation(async ({ preview }) => ({
+      version: 2,
+      previewId: preview.previewId,
+      actionId: "invoice.delete",
+      title: "Rechnungsentwurf kontrolliert löschen oder wiederherstellen",
+      badge: "Bereit",
+      state: "awaiting_confirmation",
+      revision: 1,
+      expiresAt: "2026-07-31T10:00:00.000Z",
+      invoiceId: "invoice-1",
+      projectId: "project-1",
+      lifecycleAction: preview.payload.action,
+      fields: [],
+      checks: [],
+      warnings: [],
+      blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "RECHNUNG LÖSCHEN RE-10119" },
+      cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Lösche Rechnungsentwurf RE-10119. Grund: Doppelt angelegt." }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.invoice-lifecycle", actionDraft: { actionId: "invoice.delete", state: "awaiting_confirmation" } });
+    expect(mocks.createPersistedJarvisInvoiceLifecycleDraft).toHaveBeenCalledWith(expect.objectContaining({
+      preview: expect.objectContaining({ payload: { invoiceId: "invoice-1", action: "delete", reason: "Doppelt angelegt" } }),
+    }));
+    expect(mocks.createPersistedJarvisInvoiceCancellationDraft).not.toHaveBeenCalled();
+    invoiceLookup.mockRestore();
   });
 
   it("prepares only a controlled full cancellation and carries the explicit reason", async () => {

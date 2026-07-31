@@ -82,6 +82,32 @@ export function looksLikeInvoiceCreditRequest(question: string) {
   );
 }
 
+export function looksLikeInvoiceLifecycleRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  const command = value.split(/\b(?:grund|weil|wegen)\b/, 1)[0] || value;
+  return (
+    (/(?:^|\s)re-\d+\b/.test(command) || /\b(?:rechnung|rechnungsentwurf)\w*\b/.test(command)) &&
+    /\b(?:losch|loesch|entfern|wiederherstell|zuruckhol|reaktivier)\w*\b|\bwieder\s+her\b/.test(command) &&
+    !/\b(?:angebot|aufgabe|projekt|termin)\w*\b/.test(command) &&
+    !/\b(?:zeig|liste|such|welche|warum|status)\w*\b/.test(command)
+  );
+}
+
+export function extractInvoiceLifecycle(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  const action = /\b(?:wiederherstell|zuruckhol|reaktivier)\w*\b|\bwieder\s+her\b/.test(value)
+    ? ("restore" as const)
+    : /\b(?:losch|loesch|entfern)\w*\b/.test(value)
+      ? ("delete" as const)
+      : undefined;
+  const reason = question
+    .match(/\b(?:Grund|weil|wegen)\s*[:\-]?\s*(.+)$/i)?.[1]
+    ?.trim()
+    .replace(/[.!?]+$/, "")
+    .trim();
+  return { action, reason: reason || undefined };
+}
+
 export function extractInvoiceCancellationReason(question: string) {
   const match = question.match(/(?:grund|weil|wegen)\s*[:=-]?\s*(.{3,500})$/i);
   return match?.[1]?.trim();
