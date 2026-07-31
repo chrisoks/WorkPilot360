@@ -15,6 +15,7 @@ import {
   createJarvisActionPreview,
   type JarvisActionPreview,
   type JarvisActionPreviewPayloadMap,
+  type JarvisCommunicationActionDraftView,
   type JarvisPlanningActionDraftCheck,
   type JarvisPlanningActionDraftView,
   type JarvisTaskActionDraftView,
@@ -30,10 +31,21 @@ import {
 import {
   canAssignTasksToOthers,
   canApproveProjectOvertime,
+  canArchiveProjects,
   canManagePlanningEntries,
   canManageProjectTimeEntries,
   canManageProjects,
 } from "@/lib/permissions";
+import {
+  createProjectLogbookEntry,
+  ProjectLogbookServiceError,
+} from "@/lib/services/project-logbook-service";
+import {
+  createTaskComment,
+  deliverTaskCommentNotificationMails,
+  TaskCommentServiceError,
+  type TaskCommentMailNotification,
+} from "@/lib/services/task-comment-service";
 import {
   evaluatePlanningBatch,
   type PlanningBatchEvaluation,
@@ -81,6 +93,7 @@ const JARVIS_PLANNING_DRAFT_MAX_FUTURE_MS =
 const JARVIS_TIME_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_WINTER_CALCULATION_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_VEHICLE_TRIP_DRAFT_TTL_MS = 15 * 60 * 1000;
+const JARVIS_COMMUNICATION_DRAFT_TTL_MS = 15 * 60 * 1000;
 const OPEN_DRAFT_STATES = ["awaiting_input", "awaiting_confirmation"] as const;
 
 const taskPayloadSchema = z
@@ -102,6 +115,26 @@ const taskContextSchema = z
     recordUpdatedAt: z.string().datetime({ offset: true }).optional(),
   })
   .strict();
+
+const communicationPayloadSchema = z
+  .object({
+    targetId: z.string().trim().max(120).optional(),
+    title: z.string().trim().max(240).optional(),
+    text: z.string().trim().max(12_000).optional(),
+    recipientUserId: z.string().trim().max(120).optional(),
+  })
+  .strict();
+
+const communicationContextSchema = z
+  .object({
+    targetId: z.string().trim().min(1).max(120).optional(),
+    targetUpdatedAt: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict();
+
+const completeCommunicationDraftSchema = communicationPayloadSchema.extend({
+  revision: z.number().int().min(1),
+});
 
 const completeDraftSchema = z
   .object({
@@ -345,6 +378,13 @@ export type CreateJarvisPlanningDraftInput = JarvisTaskDraftBinding & {
   now?: Date;
 };
 
+export type CreateJarvisCommunicationDraftInput = JarvisTaskDraftBinding & {
+  preview: JarvisActionPreview<
+    "project-logbook.prepare" | "task-comment.prepare"
+  >;
+  now?: Date;
+};
+
 export type JarvisPlanningExecutionInput = {
   actorUserId: string;
   planning: SharedPlanningRequest;
@@ -543,9 +583,11 @@ async function appendAuditEvent(
       entityType?:
         | "task"
          | "planning"
-        | "projectTimeEntry"
+         | "projectTimeEntry"
          | "winterServiceCalculation"
-        | "vehicleCalculation";
+        | "vehicleCalculation"
+        | "projectLogbookEntry"
+        | "taskComment";
     };
   }
 ) {
@@ -2158,6 +2200,877 @@ export async function getJarvisPlanningDraft(
   return toJarvisPlanningActionDraftView(draft, binding, now);
 }
 
+type CommunicationActionId =
+  | "project-logbook.prepare"
+  | "task-comment.prepare";
+
+function validateCommunicationBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Dieser Entwurf gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit Erstellung des Entwurfs geändert. Bitte erstelle eine neue Vorschau.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis des Entwurfs ist ungültig. Es wurde nichts ausgeführt.",
+      409
+    );
+  }
+  const payload = communicationPayloadSchema.safeParse(draft.payload);
+  const context = communicationContextSchema.safeParse(draft.context);
+  if (
+    !["project-logbook.prepare", "task-comment.prepare"].includes(
+      draft.actionId
+    ) ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Logbuch-/Kommentar-Payload oder Kontext stimmen nicht mit dem gespeicherten Nachweis überein.",
+      409
+    );
+  }
+  return {
+    actionId: draft.actionId as CommunicationActionId,
+    payload: payload.data,
+    context: context.data,
+  };
+}
+
+async function loadBoundCommunicationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Der Logbuch-/Kommentarentwurf wurde nicht gefunden.",
+      404
+    );
+  }
+  validateCommunicationBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateCommunicationBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function communicationAuthorities(binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  const values = [
+    {
+      id: actorIds.sessionActorId,
+      role: binding.profile.sessionActor.role,
+    },
+    {
+      id: actorIds.effectiveActorId,
+      role: binding.profile.effectiveActor.role,
+    },
+  ];
+  return values.filter(
+    (actor, index) =>
+      values.findIndex((candidate) => candidate.id === actor.id) === index
+  );
+}
+
+async function getCommunicationTargetOptions(
+  actionId: CommunicationActionId,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = communicationAuthorities(binding).map((actor) => actor.id);
+  if (actionId === "project-logbook.prepare") {
+    const projects = await prisma.workPilotProject.findMany({
+      where: { organizationId: binding.organizationId },
+      orderBy: [{ projectNumber: "asc" }, { title: "asc" }],
+      select: {
+        id: true,
+        projectNumber: true,
+        title: true,
+        status: true,
+        updatedAt: true,
+      },
+      take: 1000,
+    });
+    const allMayArchive = communicationAuthorities(binding).every((actor) =>
+      canArchiveProjects(actor)
+    );
+    return projects
+      .filter(
+        (project) =>
+          allMayArchive ||
+          !project.status.toLocaleLowerCase("de-DE").includes("archiviert")
+      )
+      .map((project) => ({
+        id: project.id,
+        label:
+          [project.projectNumber, project.title].filter(Boolean).join(" · ") ||
+          "Projekt",
+        updatedAt: project.updatedAt.toISOString(),
+      }));
+  }
+
+  const tasks = await prisma.task.findMany({
+    where: {
+      organizationId: binding.organizationId,
+      status: { not: "ARCHIVIERT" },
+    },
+    include: {
+      participants: {
+        select: { userId: true },
+      },
+    },
+    orderBy: [{ deadline: "asc" }, { title: "asc" }],
+    take: 1000,
+  });
+  return tasks
+    .filter((task) => {
+      const participantIds = task.participants.map(
+        (participant) => participant.userId
+      );
+      return actorIds.every(
+        (actorId) =>
+          task.ownerId === actorId ||
+          task.createdById === actorId ||
+          participantIds.includes(actorId)
+      );
+    })
+    .map((task) => ({
+      id: task.id,
+      label: task.title,
+      updatedAt: task.updatedAt.toISOString(),
+    }));
+}
+
+async function getCommunicationRecipientOptions(
+  taskId: string | undefined,
+  binding: JarvisTaskDraftBinding
+) {
+  if (!taskId) return [];
+  const task = await prisma.task.findFirst({
+    where: {
+      id: taskId,
+      organizationId: binding.organizationId,
+    },
+    select: {
+      participants: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              isActive: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  return (task?.participants ?? [])
+    .map((participant) => participant.user)
+    .filter((user) => user.isActive)
+    .map((user) => ({
+      id: user.id,
+      label: `${user.firstName} ${user.lastName}`.trim() || user.email,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, "de"));
+}
+
+function communicationReady(
+  actionId: CommunicationActionId,
+  payload: z.infer<typeof communicationPayloadSchema>
+) {
+  return Boolean(
+    payload.targetId &&
+      payload.text &&
+      (actionId === "task-comment.prepare" || payload.title)
+  );
+}
+
+export async function toJarvisCommunicationActionDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): Promise<JarvisCommunicationActionDraftView> {
+  const { actionId, payload } = validateCommunicationBinding(draft, binding);
+  const targetOptions = await getCommunicationTargetOptions(actionId, binding);
+  const selectedTarget = targetOptions.find(
+    (option) => option.id === payload.targetId
+  );
+  const recipientOptions =
+    actionId === "task-comment.prepare"
+      ? await getCommunicationRecipientOptions(payload.targetId, binding)
+      : [];
+  const selectedRecipient = recipientOptions.find(
+    (option) => option.id === payload.recipientUserId
+  );
+  const missingFields: string[] = [];
+  if (!selectedTarget) {
+    missingFields.push(actionId === "project-logbook.prepare" ? "Projekt" : "Aufgabe");
+  }
+  if (!payload.text) missingFields.push("Text");
+  if (actionId === "project-logbook.prepare" && !payload.title) {
+    missingFields.push("Titel");
+  }
+  if (payload.recipientUserId && !selectedRecipient) {
+    missingFields.push("Gültige empfangende Person");
+  }
+
+  const state = draft.state as JarvisCommunicationActionDraftView["state"];
+  const isOpen =
+    state === "awaiting_input" || state === "awaiting_confirmation";
+  const isReady =
+    state === "awaiting_confirmation" && missingFields.length === 0;
+  const reason: JarvisCommunicationActionDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : isReady
+              ? "ready"
+              : "missing_fields";
+  const badge: JarvisCommunicationActionDraftView["badge"] =
+    state === "executed"
+      ? "Gespeichert"
+      : state === "cancelled"
+        ? "Abgebrochen"
+        : state === "expired"
+          ? "Abgelaufen"
+          : state === "executing"
+            ? "Wird gespeichert"
+            : isReady
+              ? "Bereit"
+              : "Entwurf";
+  const fields: JarvisCommunicationActionDraftView["fields"] = [];
+  if (selectedTarget) {
+    fields.push({
+      label: actionId === "project-logbook.prepare" ? "Projekt" : "Aufgabe",
+      value: selectedTarget.label,
+    });
+  }
+  if (actionId === "project-logbook.prepare" && payload.title) {
+    fields.push({ label: "Titel", value: payload.title });
+  }
+  if (payload.text) fields.push({ label: "Text", value: payload.text });
+  if (selectedRecipient) {
+    fields.push({ label: "Gerichtet an", value: selectedRecipient.label });
+  }
+
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId,
+    title:
+      actionId === "project-logbook.prepare"
+        ? "Projektlogbuch-Eintrag vorbereiten"
+        : "Aufgabenkommentar vorbereiten",
+    badge,
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    fields,
+    missingFields,
+    editor: {
+      targetId: payload.targetId ?? "",
+      title: payload.title ?? "",
+      text: payload.text ?? "",
+      recipientUserId: payload.recipientUserId ?? "",
+      targetOptions: targetOptions.map(({ id, label }) => ({ id, label })),
+      recipientOptions,
+    },
+    confirmation: { enabled: isReady, reason },
+    cancellation: { enabled: isOpen },
+    execution: {
+      enabled: false,
+      reason: state === "executed" ? "finalized" : "requires_confirmation",
+    },
+    ...(state === "executed" &&
+    draft.resultEntityId &&
+    payload.targetId &&
+    (draft.resultEntityType === "projectLogbookEntry" ||
+      draft.resultEntityType === "taskComment")
+      ? {
+          result: {
+            entityType: draft.resultEntityType,
+            entityId: draft.resultEntityId,
+            targetId: payload.targetId,
+            label:
+              draft.resultEntityType === "projectLogbookEntry"
+                ? "Projektlogbuch öffnen"
+                : "Aufgabe öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisCommunicationDraft(
+  input: CreateJarvisCommunicationDraftInput
+) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für bestätigbare Aktionen ist eine aktuelle serverseitige Sitzung erforderlich.",
+      401
+    );
+  }
+  const now = input.now ?? new Date();
+  const actorIds = getActorIds(input.profile);
+  const actionId = input.preview.actionId;
+  const payload = communicationPayloadSchema.parse(
+    actionId === "project-logbook.prepare"
+      ? {
+          targetId: (
+            input.preview
+              .payload as JarvisActionPreviewPayloadMap["project-logbook.prepare"]
+          ).projectId,
+          title:
+            (
+              input.preview
+                .payload as JarvisActionPreviewPayloadMap["project-logbook.prepare"]
+            ).title || "JARVIS-Eintrag",
+          text: (
+            input.preview
+              .payload as JarvisActionPreviewPayloadMap["project-logbook.prepare"]
+          ).text,
+        }
+      : {
+          targetId: (
+            input.preview
+              .payload as JarvisActionPreviewPayloadMap["task-comment.prepare"]
+          ).taskId,
+          text: (
+            input.preview
+              .payload as JarvisActionPreviewPayloadMap["task-comment.prepare"]
+          ).text,
+          recipientUserId: (
+            input.preview
+              .payload as JarvisActionPreviewPayloadMap["task-comment.prepare"]
+          ).recipientUserId,
+        }
+  );
+  const options = await getCommunicationTargetOptions(actionId, input);
+  const selected = options.find((option) => option.id === payload.targetId);
+  if (payload.targetId && !selected) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Das angegebene Ziel ist mit der aktuellen Rollenkombination nicht kommentierbar.",
+      403
+    );
+  }
+  const context: z.infer<typeof communicationContextSchema> = selected
+    ? { targetId: selected.id, targetUpdatedAt: selected.updatedAt }
+    : {};
+  const payloadHash = hashJson(payload);
+  const contextHash = hashJson(context);
+  const expiresAt = new Date(
+    now.getTime() + JARVIS_COMMUNICATION_DRAFT_TTL_MS
+  );
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId,
+    state: communicationReady(actionId, payload)
+      ? "awaiting_confirmation"
+      : "awaiting_input",
+    revision: 1,
+    payloadHash,
+    contextHash,
+    expiresAt,
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: null,
+  };
+  const draft = await prisma.$transaction(async (tx) => {
+    const created = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft: created,
+      eventType: "draft_created",
+    });
+    return created;
+  });
+  return toJarvisCommunicationActionDraftView(draft, input);
+}
+
+export async function getJarvisCommunicationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundCommunicationDraft(
+    previewId,
+    binding,
+    now
+  );
+  return toJarvisCommunicationActionDraftView(draft, binding);
+}
+
+export async function completeJarvisCommunicationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  rawInput: unknown,
+  now = new Date()
+) {
+  const completed = completeCommunicationDraftSchema.safeParse(rawInput);
+  if (!completed.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Die Logbuch-/Kommentarangaben sind ungültig oder zu lang.",
+      400
+    );
+  }
+  const loaded = await loadBoundCommunicationDraft(previewId, binding, now);
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as typeof OPEN_DRAFT_STATES[number])) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_state",
+      "Dieser Entwurf kann nicht mehr bearbeitet werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (loaded.draft.revision !== completed.data.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Dieser Entwurf wurde zwischenzeitlich geändert. Bitte verwende den aktuellen Stand.",
+      409
+    );
+  }
+  const payload = communicationPayloadSchema.parse({
+    targetId: completed.data.targetId,
+    title:
+      loaded.actionId === "project-logbook.prepare"
+        ? completed.data.title || "JARVIS-Eintrag"
+        : undefined,
+    text: completed.data.text,
+    recipientUserId:
+      loaded.actionId === "task-comment.prepare"
+        ? completed.data.recipientUserId
+        : undefined,
+  });
+  const options = await getCommunicationTargetOptions(
+    loaded.actionId,
+    binding
+  );
+  const selected = options.find((option) => option.id === payload.targetId);
+  if (payload.targetId && !selected) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Das ausgewählte Ziel ist nicht mehr kommentierbar.",
+      403
+    );
+  }
+  if (payload.recipientUserId) {
+    const recipients = await getCommunicationRecipientOptions(
+      payload.targetId,
+      binding
+    );
+    if (!recipients.some((recipient) => recipient.id === payload.recipientUserId)) {
+      throw new JarvisActionDraftError(
+        "invalid_input",
+        "Die ausgewählte empfangende Person ist nicht an dieser Aufgabe beteiligt.",
+        400
+      );
+    }
+  }
+  const context: z.infer<typeof communicationContextSchema> = selected
+    ? { targetId: selected.id, targetUpdatedAt: selected.updatedAt }
+    : {};
+  const state = communicationReady(loaded.actionId, payload)
+    ? "awaiting_confirmation"
+    : "awaiting_input";
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state,
+    revision: loaded.draft.revision + 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    confirmedAt: null,
+    lastErrorCode: null,
+  };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state,
+        revision: nextData.revision,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        payloadHash: nextData.payloadHash,
+        contextHash: nextData.contextHash,
+        confirmedAt: null,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Entwurf wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_completed",
+    });
+    return current;
+  });
+  return toJarvisCommunicationActionDraftView(updated, binding);
+}
+
+export async function cancelJarvisCommunicationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const loaded = await loadBoundCommunicationDraft(previewId, binding, now);
+  if (loaded.draft.state === "cancelled") {
+    return toJarvisCommunicationActionDraftView(loaded.draft, binding);
+  }
+  if (
+    !OPEN_DRAFT_STATES.includes(
+      loaded.draft.state as typeof OPEN_DRAFT_STATES[number]
+    ) ||
+    loaded.draft.revision !== expectedRevision
+  ) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "conflict",
+      "Dieser Entwurf kann nicht mehr abgebrochen werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Entwurf wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisCommunicationActionDraftView(cancelled, binding);
+}
+
+function communicationExecutionErrorCode(error: unknown) {
+  if (error instanceof ProjectLogbookServiceError) return error.code;
+  if (error instanceof TaskCommentServiceError) return error.code;
+  return "communication_write_failed";
+}
+
+export async function confirmJarvisCommunicationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const loaded = await loadBoundCommunicationDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") {
+    return toJarvisCommunicationActionDraftView(loaded.draft, binding);
+  }
+  if (
+    loaded.draft.state !== "awaiting_confirmation" ||
+    loaded.draft.revision !== expectedRevision ||
+    !communicationReady(loaded.actionId, loaded.payload)
+  ) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "conflict",
+      "Nur ein vollständiger, aktueller Entwurf darf bestätigt werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+
+  try {
+    const execution = await prisma.$transaction(
+      async (tx) => {
+        const current = await tx.jarvisActionDraft.findUnique({
+          where: { id: loaded.draft.id },
+        });
+        if (!current) {
+          throw new JarvisActionDraftError(
+            "not_found",
+            "Der Entwurf wurde nicht gefunden.",
+            404
+          );
+        }
+        const parsed = validateCommunicationBinding(current, binding);
+        if (current.state === "executed") {
+          return {
+            draft: current,
+            mailNotifications: [] as TaskCommentMailNotification[],
+          };
+        }
+        if (
+          current.state !== "awaiting_confirmation" ||
+          current.revision !== expectedRevision ||
+          current.expiresAt.getTime() <= now.getTime() ||
+          !parsed.payload.targetId ||
+          !parsed.payload.text
+        ) {
+          throw new JarvisActionDraftError(
+            current.expiresAt.getTime() <= now.getTime()
+              ? "expired"
+              : "conflict",
+            "Der Entwurf ist nicht mehr ausführbar.",
+            current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+          );
+        }
+
+        const target =
+          parsed.actionId === "project-logbook.prepare"
+            ? await tx.workPilotProject.findFirst({
+                where: {
+                  id: parsed.payload.targetId,
+                  organizationId: binding.organizationId,
+                },
+                select: { updatedAt: true },
+              })
+            : await tx.task.findFirst({
+                where: {
+                  id: parsed.payload.targetId,
+                  organizationId: binding.organizationId,
+                },
+                select: { updatedAt: true },
+              });
+        if (
+          !target ||
+          !parsed.context.targetUpdatedAt ||
+          target.updatedAt.toISOString() !== parsed.context.targetUpdatedAt
+        ) {
+          throw new JarvisActionDraftError(
+            "stale_context",
+            "Das Ziel wurde seit der letzten Prüfung geändert. Bitte prüfe den Entwurf erneut.",
+            409
+          );
+        }
+
+        const claimedData: DraftIntegrityData = {
+          ...current,
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+        };
+        const claimed = await tx.jarvisActionDraft.updateMany({
+          where: {
+            id: current.id,
+            revision: current.revision,
+            state: "awaiting_confirmation",
+            integrityTag: current.integrityTag,
+          },
+          data: {
+            state: "executing",
+            confirmedAt: now,
+            lastErrorCode: null,
+            integrityTag: createIntegrityTag(claimedData),
+          },
+        });
+        if (claimed.count !== 1) {
+          throw new JarvisActionDraftError(
+            "conflict",
+            "Der Entwurf wird bereits verarbeitet.",
+            409
+          );
+        }
+
+        const authorities = communicationAuthorities(binding);
+        let result: {
+          id: string;
+          entityType: "projectLogbookEntry" | "taskComment";
+        };
+        let mailNotifications: TaskCommentMailNotification[] = [];
+        if (parsed.actionId === "project-logbook.prepare") {
+          if (!parsed.payload.title) {
+            throw new JarvisActionDraftError(
+              "invalid_input",
+              "Der Titel des Logbucheintrags fehlt.",
+              400
+            );
+          }
+          const created = await createProjectLogbookEntry(tx, {
+            organizationId: binding.organizationId,
+            projectId: parsed.payload.targetId,
+            authority: authorities,
+            authorUserId: current.effectiveActorId,
+            title: parsed.payload.title,
+            body: parsed.payload.text,
+            source: "jarvis",
+            callReference: current.id,
+            confirmedByUserId: current.sessionActorId,
+            confirmationTimestamp: now,
+          });
+          result = {
+            id: created.entry.id,
+            entityType: "projectLogbookEntry",
+          };
+        } else {
+          const created = await createTaskComment(tx, {
+            organizationId: binding.organizationId,
+            taskId: parsed.payload.targetId,
+            authority: authorities,
+            authorUserId: current.effectiveActorId,
+            text: parsed.payload.text,
+            recipientUserId: parsed.payload.recipientUserId,
+            source: "jarvis",
+            previewId: current.id,
+            payloadHash: current.payloadHash,
+          });
+          result = { id: created.comment.id, entityType: "taskComment" };
+          mailNotifications = created.mailNotifications;
+        }
+
+        const executedAt = new Date();
+        const executedData: DraftIntegrityData = {
+          ...claimedData,
+          state: "executed",
+          executedAt,
+          resultEntityType: result.entityType,
+          resultEntityId: result.id,
+        };
+        const finalDraft = await tx.jarvisActionDraft.update({
+          where: { id: current.id },
+          data: {
+            state: "executed",
+            executedAt,
+            resultEntityType: result.entityType,
+            resultEntityId: result.id,
+            integrityTag: createIntegrityTag(executedData),
+          },
+        });
+        await appendAuditEvent(tx, {
+          draft: finalDraft,
+          eventType: "draft_confirmed_and_executed",
+          result,
+        });
+        return { draft: finalDraft, mailNotifications };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    if (execution.mailNotifications.length) {
+      await deliverTaskCommentNotificationMails(execution.mailNotifications);
+    }
+    return toJarvisCommunicationActionDraftView(execution.draft, binding);
+  } catch (error) {
+    if (
+      error instanceof JarvisActionDraftError &&
+      error.code === "conflict"
+    ) {
+      const latest = await loadBoundCommunicationDraft(
+        previewId,
+        binding,
+        now
+      );
+      if (latest.draft.state === "executed") {
+        return toJarvisCommunicationActionDraftView(latest.draft, binding);
+      }
+    }
+    await recordExecutionFailure(
+      loaded.draft,
+      communicationExecutionErrorCode(error)
+    );
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (
+      error instanceof ProjectLogbookServiceError ||
+      error instanceof TaskCommentServiceError
+    ) {
+      throw new JarvisActionDraftError(
+        error.code === "actor_stale" ? "role_changed" : "execution_failed",
+        `${error.message} Es wurde nichts gespeichert.`,
+        error.code === "actor_stale" ? 409 : 403
+      );
+    }
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Der Logbuch-/Kommentarentwurf wurde nicht gespeichert und bleibt zur Prüfung erhalten.",
+      500
+    );
+  }
+}
+
 export async function getJarvisActionDraft(
   previewId: string,
   binding: JarvisTaskDraftBinding,
@@ -2182,6 +3095,12 @@ export async function getJarvisActionDraft(
       binding,
       now
     );
+  }
+  if (
+    draft?.actionId === "project-logbook.prepare" ||
+    draft?.actionId === "task-comment.prepare"
+  ) {
+    return getJarvisCommunicationDraft(previewId, binding, now);
   }
   return getJarvisTaskDraft(previewId, binding, now);
 }

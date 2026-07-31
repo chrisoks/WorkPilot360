@@ -11,6 +11,11 @@ import {
 } from "@/lib/jarvis/dialog-state";
 import { resolveJarvisGuidedSequenceContinuation } from "@/lib/jarvis/intent-clarification";
 import {
+  readJarvisModelUsage,
+  recordJarvisModelTelemetry,
+  resolveJarvisModelPolicy,
+} from "@/lib/jarvis/model-policy";
+import {
   asksForSalesRestrictedData,
   canUseManagementAi,
   canUseSalesAi,
@@ -292,34 +297,63 @@ export async function POST(req: Request) {
 
   const context = sanitizeAiContext(cleanText(body.context, 12000), mode);
   const messages = cleanMessages(body.messages, mode);
-  const model = process.env.OPENAI_MANAGEMENT_MODEL || "gpt-5.6-terra";
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      input: [
-        { role: "system", content: AI_SYSTEM_PROMPTS[mode] },
-        {
-          role: "user",
-          content: [
-            `Organisation: ${organization.name}`,
-            mode === "sales" ? "Aktueller Vertriebs-Kontext aus WorkPilot360:" : "Aktueller Management-Kontext aus WorkPilot360:",
-            context || "Kein strukturierter Kontext uebergeben.",
-          ].join("\n\n"),
-        },
-        ...messages,
-        { role: "user", content: userMessage },
-      ],
-      max_output_tokens: 520,
-    }),
-  });
+  const policy = resolveJarvisModelPolicy(
+    mode === "sales" ? "sales" : "management"
+  );
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(policy.timeoutMs),
+      body: JSON.stringify({
+        model: policy.model,
+        store: false,
+        reasoning: { effort: policy.reasoningEffort },
+        ...(policy.serviceTier
+          ? { service_tier: policy.serviceTier }
+          : {}),
+        input: [
+          { role: "system", content: AI_SYSTEM_PROMPTS[mode] },
+          {
+            role: "user",
+            content: [
+              `Organisation: ${organization.name}`,
+              mode === "sales" ? "Aktueller Vertriebs-Kontext aus WorkPilot360:" : "Aktueller Management-Kontext aus WorkPilot360:",
+              context || "Kein strukturierter Kontext uebergeben.",
+            ].join("\n\n"),
+          },
+          ...messages,
+          { role: "user", content: userMessage },
+        ],
+        max_output_tokens: policy.maxOutputTokens,
+      }),
+    });
+  } catch {
+    recordJarvisModelTelemetry({
+      policy,
+      startedAt,
+      ok: false,
+      errorCode: "request_failed",
+    });
+    return NextResponse.json(
+      { error: `Die ${aiLabel} ist gerade nicht erreichbar. Bitte später erneut versuchen.` },
+      { status: 502 }
+    );
+  }
 
   if (!response.ok) {
+    recordJarvisModelTelemetry({
+      policy,
+      startedAt,
+      ok: false,
+      status: response.status,
+      errorCode: "http_error",
+    });
     const errorText = await response.text().catch(() => "");
     console.error("Management AI request failed", response.status, errorText);
     return NextResponse.json(
@@ -328,7 +362,27 @@ export async function POST(req: Request) {
     );
   }
 
-  const data = await response.json();
+  const data = await response.json().catch(() => null);
+  if (!data) {
+    recordJarvisModelTelemetry({
+      policy,
+      startedAt,
+      ok: false,
+      status: response.status,
+      errorCode: "invalid_json",
+    });
+    return NextResponse.json(
+      { error: `Die ${aiLabel} hat keine verwertbare Antwort geliefert.` },
+      { status: 502 }
+    );
+  }
+  recordJarvisModelTelemetry({
+    policy,
+    startedAt,
+    ok: true,
+    status: response.status,
+    usage: readJarvisModelUsage(data),
+  });
   const reply = normalizeAndLimitAiReply(extractResponseText(data), 140);
   return respond({
     reply: reply || `Die ${aiLabel} hat keine verwertbare Antwort geliefert.`,

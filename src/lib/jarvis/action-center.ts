@@ -10,6 +10,8 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "task.prepare",
   "planning.prepare",
   "time.prepare",
+  "project-logbook.prepare",
+  "task-comment.prepare",
 ] as const;
 
 export type JarvisPreviewActionId = (typeof JARVIS_PREVIEW_ACTION_IDS)[number];
@@ -112,16 +114,38 @@ const timePreviewPayloadSchema = z
     }
   );
 
+const projectLogbookPreviewPayloadSchema = z
+  .object({
+    projectId: boundedId.optional(),
+    title: optionalText(240),
+    text: optionalText(12_000),
+  })
+  .strict();
+
+const taskCommentPreviewPayloadSchema = z
+  .object({
+    taskId: boundedId.optional(),
+    text: optionalText(4000),
+    recipientUserId: boundedId.optional(),
+  })
+  .strict();
+
 const PREVIEW_PAYLOAD_SCHEMAS = {
   "task.prepare": taskPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
+  "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
+  "task-comment.prepare": taskCommentPreviewPayloadSchema,
 } satisfies Record<JarvisPreviewActionId, z.ZodType>;
 
 export type JarvisActionPreviewPayloadMap = {
   "task.prepare": z.infer<typeof taskPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
+  "project-logbook.prepare": z.infer<
+    typeof projectLogbookPreviewPayloadSchema
+  >;
+  "task-comment.prepare": z.infer<typeof taskCommentPreviewPayloadSchema>;
 };
 
 export type JarvisActionPreviewAuditEvent = {
@@ -228,6 +252,42 @@ export type JarvisTaskActionDraftView = {
   result?: {
     entityType: "task";
     entityId: string;
+    label: string;
+  };
+};
+
+export type JarvisCommunicationActionDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "project-logbook.prepare" | "task-comment.prepare";
+  title: "Projektlogbuch-Eintrag vorbereiten" | "Aufgabenkommentar vorbereiten";
+  badge:
+    | "Entwurf"
+    | "Bereit"
+    | "Wird gespeichert"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Gespeichert";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  fields: Array<{ label: string; value: string }>;
+  missingFields: string[];
+  editor: {
+    targetId: string;
+    title: string;
+    text: string;
+    recipientUserId: string;
+    targetOptions: Array<{ id: string; label: string }>;
+    recipientOptions: Array<{ id: string; label: string }>;
+  };
+  confirmation: JarvisTaskActionDraftView["confirmation"];
+  cancellation: JarvisTaskActionDraftView["cancellation"];
+  execution: JarvisTaskActionDraftView["execution"];
+  result?: {
+    entityType: "projectLogbookEntry" | "taskComment";
+    entityId: string;
+    targetId: string;
     label: string;
   };
 };

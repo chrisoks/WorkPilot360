@@ -156,10 +156,37 @@ Aktionen werden getrennt über das Action Center abgesichert:
   Revision, Ablauf, Abbruch, Doppelklick und Replay. Persönliches Starten,
   Pausieren, Fortsetzen und Stoppen einer laufenden Stempelung bleibt bewusst
   eine direkte Benutzeraktion außerhalb dieses Vertikalschnitts.
+- Projektlogbuch und Aufgabenkommentare: Natürliche Schreibwünsche erzeugen
+  einen 15 Minuten gültigen, sitzungs- und identitätsgebundenen Entwurf.
+  Projekt beziehungsweise berechtigte Aufgabe, Titel, Text und optional ein
+  beteiligter Kommentarempfänger bleiben sichtbar editierbar. Die Bestätigung
+  lädt Organisation, beide Rollen, Ziel, Archivstatus und Beteiligung erneut.
+  Der normale UI-Weg und JARVIS verwenden dieselben zentralen Services.
+  Logbucheintrag beziehungsweise Aufgabenkommentar, bestehende
+  Benachrichtigungen, Aufgabenhistorie, Audit und Entwurfsabschluss werden
+  transaktional erzeugt; Doppelklick und Replay schreiben nicht ein zweites
+  Mal. Dieser Schnitt ist absichtlich textbasiert: Anhänge und autonome
+  E-Mail-Aktionen werden weder vorbereitet noch ausgeführt.
 
 Ein JARVIS-Entwurf darf weder Organisation, Projektart, Projektstand,
 Mitarbeiterzugehörigkeit noch Kontingent aus seinem eigenen Payload bestimmen.
 Diese Werte werden bei Vorprüfung und Bestätigung aus WorkPilot360 neu geladen.
+
+## Modellrichtlinie und Kostenkontrolle
+
+- Bekannte Hilfe, Navigation, Fachprüfung und Schreibvalidierung bleiben
+  deterministisch und benötigen keinen Modellaufruf.
+- Der optionale Intent-Fallback verwendet standardmäßig `gpt-5.6-luna` mit
+  niedriger Denkleistung, engem strukturiertem Schema, Tokenlimit und kurzem
+  Timeout.
+- Freigegebene Vertriebs- und Managementformulierungen verwenden
+  standardmäßig `gpt-5.6-terra`.
+- `gpt-5.6-sol` ist nur als ausdrücklich gewähltes Modell für spätere komplexe
+  Analysen vorgesehen. Fast Mode ist standardmäßig ausgeschaltet und kann nur
+  für diesen expliziten Sol-Pfad aktiviert werden.
+- Die zentrale Richtlinie protokolliert ausschließlich Modell, Arbeitsklasse,
+  Service-Tier, Laufzeit, Status, Tokenmengen und geschätzte Kosten. Fragen,
+  Prompts und Fachkontext werden nicht in der Modelltelemetrie gespeichert.
 
 ## Online-Anfragen und Lead-Übernahme
 

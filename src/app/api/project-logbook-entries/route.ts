@@ -10,6 +10,10 @@ import {
   canCreateProjectLogbookEntries,
   canManageProjectLogbookAttachments,
 } from "@/lib/permissions";
+import {
+  createProjectLogbookEntry,
+  ProjectLogbookServiceError,
+} from "@/lib/services/project-logbook-service";
 
 type LogbookAttachment = {
   name: string;
@@ -395,7 +399,6 @@ export async function POST(req: Request) {
 
   const id = cleanString(body.id) || randomUUID();
   const title = cleanString(body.title) || "Eintrag";
-  const author = getActorName(actor);
   const authorUserId = actor.id;
   const colleague = cleanString(body.colleague);
   const visibleFor = cleanStringList(body.visibleFor);
@@ -409,39 +412,37 @@ export async function POST(req: Request) {
   const createdAt = requestedCreatedAt ? new Date(requestedCreatedAt) : new Date();
   const createdAtValue = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
 
-  const rows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
-    INSERT INTO "ProjectLogbookEntry" (
-      "id",
-      "organizationId",
-      "projectId",
-      "title",
-      "body",
-      "author",
-      "authorUserId",
-      "colleague",
-      "visibleFor",
-      "attachments",
-      "projectMonth",
-      "createdAt"
-    )
-    VALUES (
-      ${id},
-      ${organization.id},
-      ${projectId},
-      ${title},
-      ${text},
-      ${author || null},
-      ${authorUserId || null},
-      ${colleague || null},
-      ${JSON.stringify(visibleFor)}::jsonb,
-      ${JSON.stringify(attachments)}::jsonb,
-      ${projectMonth || null},
-      ${createdAtValue}
-    )
-    RETURNING *
-  `;
-
-  return NextResponse.json(formatEntry(rows[0]), { status: 201 });
+  try {
+    const result = await prisma.$transaction((tx) =>
+      createProjectLogbookEntry(tx, {
+        id,
+        organizationId: organization.id,
+        projectId,
+        authority: [{ id: actor.id, role: actor.role }],
+        authorUserId,
+        title,
+        body: text,
+        colleague,
+        visibleFor,
+        attachments: JSON.parse(JSON.stringify(attachments)),
+        projectMonth,
+        createdAt: createdAtValue,
+        source: "manual",
+      })
+    );
+    return NextResponse.json(formatEntry(result.entry), { status: 201 });
+  } catch (error) {
+    if (error instanceof ProjectLogbookServiceError) {
+      const status =
+        error.code === "project_not_found"
+          ? 404
+          : error.code === "invalid_input"
+            ? 400
+            : 403;
+      return NextResponse.json({ error: error.message }, { status });
+    }
+    throw error;
+  }
 }
 
 export async function PATCH(req: Request) {

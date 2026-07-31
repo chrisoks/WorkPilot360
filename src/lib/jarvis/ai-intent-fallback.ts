@@ -4,6 +4,11 @@ import {
   JARVIS_HELP_TOPIC_CATALOG,
   type JarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
+import {
+  readJarvisModelUsage,
+  recordJarvisModelTelemetry,
+  resolveJarvisModelPolicy,
+} from "@/lib/jarvis/model-policy";
 
 export type JarvisAiIntentKind =
   | "how_to"
@@ -47,6 +52,8 @@ export type JarvisAiIntentClassification = {
     | "none"
     | "appointment.create"
     | "task.create"
+    | "project_logbook.create"
+    | "task_comment.create"
     | "email.send"
     | "project.create"
     | "customer.create"
@@ -167,6 +174,8 @@ function sanitizeClassification(
     "none",
     "appointment.create",
     "task.create",
+    "project_logbook.create",
+    "task_comment.create",
     "email.send",
     "project.create",
     "customer.create",
@@ -248,40 +257,6 @@ export function shouldUseJarvisAiIntentFallback(input: {
   return true;
 }
 
-function readIntentUsage(
-  value: unknown,
-  model: string
-): {
-  model: string;
-  inputTokens: number;
-  cachedInputTokens: number;
-  outputTokens: number;
-} | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const usage = (value as Record<string, unknown>).usage;
-  if (!usage || typeof usage !== "object") return undefined;
-  const source = usage as Record<string, unknown>;
-  const inputDetails =
-    source.input_tokens_details &&
-    typeof source.input_tokens_details === "object"
-      ? (source.input_tokens_details as Record<string, unknown>)
-      : {};
-  const inputTokens = Number(source.input_tokens);
-  const outputTokens = Number(source.output_tokens);
-  const cachedInputTokens = Number(inputDetails.cached_tokens ?? 0);
-  if (!Number.isFinite(inputTokens) || !Number.isFinite(outputTokens)) {
-    return undefined;
-  }
-  return {
-    model,
-    inputTokens,
-    cachedInputTokens: Number.isFinite(cachedInputTokens)
-      ? cachedInputTokens
-      : 0,
-    outputTokens,
-  };
-}
-
 export async function classifyJarvisIntentWithAi(
   input: {
     question: string;
@@ -301,10 +276,8 @@ export async function classifyJarvisIntentWithAi(
   const topics = JARVIS_HELP_TOPIC_CATALOG.map(
     (topic) => `${topic.id}: ${topic.title}`
   ).join("\n");
-  const model =
-    process.env.OPENAI_JARVIS_INTENT_MODEL ||
-    process.env.OPENAI_JARVIS_MODEL ||
-    "gpt-5.6-luna";
+  const policy = resolveJarvisModelPolicy("intent");
+  const model = policy.model;
   const topicEnum = [
     "none",
     ...JARVIS_HELP_TOPIC_CATALOG.map((topic) => topic.id),
@@ -318,6 +291,7 @@ export async function classifyJarvisIntentWithAi(
     hasRecord: Boolean(input.context?.recordId),
   };
 
+  const startedAt = Date.now();
   try {
     const response = await fetchImpl("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -325,12 +299,12 @@ export async function classifyJarvisIntentWithAi(
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
-      signal: AbortSignal.timeout(4_000),
+      signal: AbortSignal.timeout(policy.timeoutMs),
       body: JSON.stringify({
         model,
         store: false,
-        reasoning: { effort: "low" },
-        max_output_tokens: 180,
+        reasoning: { effort: policy.reasoningEffort },
+        max_output_tokens: policy.maxOutputTokens,
         input: [
           {
             role: "system",
@@ -347,7 +321,7 @@ export async function classifyJarvisIntentWithAi(
               "Wenn mehrere Bedeutungen plausibel bleiben, setze needsClarification=true.",
               "Wähle helpTopicId nur bei einer klar passenden Bedienhilfe, sonst none.",
               "Verfügbare Bedienhilfen:",
-              "actionKind ist nur bei prepare_action gesetzt, sonst none. Nutze appointment.create für Termin, task.create für Aufgabe, email.send für Mail, project.create für Projekt, customer.create für Kunde/Kontakt, offer.create für Angebot, invoice.create für Rechnungsentwurf, invoice.cancel für Storno, time_entry.create für Zeiteintrag, stamp.delete für Stempelung löschen, record.delete für sonstiges Löschen, catalog.change für Artikel/Leistung und record.change für sonstige Änderungen.",
+              "actionKind ist nur bei prepare_action gesetzt, sonst none. Nutze appointment.create für Termin, task.create für Aufgabe, project_logbook.create für einen neuen Projektlogbuch-Eintrag, task_comment.create für einen Kommentar an einer bestehenden Aufgabe, email.send für Mail, project.create für Projekt, customer.create für Kunde/Kontakt, offer.create für Angebot, invoice.create für Rechnungsentwurf, invoice.cancel für Storno, time_entry.create für Zeiteintrag, stamp.delete für Stempelung löschen, record.delete für sonstiges Löschen, catalog.change für Artikel/Leistung und record.change für sonstige Änderungen.",
               topics,
             ].join("\n"),
           },
@@ -422,6 +396,8 @@ export async function classifyJarvisIntentWithAi(
                     "none",
                     "appointment.create",
                     "task.create",
+                    "project_logbook.create",
+                    "task_comment.create",
                     "email.send",
                     "project.create",
                     "customer.create",
@@ -454,19 +430,37 @@ export async function classifyJarvisIntentWithAi(
       }),
     });
     if (!response.ok) {
+      recordJarvisModelTelemetry({
+        policy,
+        startedAt,
+        ok: false,
+        status: response.status,
+        errorCode: "http_error",
+      });
       console.warn(
         `JARVIS intent fallback unavailable (status ${response.status}).`
       );
       return undefined;
     }
     const responseBody = await response.json();
-    const usage = readIntentUsage(responseBody, model);
-    if (usage) {
-      console.info("JARVIS intent usage", usage);
-    }
+    const usage = readJarvisModelUsage(responseBody);
     const parsed = JSON.parse(extractResponseText(responseBody));
-    return sanitizeClassification(parsed);
+    const classification = sanitizeClassification(parsed);
+    recordJarvisModelTelemetry({
+      policy,
+      startedAt,
+      ok: true,
+      status: response.status,
+      usage,
+    });
+    return classification;
   } catch {
+    recordJarvisModelTelemetry({
+      policy,
+      startedAt,
+      ok: false,
+      errorCode: "request_or_parse_failed",
+    });
     return undefined;
   }
 }

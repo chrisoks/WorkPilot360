@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisAccessPolicyQuestion: vi.fn(),
   resolveJarvisProjectDialogIntent: vi.fn(),
   createPersistedJarvisTaskDraft: vi.fn(),
+  createPersistedJarvisCommunicationDraft: vi.fn(),
   createPersistedJarvisPlanningDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -97,6 +98,8 @@ vi.mock("@/lib/jarvis/project-dialog-intent", () => ({
 
 vi.mock("@/lib/jarvis/action-draft-store", () => ({
   createPersistedJarvisTaskDraft: mocks.createPersistedJarvisTaskDraft,
+  createPersistedJarvisCommunicationDraft:
+    mocks.createPersistedJarvisCommunicationDraft,
   createPersistedJarvisPlanningDraft:
     mocks.createPersistedJarvisPlanningDraft,
   createPersistedJarvisTimeDraft:
@@ -233,6 +236,35 @@ describe("POST /api/jarvis/chat", () => {
       cancellation: { enabled: true },
       execution: { enabled: false, reason: "requires_confirmation" },
     });
+    mocks.createPersistedJarvisCommunicationDraft.mockImplementation(
+      async ({ preview }) => ({
+        version: 2,
+        previewId: preview.previewId,
+        actionId: preview.actionId,
+        title:
+          preview.actionId === "project-logbook.prepare"
+            ? "Projektlogbuch-Eintrag vorbereiten"
+            : "Aufgabenkommentar vorbereiten",
+        badge: "Bereit",
+        state: "awaiting_confirmation",
+        revision: 1,
+        expiresAt: "2026-07-31T04:00:00.000Z",
+        fields: [],
+        missingFields: [],
+        editor: {
+          targetId:
+            preview.payload.projectId ?? preview.payload.taskId ?? "",
+          title: preview.payload.title ?? "",
+          text: preview.payload.text ?? "",
+          recipientUserId: "",
+          targetOptions: [],
+          recipientOptions: [],
+        },
+        confirmation: { enabled: true, reason: "ready" },
+        cancellation: { enabled: true },
+        execution: { enabled: false, reason: "requires_confirmation" },
+      })
+    );
     mocks.createPersistedJarvisPlanningDraft.mockResolvedValue({
       version: 2,
       previewId: "planning-preview-1",
@@ -2209,6 +2241,142 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("prepares a text-only project logbook draft in the active project context", async () => {
+    const actor = {
+      id: "user-1",
+      isActive: true,
+      role: "GESCHAEFTSFUEHRER",
+    };
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: actor,
+      effectiveActor: actor,
+      isImpersonating: false,
+    });
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Schreibe ins Projektlogbuch, dass die Fenster im Erdgeschoss abgeschlossen sind.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.project-logbook",
+      actionDraft: {
+        actionId: "project-logbook.prepare",
+        state: "awaiting_confirmation",
+      },
+    });
+    expect(
+      mocks.createPersistedJarvisCommunicationDraft
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        organizationId: "organization-1",
+        preview: expect.objectContaining({
+          actionId: "project-logbook.prepare",
+          payload: expect.objectContaining({
+            projectId: "project-1",
+            text: "die Fenster im Erdgeschoss abgeschlossen sind.",
+          }),
+        }),
+      })
+    );
+    expect(payload.message).toContain("Anhänge");
+  });
+
+  it("understands an explicit create request with title and text", async () => {
+    const actor = {
+      id: "user-1",
+      isActive: true,
+      role: "GESCHAEFTSFUEHRER",
+    };
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: actor,
+      effectiveActor: actor,
+      isImpersonating: false,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Erstelle einen Projektlogbuch-Eintrag mit dem Titel Browser-QA und dem Text Automatischer lokaler JARVIS-Test.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.project-logbook",
+      actionDraft: {
+        actionId: "project-logbook.prepare",
+      },
+    });
+    const call =
+      mocks.createPersistedJarvisCommunicationDraft.mock.calls.at(-1)?.[0];
+    expect(call.preview.payload).toMatchObject({
+      title: "Browser-QA",
+      text: "Automatischer lokaler JARVIS-Test.",
+    });
+  });
+
+  it("prepares a task comment draft without inventing a target task", async () => {
+    const actor = {
+      id: "user-1",
+      isActive: true,
+      role: "MITARBEITER",
+    };
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: actor,
+      effectiveActor: actor,
+      isImpersonating: false,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Schreibe einen Kommentar zur Aufgabe, dass ich morgen Rückmeldung gebe.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.task-comment",
+      actionDraft: {
+        actionId: "task-comment.prepare",
+      },
+    });
+    const call =
+      mocks.createPersistedJarvisCommunicationDraft.mock.calls.at(-1)?.[0];
+    expect(call.preview.payload).toMatchObject({
+      text: "ich morgen Rückmeldung gebe.",
+    });
+    expect(call.preview.payload.taskId).toBeUndefined();
   });
 
   it("returns a persistent preflighted appointment draft without writing planning data", async () => {

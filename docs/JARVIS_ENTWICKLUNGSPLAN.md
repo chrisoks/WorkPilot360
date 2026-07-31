@@ -1874,13 +1874,32 @@ Roadmap und Abnahmebericht sollen deshalb künftig pro gesperrter Fähigkeit
 Grundklasse, fehlende Bausteine, nächsten Entwicklungsschritt und
 Freigabekriterium ausweisen.
 
+Projektlogbuch- und Aufgabenkommentar-Schreibwege sind seit 31.07.2026 als
+vollständige textbasierte Vertikalschnitte umgesetzt. Natürliche Wünsche
+führen in einen persistenten Entwurf mit eindeutiger Zielauswahl, sichtbarem
+Text, optionalem Aufgabenbeteiligten und bewusster Bestätigung. Sitzung,
+Organisation, Session- und Effektivrolle, Archivstatus, Aufgabenbeteiligung,
+Revision, Ablauf und aktueller Zielstand werden vor dem Schreiben erneut
+geprüft. Normale Masken und JARVIS verwenden gemeinsame Fachservices.
+Exactly-once, Entwurfsaudit, Aufgabenhistorie, vorhandene Benachrichtigungen
+und UI-Refresh sind Bestandteil des Vertrags. Datei-/Bildanhänge und autonome
+Mailaktionen sind ausdrücklich nicht Teil dieses Schnitts.
+
+Die Modellwahl ist ebenfalls zentralisiert: Luna bleibt der kleine
+strukturierte Intent-Fallback, Terra das normale Vertriebs-/Managementmodell.
+Sol ist nur für ausdrücklich klassifizierte spätere Komplexanalysen
+vorgesehen; Sol Fast ist fail-closed und standardmäßig deaktiviert. Laufzeit,
+Status, Token und geschätzte Kosten werden ohne Prompt- oder Fachinhalte
+telemetriert.
+
 - Aufgaben und Nachfassaufgaben,
 - Termine und Terminwünsche,
 - manuelle Zeiteinträge (produktiver Vertikalschnitt; laufende persönliche
   Stempelsteuerung bleibt bewusst separat),
 - Kalkulations-Rechner dialoggeführt bedienen, Ergebnisse erklären und
   kontrolliert als unveränderliche Version speichern,
-- Logbuch- und Kommentaraktionen,
+- Logbuch- und Kommentaraktionen (produktiver textbasierter Vertikalschnitt;
+  Anhänge bleiben ein eigener Sicherheitsblock),
 - Angebote/Nachträge als Entwurf,
 - Rechnungsentwurf und Fakturavorprüfung,
 - Dokument-/Mailvorbereitung,

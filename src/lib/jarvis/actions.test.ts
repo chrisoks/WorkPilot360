@@ -51,8 +51,12 @@ describe("JARVIS action registry", () => {
       "vehicle-trip-calculation.prepare",
       "task.prepare",
       "task.create",
+      "task-comment.prepare",
+      "task-comment.create",
       "planning.prepare",
       "planning.create",
+      "project-logbook.prepare",
+      "project-logbook.create",
       "time.prepare",
       "time.create",
     ]);

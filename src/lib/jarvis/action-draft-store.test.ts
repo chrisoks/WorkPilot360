@@ -35,6 +35,10 @@ const fake = vi.hoisted(() => {
   const absences: Array<Record<string, any>> = [];
   const winterCalculations: Array<Record<string, any>> = [];
   const vehicleCalculations: Array<Record<string, any>> = [];
+  const createProjectLogbookEntry = vi.fn(async () => ({
+    entry: { id: "logbook-entry-1" },
+    project: { id: "project-1", label: "MKG-209 · Marketing" },
+  }));
   let vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
   const vehicles = [
     {
@@ -165,6 +169,7 @@ const fake = vi.hoisted(() => {
                 customer: "Musterkunde",
                 contactId: "contact-1",
                 trade: "Marketing",
+                status: "Umsetzung",
                 updatedAt: projectUpdatedAt,
                 projectKind: "einmaliges Projekt",
                 recurringBillingMode: null,
@@ -220,6 +225,7 @@ const fake = vi.hoisted(() => {
                 customer: "Musterkunde",
                 contactId: "contact-1",
                 trade: "Glasreinigung",
+                status: "Umsetzung",
                 updatedAt: projectUpdatedAt,
                 projectKind: "Dauerläufer",
                 recurringBillingMode: "hourly",
@@ -231,6 +237,7 @@ const fake = vi.hoisted(() => {
                 customer: "Musterkunde",
                 contactId: "contact-1",
                 trade: "Objektbetreuung",
+                status: "Umsetzung",
                 updatedAt: projectUpdatedAt,
                 projectKind: "Dauerläufer",
                 recurringBillingMode: "flat",
@@ -394,6 +401,7 @@ const fake = vi.hoisted(() => {
     users,
     prisma,
     createJarvisConfirmedTask: vi.fn(),
+    createProjectLogbookEntry,
     ensureProjectTimeEntryTable: vi.fn(async () => undefined),
     saveProjectTimeEntry: vi.fn(async ({ payload }: { payload: { id: string } }) => ({
       id: payload.id,
@@ -405,6 +413,7 @@ const fake = vi.hoisted(() => {
       absences.length = 0;
       winterCalculations.length = 0;
       vehicleCalculations.length = 0;
+      createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
     },
@@ -424,6 +433,29 @@ const fake = vi.hoisted(() => {
 vi.mock("@/lib/db/client", () => ({ prisma: fake.prisma }));
 vi.mock("@/lib/services/task-service", () => ({
   createJarvisConfirmedTask: fake.createJarvisConfirmedTask,
+}));
+vi.mock("@/lib/services/project-logbook-service", () => ({
+  createProjectLogbookEntry: fake.createProjectLogbookEntry,
+  ProjectLogbookServiceError: class ProjectLogbookServiceError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string
+    ) {
+      super(message);
+    }
+  },
+}));
+vi.mock("@/lib/services/task-comment-service", () => ({
+  createTaskComment: vi.fn(),
+  deliverTaskCommentNotificationMails: vi.fn(),
+  TaskCommentServiceError: class TaskCommentServiceError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string
+    ) {
+      super(message);
+    }
+  },
 }));
 vi.mock("@/lib/time/project-time-entry-service", () => ({
   WITHOUT_OFFER_ASSIGNMENT: "__without_offer_assignment__",
@@ -489,8 +521,11 @@ import {
   createPersistedJarvisVehicleTripCalculationDraft,
   getJarvisVehicleTripCalculationDraft,
   createPersistedJarvisPlanningDraft,
+  createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
   getJarvisTaskDraft,
+  confirmJarvisCommunicationDraft,
+  getJarvisCommunicationDraft,
   cancelJarvisTimeDraft,
   completeJarvisTimeDraft,
   confirmJarvisTimeDraft,
@@ -522,6 +557,31 @@ function binding(overrides: Partial<Record<"organizationId" | "sessionId", strin
     sessionId: overrides.sessionId ?? "session-1",
     profile: profile(),
   };
+}
+
+async function createLogbookDraft() {
+  return createPersistedJarvisCommunicationDraft({
+    ...binding(),
+    now: baseNow,
+    preview: {
+      version: 1,
+      previewId: "logbook-preview-1",
+      actionId: "project-logbook.prepare",
+      actionTitle: "Projektlogbuch-Eintrag vorbereiten",
+      state: "awaiting_confirmation",
+      organizationId: "org-1",
+      sessionActorId: "user-1",
+      effectiveActorId: "user-1",
+      impersonating: false,
+      payload: {
+        projectId: "project-1",
+        title: "Baustellenstand",
+        text: "Fenster im Erdgeschoss abgeschlossen.",
+      },
+      execution: { enabled: false, reason: "preview_only" },
+      audit: [],
+    },
+  });
 }
 
 async function createDraft(now = baseNow) {
@@ -777,6 +837,65 @@ describe("persistent JARVIS task drafts", () => {
       confirmJarvisTaskDraft("preview-1", binding(), 2, baseNow)
     ).rejects.toMatchObject({ code: "stale_context" });
     expect(fake.createJarvisConfirmedTask).not.toHaveBeenCalled();
+  });
+});
+
+describe("JARVIS project logbook drafts", () => {
+  beforeEach(() => {
+    fake.reset();
+  });
+
+  it("stores one confirmed entry exactly once across repeated confirmation", async () => {
+    const ready = await createLogbookDraft();
+    expect(ready.state).toBe("awaiting_confirmation");
+
+    const first = await confirmJarvisCommunicationDraft(
+      "logbook-preview-1",
+      binding(),
+      ready.revision,
+      baseNow
+    );
+    const replay = await confirmJarvisCommunicationDraft(
+      "logbook-preview-1",
+      binding(),
+      ready.revision,
+      baseNow
+    );
+
+    expect(first).toMatchObject({
+      state: "executed",
+      result: {
+        entityType: "projectLogbookEntry",
+        entityId: "logbook-entry-1",
+        targetId: "project-1",
+      },
+    });
+    expect(replay.result?.entityId).toBe("logbook-entry-1");
+    expect(fake.createProjectLogbookEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when the selected project changes after preview", async () => {
+    const ready = await createLogbookDraft();
+    fake.changeProject();
+
+    await expect(
+      confirmJarvisCommunicationDraft(
+        "logbook-preview-1",
+        binding(),
+        ready.revision,
+        baseNow
+      )
+    ).rejects.toMatchObject({
+      code: "stale_context",
+    });
+    expect(fake.createProjectLogbookEntry).not.toHaveBeenCalled();
+
+    const current = await getJarvisCommunicationDraft(
+      "logbook-preview-1",
+      binding(),
+      baseNow
+    );
+    expect(current.state).toBe("awaiting_confirmation");
   });
 });
 

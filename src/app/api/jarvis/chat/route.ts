@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDemoContext } from "@/lib/demo/context";
+import { prisma } from "@/lib/db/client";
 import {
   findJarvisExactHelpTopicId,
   resolveJarvisDirectNavigationHelp,
@@ -90,6 +91,7 @@ import {
 } from "@/lib/jarvis/action-center";
 import {
   createPersistedJarvisPlanningDraft,
+  createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
   createPersistedJarvisTimeDraft,
   createPersistedJarvisVehicleTripCalculationDraft,
@@ -160,6 +162,149 @@ async function buildJarvisTaskPreview(input: {
       type: "refusal" as const,
       topicId: "action.draft.unavailable",
       message: `${message} Es wurde nichts ausgeführt.`,
+    };
+  }
+}
+
+function looksLikeProjectLogbookWriteRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /\b(?:logbuch|projektlogbuch|projektakte)\w*\b/.test(value) &&
+    /\b(?:schreib|trage|trag|dokumentier|notier|erganz|fug|hinzufug|speicher|erstell|anleg|verfass)\w*\b/.test(
+      value
+    ) &&
+    !/\b(?:such|zeig|lies|lese|was|welch|warum)\w*\b/.test(value)
+  );
+}
+
+function looksLikeTaskCommentWriteRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /\baufgabe\w*\b/.test(value) &&
+    /\bkommentar\w*\b/.test(value) &&
+    /\b(?:kommentier|schreib|trage|trag|notier|erganz|fug|hinzufug|speicher)\w*\b/.test(
+      value
+    ) &&
+    !/\b(?:such|zeig|lies|lese|was|welch|warum)\w*\b/.test(value)
+  );
+}
+
+function extractCommunicationText(question: string) {
+  const quoted = question.match(/[„“"]([^„“"]{2,4000})[“"]/u)?.[1]?.trim();
+  if (quoted) return quoted;
+  const explicitText = question.match(
+    /\b(?:text|inhalt)\s+(.{2,4000})$/iu
+  )?.[1]?.trim();
+  if (explicitText) return explicitText;
+  const marker = question.match(
+    /(?:\bdass\b|:\s*)(.{2,4000})$/iu
+  )?.[1]?.trim();
+  return marker || undefined;
+}
+
+function extractProjectLogbookTitle(question: string) {
+  return question
+    .match(
+      /\b(?:titel|überschrift|ueberschrift)\s+(.{2,160}?)(?=\s+und\s+(?:dem\s+)?(?:text|inhalt)\b|[.!?]?\s*$)/iu
+    )?.[1]
+    ?.trim();
+}
+
+async function buildJarvisCommunicationDraft(input: {
+  question: string;
+  actionId: "project-logbook.prepare" | "task-comment.prepare";
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.session-required",
+      message:
+        "Für bestätigbare JARVIS-Aktionen ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde nichts gespeichert.",
+    };
+  }
+  let targetId =
+    input.actionId === "project-logbook.prepare" &&
+    input.context.recordType === "project"
+      ? input.context.recordId
+      : undefined;
+  if (input.actionId === "project-logbook.prepare") {
+    const projectReference = extractJarvisProjectReferences(input.question)[0];
+    if (projectReference) {
+      const project = await prisma.workPilotProject.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          projectNumber: {
+            equals: projectReference,
+            mode: "insensitive",
+          },
+        },
+        select: { id: true },
+      });
+      targetId = project?.id;
+    }
+  }
+  const text = extractCommunicationText(input.question);
+  const projectLogbookTitle =
+    input.actionId === "project-logbook.prepare"
+      ? extractProjectLogbookTitle(input.question)
+      : undefined;
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: input.actionId,
+    payload:
+      input.actionId === "project-logbook.prepare"
+        ? {
+            projectId: targetId,
+            title: projectLogbookTitle || "JARVIS-Eintrag",
+            text,
+          }
+        : {
+            taskId: targetId,
+            text,
+          },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.unavailable",
+      message: `${preview.message} Es wurde nichts gespeichert.`,
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisCommunicationDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId:
+        input.actionId === "project-logbook.prepare"
+          ? "action.draft.project-logbook"
+          : "action.draft.task-comment",
+      message:
+        input.actionId === "project-logbook.prepare"
+          ? "Ich habe einen sicheren Projektlogbuch-Entwurf vorbereitet. Prüfe Projekt, Titel und Text. Anhänge oder E-Mails werden nicht erzeugt; erst deine ausdrückliche Bestätigung speichert genau einen Eintrag."
+          : "Ich habe einen sicheren Aufgabenkommentar vorbereitet. Prüfe Aufgabe, Text und bei Bedarf die empfangende beteiligte Person. Erst deine ausdrückliche Bestätigung speichert genau einen Kommentar und löst die bestehenden Benachrichtigungen aus.",
+      actionDraft,
+    };
+  } catch (error) {
+    const message =
+      error instanceof JarvisActionDraftError
+        ? error.message
+        : "Der Logbuch-/Kommentarentwurf konnte nicht sicher vorbereitet werden.";
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.unavailable",
+      message: `${message} Es wurde nichts gespeichert.`,
     };
   }
 }
@@ -678,7 +823,7 @@ function looksLikeDirectActionRequest(
   return (
     !/^\s*wie\b/iu.test(question) &&
     ((!startsWithQuestion && decision.goals.includes("change")) ||
-      /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|stemp(?:el|le)|lösch|losch|ändere|ander|setz|markier|erstell|trag|plane|buch|buche|überplan|uberplan|bestätig|bestatig)\w*\b/iu.test(
+      /^\s*(?:leg|lege|mach|mache|schreib|kommentier|dokumentier|notier|ergänz|erganz|schick|sende|stornier|stemp(?:el|le)|lösch|losch|ändere|ander|setz|markier|erstell|trag|plane|buch|buche|überplan|uberplan|bestätig|bestatig)\w*\b/iu.test(
         question
       ))
   );
@@ -866,6 +1011,16 @@ function buildAiIntentClarification(
       "ai-intent-task-help",
       "Aufgabe anlegen erklären",
       "Wie lege ich hier eine Aufgabe an?"
+    ),
+    "project_logbook.create": createJarvisDialogChoice(
+      "ai-intent-project-logbook",
+      "Logbucheintrag vorbereiten",
+      "Schreibe einen Eintrag in das Projektlogbuch."
+    ),
+    "task_comment.create": createJarvisDialogChoice(
+      "ai-intent-task-comment",
+      "Aufgabenkommentar vorbereiten",
+      "Schreibe einen Kommentar zu einer Aufgabe."
     ),
     "email.send": createJarvisDialogChoice(
       "ai-intent-email-help",
@@ -1281,6 +1436,32 @@ export async function POST(req: Request) {
     message,
     intentDecision
   );
+  if (looksLikeProjectLogbookWriteRequest(message)) {
+    return respond(
+      await buildJarvisCommunicationDraft({
+        question: message,
+        actionId: "project-logbook.prepare",
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "system"
+    );
+  }
+  if (looksLikeTaskCommentWriteRequest(message)) {
+    return respond(
+      await buildJarvisCommunicationDraft({
+        question: message,
+        actionId: "task-comment.prepare",
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "system"
+    );
+  }
   if (looksLikeWinterCalculationStartRequest(message)) {
     return respond(
       await buildJarvisWinterCalculationDraft({
@@ -1443,6 +1624,27 @@ export async function POST(req: Request) {
     if (taskPreview) {
       return respond(taskPreview);
     }
+  }
+  if (
+    directActionRequest &&
+    aiIntentClassification?.intent === "prepare_action" &&
+    (aiIntentClassification.actionKind === "project_logbook.create" ||
+      aiIntentClassification.actionKind === "task_comment.create")
+  ) {
+    return respond(
+      await buildJarvisCommunicationDraft({
+        question: message,
+        actionId:
+          aiIntentClassification.actionKind === "project_logbook.create"
+            ? "project-logbook.prepare"
+            : "task-comment.prepare",
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "system"
+    );
   }
   if (
     directActionRequest &&

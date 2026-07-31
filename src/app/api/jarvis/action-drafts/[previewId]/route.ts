@@ -3,16 +3,19 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { getDemoContext } from "@/lib/demo/context";
 import {
   cancelJarvisPlanningDraft,
+  cancelJarvisCommunicationDraft,
   cancelJarvisTaskDraft,
   cancelJarvisTimeDraft,
   cancelJarvisVehicleTripCalculationDraft,
   cancelJarvisWinterCalculationDraft,
   completeJarvisPlanningDraft,
+  completeJarvisCommunicationDraft,
   completeJarvisTaskDraft,
   completeJarvisTimeDraft,
   completeJarvisVehicleTripCalculationDraft,
   completeJarvisWinterCalculationDraft,
   confirmJarvisPlanningDraft,
+  confirmJarvisCommunicationDraft,
   confirmJarvisTaskDraft,
   confirmJarvisTimeDraft,
   confirmJarvisVehicleTripCalculationDraft,
@@ -158,7 +161,22 @@ export async function PATCH(
       body.actionId === "winter-calculation.prepare";
     const isVehicleTripCalculation =
       body.actionId === "vehicle-trip-calculation.prepare";
-    const actionDraft = isVehicleTripCalculation
+    const isCommunication =
+      body.actionId === "project-logbook.prepare" ||
+      body.actionId === "task-comment.prepare";
+    const actionDraft = isCommunication
+      ? await completeJarvisCommunicationDraft(
+          previewId,
+          resolved.binding,
+          {
+            revision: body.revision,
+            targetId: body.targetId,
+            title: body.title,
+            text: body.text,
+            recipientUserId: body.recipientUserId,
+          }
+        )
+      : isVehicleTripCalculation
       ? await completeJarvisVehicleTripCalculationDraft(
           previewId,
           resolved.binding,
@@ -236,7 +254,9 @@ export async function PATCH(
         );
     return NextResponse.json({
       message:
-        isVehicleTripCalculation
+        isCommunication
+          ? "Der Logbuch-/Kommentarentwurf wurde mit dem aktuellen Ziel-, Rollen- und Beteiligtenstand erneut geprüft. Erst deine bewusste Bestätigung darf genau einen Text speichern."
+          : isVehicleTripCalculation
           ? "Die Fahrt wurde mit den aktuellen Fahrzeugwerten und der ausgewählten Kraftstoffpreisquelle neu berechnet. Prüfe Selbstkosten, Verkauf, Gewinn, Aufschlag und Marge; gespeichert wird erst nach deiner ausdrücklichen Bestätigung."
           : isWinterCalculation
           ? "Die Winterdienst-Kalkulation wurde mit der zentralen WorkPilot-Rechenlogik neu berechnet. Prüfe alle Varianten; nur ein freigegebener und ausdrücklich bestätigter Projektbezug darf dauerhaft gespeichert werden."
@@ -277,8 +297,17 @@ export async function POST(
       body.actionId === "winter-calculation.prepare";
     const isVehicleTripCalculation =
       body.actionId === "vehicle-trip-calculation.prepare";
+    const isCommunication =
+      body.actionId === "project-logbook.prepare" ||
+      body.actionId === "task-comment.prepare";
     if (body.command === "cancel") {
-      const actionDraft = isVehicleTripCalculation
+      const actionDraft = isCommunication
+        ? await cancelJarvisCommunicationDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isVehicleTripCalculation
         ? await cancelJarvisVehicleTripCalculationDraft(
             previewId,
             resolved.binding,
@@ -308,7 +337,9 @@ export async function POST(
             body.revision
           );
       return NextResponse.json({
-        message: isVehicleTripCalculation
+        message: isCommunication
+          ? "Der Logbuch-/Kommentarentwurf wurde abgebrochen. Es wurde kein Text gespeichert."
+          : isVehicleTripCalculation
           ? "Der Fahrtenentwurf wurde abgebrochen. Es wurde keine Fahrtenkalkulation gespeichert."
           : isWinterCalculation
           ? "Der Kalkulationsentwurf wurde abgebrochen. Es wurde keine Winterdienst-Kalkulation gespeichert."
@@ -329,7 +360,13 @@ export async function POST(
         { status: 400 }
       );
     }
-    const actionDraft = isVehicleTripCalculation
+    const actionDraft = isCommunication
+      ? await confirmJarvisCommunicationDraft(
+          previewId,
+          resolved.binding,
+          body.revision
+        )
+      : isVehicleTripCalculation
       ? await confirmJarvisVehicleTripCalculationDraft(
           previewId,
           resolved.binding,
@@ -379,7 +416,9 @@ export async function POST(
     return NextResponse.json({
       message:
         actionDraft.state === "executed"
-          ? isVehicleTripCalculation
+          ? isCommunication
+            ? "Der Text wurde nach deiner Bestätigung über den gemeinsamen WorkPilot-Service genau einmal gespeichert."
+            : isVehicleTripCalculation
             ? "Die Fahrtenkalkulation wurde nach deiner Bestätigung genau einmal als unveränderlicher Snapshot gespeichert."
             : isWinterCalculation
             ? "Die Winterdienst-Kalkulation wurde nach deiner Bestätigung genau einmal als unveränderliche Version gespeichert."
@@ -388,7 +427,9 @@ export async function POST(
             : isPlanning
             ? "Der Termin wurde nach deiner Bestätigung über den Planning-Service genau einmal angelegt."
             : "Die Aufgabe wurde nach deiner Bestätigung genau einmal angelegt."
-          : isVehicleTripCalculation
+          : isCommunication
+            ? "Der Logbuch-/Kommentarentwurf wurde nicht gespeichert."
+            : isVehicleTripCalculation
             ? "Der Fahrtenentwurf wurde nicht gespeichert."
             : isWinterCalculation
             ? "Der Kalkulationsentwurf wurde nicht gespeichert."

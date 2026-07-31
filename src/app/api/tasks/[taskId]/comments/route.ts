@@ -1,23 +1,27 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
-import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
-import type { User } from "@prisma/client";
-
-function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
-  return `${user.firstName} ${user.lastName}`.trim() || user.email;
-}
+import {
+  getSessionBoundActor,
+  sessionBoundActorResponse,
+} from "@/lib/auth/actor";
+import {
+  createTaskComment,
+  deliverTaskCommentNotificationMails,
+  TaskCommentServiceError,
+} from "@/lib/services/task-comment-service";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   const { taskId } = await params;
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const text = String(body.text ?? "").trim();
-  const recipientUserId = typeof body.recipientUserId === "string" ? body.recipientUserId.trim() : "";
+  const recipientUserId =
+    typeof body.recipientUserId === "string"
+      ? body.recipientUserId.trim()
+      : "";
 
   if (!text) {
     return NextResponse.json(
@@ -41,141 +45,43 @@ export async function POST(
     ALTER TABLE "TaskComment"
     ADD COLUMN IF NOT EXISTS "recipientUserId" TEXT
   `;
-  const task = await prisma.task.findFirst({
-    where: {
-      id: taskId,
-      organizationId: organization.id,
-    },
-  });
 
-  if (!task) {
-    return NextResponse.json(
-      { error: "Aufgabe wurde nicht gefunden." },
-      { status: 404 }
-    );
-  }
-
-  const actorParticipantRows = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id
-    FROM "TaskParticipant"
-    WHERE "taskId" = ${task.id}
-      AND "userId" = ${actor.id}
-    LIMIT 1
-  `;
-  const canComment =
-    task.ownerId === actor.id ||
-    task.createdById === actor.id ||
-    actorParticipantRows.length > 0;
-
-  if (!canComment) {
-    return NextResponse.json(
-      { error: "Du darfst diese Aufgabe nicht kommentieren." },
-      { status: 403 }
-    );
-  }
-
-  let recipientName = "";
-  if (recipientUserId) {
-    const participantRows = await prisma.$queryRaw<Array<{ firstName: string; lastName: string }>>`
-      SELECT u."firstName", u."lastName"
-      FROM "TaskParticipant" p
-      JOIN "User" u ON u.id = p."userId"
-      WHERE p."taskId" = ${task.id}
-        AND p."userId" = ${recipientUserId}
-      LIMIT 1
-    `;
-
-    if (participantRows.length === 0) {
-      return NextResponse.json(
-        { error: "Kommentare können nur an Aufgabenbeteiligte gerichtet werden." },
-        { status: 400 }
-      );
-    }
-
-    recipientName = `${participantRows[0].firstName} ${participantRows[0].lastName}`.trim();
-  }
-
-  const taskParticipantRows = await prisma.$queryRaw<Array<{ userId: string }>>`
-    SELECT "userId"
-    FROM "TaskParticipant"
-    WHERE "taskId" = ${task.id}
-  `;
-
-  const comment = await prisma.taskComment.create({
-    data: {
-      organizationId: organization.id,
-      taskId: task.id,
-      authorId: actor.id,
-      body: text,
-    },
-    include: {
-      author: true,
-    },
-  });
-
-  if (recipientUserId) {
-    await prisma.$executeRaw`
-      UPDATE "TaskComment"
-      SET "recipientUserId" = ${recipientUserId}
-      WHERE id = ${comment.id}
-    `;
-  }
-
-  const notificationRecipientIds = new Set<string>([
-    task.ownerId,
-    ...(task.createdById ? [task.createdById] : []),
-    ...taskParticipantRows.map((participant) => participant.userId),
-  ]);
-  notificationRecipientIds.delete(actor.id);
-
-  for (const userId of notificationRecipientIds) {
-    const notificationBody = recipientName
-      ? `${getUserName(actor)} hat in der Aufgabe "${task.title}" einen Kommentar an ${recipientName} geschrieben: ${text}`
-      : `${getUserName(actor)} hat die Aufgabe "${task.title}" kommentiert: ${text}`;
-    const notification = await prisma.notification.create({
-      data: {
+  try {
+    const result = await prisma.$transaction((tx) =>
+      createTaskComment(tx, {
         organizationId: organization.id,
-        taskId: task.id,
-        userId,
-        channel: "app",
-        subject: "Neuer Kommentar zur Aufgabe",
-        body: notificationBody,
-        sentAt: null,
-        linkTarget: "task",
-        linkTargetId: task.id,
-        linkLabel: "Aufgabe öffnen",
-      },
-    });
+        taskId,
+        authority: [{ id: actor.id, role: actor.role }],
+        authorUserId: actor.id,
+        text,
+        recipientUserId,
+        source: "manual",
+      })
+    );
+    await deliverTaskCommentNotificationMails(result.mailNotifications);
 
-    await sendTaskNotificationMailSafely({
-      notificationId: notification.id,
-      userId,
-      subject: "Neuer Kommentar zur Aufgabe",
-      body: notificationBody,
-    });
-  }
-
-
-  await prisma.$executeRaw`
-    UPDATE "Task"
-    SET "history" = COALESCE("history", '[]'::jsonb) || ${JSON.stringify([
+    return NextResponse.json(
       {
-        id: randomUUID(),
-        event: "Kommentar hinzugefügt",
-        actorName: getUserName(actor),
-        note: recipientName ? `An ${recipientName}: ${text}` : text,
-        createdAt: new Date().toISOString(),
+        id: result.comment.id,
+        text: result.comment.body,
+        erstelltAm: result.comment.createdAt.toISOString(),
+        autor: result.authorName,
+        recipientUserId,
+        recipientName: result.recipientName,
       },
-    ])}::jsonb
-    WHERE id = ${task.id}
-  `;
-
-  return NextResponse.json({
-    id: comment.id,
-    text: comment.body,
-    erstelltAm: comment.createdAt.toISOString(),
-    autor: getUserName(comment.author),
-    recipientUserId,
-    recipientName,
-  }, { status: 201 });
+      { status: 201 }
+    );
+  } catch (error) {
+    if (error instanceof TaskCommentServiceError) {
+      const status =
+        error.code === "task_not_found"
+          ? 404
+          : error.code === "invalid_input" ||
+              error.code === "recipient_invalid"
+            ? 400
+            : 403;
+      return NextResponse.json({ error: error.message }, { status });
+    }
+    throw error;
+  }
 }
