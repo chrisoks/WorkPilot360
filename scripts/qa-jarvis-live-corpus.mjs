@@ -235,6 +235,22 @@ async function main() {
         select: { id: true, invoiceNumber: true, status: true, updatedAt: true },
       })
     : null;
+  const lifecycleTask = await prisma.task.create({
+    data: {
+      id: randomUUID(),
+      organizationId: actor.organizationId,
+      title: `QA JARVIS Aufgaben-Lebenszyklus ${Date.now()}`,
+      description: "Isolierte Vorschauprüfung des sicheren Aufgaben-Lebenszyklus.",
+      status: "OFFEN",
+      priority: "NORMAL",
+      deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+      customer: lifecycleProject?.customer || "QA Kunde",
+      projectId: lifecycleProject?.id || null,
+      ownerId: actor.id,
+      createdById: actor.id,
+    },
+    select: { id: true, title: true, status: true, archiveReason: true, archivedAt: true, updatedAt: true },
+  });
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -260,6 +276,7 @@ async function main() {
   let offerDeliveryDraftPrepared = false;
   let offerLifecycleDraftPrepared = false;
   let invoiceLifecycleDraftPrepared = false;
+  let taskLifecycleDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -275,6 +292,7 @@ async function main() {
         const isOfferDeliveryCase = item.question.includes("Versende Angebot");
         const isOfferLifecycleCase = item.question.includes("Lösche Angebot");
         const isInvoiceLifecycleCase = item.question.includes("Lösche Rechnungsentwurf");
+        const isTaskLifecycleCase = item.question.includes("QA JARVIS Aufgaben-Lebenszyklus");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -297,6 +315,8 @@ async function main() {
               ? `Lösche Angebot ${lifecycleOffer.offerNumber} kontrolliert. Grund: Irrtümlich doppelt angelegt.`
             : isInvoiceLifecycleCase && lifecycleInvoice
               ? `Lösche Rechnungsentwurf ${lifecycleInvoice.invoiceNumber} kontrolliert. Grund: Irrtümlich doppelt angelegt.`
+            : isTaskLifecycleCase
+              ? `Archiviere die Aufgabe „${lifecycleTask.title}“ kontrolliert. Grund: Irrtümlich doppelt angelegt.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -478,6 +498,27 @@ async function main() {
             });
           } else {
             invoiceLifecycleDraftPrepared = true;
+          }
+        }
+        if (isTaskLifecycleCase) {
+          if (payload.actionDraft?.actionId !== "task.delete") {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Aufgabenfrage hat keine kontrollierte task.delete-Vorschau erzeugt.",
+            });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length
+          ) {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Aufgabenfrage hat keine vollständig prüfbare, unblockierte Bestätigungsvorschau erzeugt.",
+            });
+          } else {
+            taskLifecycleDraftPrepared = true;
           }
         }
       } catch (error) {
@@ -708,6 +749,23 @@ async function main() {
         });
       }
     }
+    const currentTask = await prisma.task.findUnique({
+      where: { id: lifecycleTask.id },
+      select: { status: true, archiveReason: true, archivedAt: true, updatedAt: true },
+    });
+    if (
+      !currentTask ||
+      currentTask.status !== lifecycleTask.status ||
+      currentTask.archiveReason !== lifecycleTask.archiveReason ||
+      currentTask.archivedAt?.toISOString() !== lifecycleTask.archivedAt?.toISOString() ||
+      currentTask.updatedAt.toISOString() !== lifecycleTask.updatedAt.toISOString()
+    ) {
+      failures.push({
+        id: "side-effect-task-lifecycle",
+        status: 0,
+        error: "Die 110-Fragen-Prüfung hat unerwartet eine Aufgabe archiviert oder wiederhergestellt.",
+      });
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -734,6 +792,7 @@ async function main() {
     if (lifecycleInvoice) {
       await prisma.invoice.deleteMany({ where: { id: lifecycleInvoice.id, organizationId: actor.organizationId } });
     }
+    await prisma.task.deleteMany({ where: { id: lifecycleTask.id, organizationId: actor.organizationId } });
     await prisma.authSession.deleteMany({ where: { id: sessionId } });
   }
 
@@ -755,6 +814,7 @@ async function main() {
     offerDeliveryDraftPrepared,
     offerLifecycleDraftPrepared,
     invoiceLifecycleDraftPrepared,
+    taskLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
       ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
       : 0,
@@ -767,6 +827,7 @@ async function main() {
     qaLifecycleInvoiceRemaining: lifecycleInvoice
       ? await prisma.invoice.count({ where: { id: lifecycleInvoice.id } })
       : 0,
+    qaLifecycleTaskRemaining: await prisma.task.count({ where: { id: lifecycleTask.id } }),
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

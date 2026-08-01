@@ -2629,3 +2629,42 @@ PWA und JARVIS bleiben über dieselben Fach- und Speicherservices gekoppelt;
 JARVIS erfindet keinen Speicherzustand und darf ein technisches Speicherproblem
 nicht in einen anderen Belegstatus oder eine falsche kaufmännische Kennzahl
 umdeuten.
+
+## 23. Kontrollierter Aufgaben-Lebenszyklus
+
+JARVIS kann eine eindeutig bestimmte Aufgabe kontrolliert archivieren oder
+wiederherstellen. „Löschen“ wird dabei bewusst als reversible Archivierung
+verstanden; physisches Löschen ist weder über JARVIS noch über die normale
+Aufgaben-API zulässig. Bei gleichnamigen Aufgaben fragt JARVIS fail-closed nach
+der sichtbaren Aufgaben-ID. Ein nachvollziehbarer Grund mit mindestens drei
+Zeichen ist Pflicht.
+
+Die Vorschau zeigt Aktion, Titel, Projekt, Kunde, Verantwortlichkeit,
+Ausgangsstatus, Grund sowie die Anzahl der Kommentare, Beteiligten, Links,
+Zeiteinträge und aktiven Folgeaufgaben. Laufende Zeiterfassungen blockieren die
+Änderung. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben,
+Benachrichtigungen und Auditnachweise bleiben erhalten. Für eine
+Wiederherstellung muss der frühere Status aus dem Archivgrund oder der
+Status-Timeline belastbar nachweisbar sein; Altbestand ohne Nachweis bleibt
+gesperrt. Wiederhergestellt wird exakt dieser Status und nicht pauschal
+`OFFEN`.
+
+Erst die exakte, groß-/kleinschreibungssensitive Phrase
+`AUFGABE ARCHIVIEREN <Titel>` beziehungsweise
+`AUFGABE WIEDERHERSTELLEN <Titel>` darf schreiben. Organisation, Sitzung,
+Session- und Effektivrolle, Impersonation, Revision, TTL, HMAC,
+Payload-/Kontexthash und Aufgabenfingerprint werden geprüft. Ein
+organisationsgebundener PostgreSQL-Advisory-Lock, eine serialisierbare
+Transaktion und ein bedingter Statuswechsel schützen Doppelklick,
+Parallelzugriff und Replay. Status, Archivgrund, Aufgabenhistorie und
+Status-Timeline entstehen gemeinsam oder gar nicht.
+
+Normale Aufgabenoberfläche und JARVIS verwenden
+`src/lib/tasks/task-lifecycle-service.ts`. Die Oberfläche verlangt ebenfalls
+einen Grund und bietet im Archiv kein „Endgültig löschen“ mehr an. Der
+permanente Korpus bleibt exakt 110 Fälle groß und enthält den kontrollierten
+Aufgaben-Lebenszyklus. Die isolierte lokale QA bestätigte Rollen- und
+Organisationsgrenzen, falsche Phrase, Abbruch, Exactly-once-Replay,
+Archivieren/Wiederherstellen, unverändertes Projekt, vollständig erhaltene
+Nachweise und null Rückstände; der echte Oberflächen-Klicktest bestätigte die
+sichtbare Vorschau und den deaktivierten Ausführen-Button bei falscher Phrase.

@@ -250,12 +250,12 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
   },
   {
     id: "task.delete",
-    title: "Aufgabe löschen",
+    title: "Aufgabe kontrolliert archivieren oder wiederherstellen",
     category: "task",
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["internal"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canDeleteTasks,
   },
   {

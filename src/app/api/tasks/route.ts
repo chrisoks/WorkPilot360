@@ -7,6 +7,10 @@ import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 import { canAssignTasksToOthers, canDeleteTasks, canEditTask, canReadTask } from "@/lib/permissions";
 import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
+import {
+  executeTaskLifecycle,
+  TaskLifecycleServiceError,
+} from "@/lib/tasks/task-lifecycle-service";
 import { getLeadershipRecipientIds } from "@/lib/users/leadership";
 import {
   CustomerClassification,
@@ -53,6 +57,17 @@ async function createTaskNotificationPair(input: {
     subject: input.subject,
     body: input.body,
   });
+}
+
+function taskLifecycleErrorResponse(error: unknown) {
+  if (error instanceof TaskLifecycleServiceError) {
+    const status = error.code === "not_found" ? 404 : error.code === "invalid_input" || error.code === "blocked" ? 400 : 409;
+    return NextResponse.json({ error: error.message, code: error.code }, { status });
+  }
+  return NextResponse.json(
+    { error: "Die Aufgabe konnte nicht sicher geändert werden. Es wurde nichts verändert.", code: "execution_failed" },
+    { status: 500 }
+  );
 }
 
 async function notifyCriticalTaskLeadership(input: {
@@ -1245,48 +1260,28 @@ export async function PATCH(req: Request) {
   }
 
   if (body.restore) {
-    const task = await prisma.task.findFirst({
-      where: {
-        id: body.id,
-        organizationId: organization.id,
-      },
-    });
-
-    if (!task) {
-      return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
-    }
-
     if (!canDeleteTasks(actor)) {
       return NextResponse.json(
         { error: "Nur Admins und Geschäftsführung dürfen Aufgaben wiederherstellen." },
         { status: 403 }
       );
     }
-
-    await prisma.$executeRaw`
-      UPDATE "Task"
-      SET
-        status = 'OFFEN'::"TaskStatus",
-        "archivedAt" = NULL,
-        "archiveDueAt" = NULL,
-        "archiveReason" = NULL,
-        "completedAt" = NULL
-      WHERE id = ${body.id}
-    `;
-
-    await recordStatusTransition({
-      organizationId: task.organizationId,
-      entityType: "task",
-      entityId: task.id,
-      entityLabel: task.title,
-      fromStatus: toUiStatus(task.status),
-      toStatus: toUiStatus(TaskStatus.OFFEN),
-      actorUserId: actor.id,
-      actorName: getUserName(actor),
-      note: "Aufgabe wiederhergestellt.",
-    });
-
-    return NextResponse.json({ success: true });
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    try {
+      const task = await prisma.$transaction((tx) => executeTaskLifecycle({
+        tx,
+        organizationId: organization.id,
+        taskId: body.id,
+        action: "restore",
+        reason,
+        actorId: actor.id,
+        actorName: getUserName(actor),
+        source: "ui",
+      }), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return NextResponse.json({ success: true, taskId: task.id });
+    } catch (error) {
+      return taskLifecycleErrorResponse(error);
+    }
   }
 
   if (body.addParticipantUserId) {
@@ -1547,42 +1542,25 @@ export async function DELETE(req: Request) {
   }
 
   if (body.permanent) {
-    if (task.status !== TaskStatus.ARCHIVIERT) {
-      return NextResponse.json(
-        { error: "Aufgaben k\u00f6nnen endg\u00fcltig nur aus dem Archiv gel\u00f6scht werden." },
-        { status: 400 }
-      );
-    }
-
-    await prisma.task.delete({
-      where: {
-        id: body.id,
-      },
-    });
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json(
+      { error: "Aufgaben werden nicht physisch gelöscht. Nutze die kontrollierte Archivierung; Kommentare, Zeiten und Verknüpfungen bleiben erhalten.", code: "physical_delete_disabled" },
+      { status: 400 }
+    );
   }
-
-  await prisma.$executeRaw`
-    UPDATE "Task"
-    SET
-      status = 'ARCHIVIERT'::"TaskStatus",
-      "archivedAt" = CURRENT_TIMESTAMP,
-      "archiveReason" = 'Manuell archiviert'
-    WHERE id = ${body.id}
-  `;
-
-  await recordStatusTransition({
-    organizationId: task.organizationId,
-    entityType: "task",
-    entityId: task.id,
-    entityLabel: task.title,
-    fromStatus: toUiStatus(task.status),
-    toStatus: toUiStatus(TaskStatus.ARCHIVIERT),
-    actorUserId: actor.id,
-    actorName: getUserName(actor),
-    note: "Aufgabe manuell archiviert.",
-  });
-
-  return NextResponse.json({ success: true });
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  try {
+    const changedTask = await prisma.$transaction((tx) => executeTaskLifecycle({
+      tx,
+      organizationId: organization.id,
+      taskId: task.id,
+      action: "archive",
+      reason,
+      actorId: actor.id,
+      actorName: getUserName(actor),
+      source: "ui",
+    }), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return NextResponse.json({ success: true, taskId: changedTask.id });
+  } catch (error) {
+    return taskLifecycleErrorResponse(error);
+  }
 }

@@ -56,6 +56,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisInvoiceCancellationDraft: vi.fn(),
   createPersistedJarvisInvoiceCreditDraft: vi.fn(),
   createPersistedJarvisInvoiceLifecycleDraft: vi.fn(),
+  createPersistedJarvisTaskLifecycleDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -139,6 +140,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisInvoiceCreditDraft,
   createPersistedJarvisInvoiceLifecycleDraft:
     mocks.createPersistedJarvisInvoiceLifecycleDraft,
+  createPersistedJarvisTaskLifecycleDraft:
+    mocks.createPersistedJarvisTaskLifecycleDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -2202,7 +2205,6 @@ describe("POST /api/jarvis/chat", () => {
       type: "clarification",
       topicId: "intent.ai.action-clarification",
     });
-    expect(payload.message).toContain("nicht freigegeben");
     expect(payload.choices).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "Termin anlegen erklären" }),
@@ -3149,7 +3151,9 @@ describe("POST /api/jarvis/chat", () => {
     const payload = await response.json();
 
     expect(payload.topicId).not.toBe("action.preview.task");
-    expect(payload.message).toContain("nicht freigegeben");
+    expect(payload.type).toBe("refusal");
+    expect(payload.message).toContain("keine aktive Aufgabe");
+    expect(payload.message).toContain("Es wurde nichts verändert");
     expect(payload.actionPreview).toBeUndefined();
   });
 

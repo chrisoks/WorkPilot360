@@ -100,6 +100,7 @@ import {
   createPersistedJarvisOfferDecisionDraft,
   createPersistedJarvisOfferLifecycleDraft,
   createPersistedJarvisInvoiceLifecycleDraft,
+  createPersistedJarvisTaskLifecycleDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -151,6 +152,10 @@ import {
   looksLikeInvoiceLifecycleRequest,
   extractInvoiceLifecycle,
 } from "@/lib/jarvis/invoice-intake";
+import {
+  extractTaskLifecycle,
+  looksLikeTaskLifecycleRequest,
+} from "@/lib/jarvis/task-lifecycle-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -788,6 +793,111 @@ async function buildJarvisInvoiceLifecycleDraft(input: {
       type: "refusal" as const,
       topicId: "action.invoice-lifecycle.unavailable",
       message: `${error instanceof JarvisActionDraftError ? error.message : "Die Rechnungsänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
+    };
+  }
+}
+
+async function buildJarvisTaskLifecycleDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.task-lifecycle.session-required",
+      message: "Für Archivieren oder Wiederherstellen ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const details = extractTaskLifecycle(input.question);
+  if (!details.action) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.task-lifecycle.action-required",
+      message: "Soll die Aufgabe archiviert oder wiederhergestellt werden? Physisch gelöscht wird sie nicht. Es wurde noch nichts verändert.",
+    };
+  }
+  if (!details.title && !details.taskId) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.task-lifecycle.task-required",
+      message: "Welche Aufgabe soll geändert werden? Nenne bitte den exakten Titel, am besten in Anführungszeichen. Es wurde noch nichts verändert.",
+    };
+  }
+  if (!details.reason || details.reason.length < 3) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.task-lifecycle.reason-required",
+      message: `Für das ${details.action === "archive" ? "Archivieren" : "Wiederherstellen"} brauche ich einen nachvollziehbaren Grund, zum Beispiel: „${details.action === "archive" ? "Archiviere" : "Stelle"} die Aufgabe „${details.title || details.taskId}“${details.action === "restore" ? " wieder her" : ""}. Grund: Irrtümlich doppelt angelegt.“ Es wurde nichts verändert.`,
+    };
+  }
+  const desiredStatus = details.action === "restore" ? "ARCHIVIERT" : { not: "ARCHIVIERT" as const };
+  const exactTasks = await prisma.task.findMany({
+    where: {
+      organizationId: input.organizationId,
+      ...(details.taskId ? { id: details.taskId } : { title: { equals: details.title, mode: "insensitive" as const } }),
+      status: desiredStatus,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 6,
+    select: { id: true, title: true, customer: true, deadline: true },
+  });
+  const tasks = exactTasks.length || details.taskId ? exactTasks : await prisma.task.findMany({
+    where: {
+      organizationId: input.organizationId,
+      title: { contains: details.title!, mode: "insensitive" },
+      status: desiredStatus,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 6,
+    select: { id: true, title: true, customer: true, deadline: true },
+  });
+  if (!tasks.length) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.task-lifecycle.not-found",
+      message: `Ich habe ${details.action === "restore" ? "keine archivierte" : "keine aktive"} Aufgabe ${details.taskId ? `mit der Aufgaben-ID „${details.taskId}“` : `mit dem Titel „${details.title}“`} in der aktuellen Organisation gefunden. Prüfe Titel beziehungsweise ID. Es wurde nichts verändert.`,
+    };
+  }
+  if (tasks.length > 1) {
+    const matches = tasks.map((task) => `„${task.title}“${task.customer ? ` (${task.customer})` : ""}, Aufgaben-ID: ${task.id}`).join("; ");
+    return {
+      type: "clarification" as const,
+      topicId: "action.task-lifecycle.ambiguous",
+      message: `Der Titel ist nicht eindeutig. Gefunden wurden: ${matches}. Wiederhole den Befehl mit genau einer Aufgaben-ID; es wurde nichts verändert.`,
+    };
+  }
+  const task = tasks[0];
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "task.delete",
+    payload: { taskId: task.id, action: details.action, reason: details.reason },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return { type: "refusal" as const, topicId: "action.task-lifecycle.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisTaskLifecycleDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.task-lifecycle",
+      message: "Ich habe die Aufgabenänderung serverseitig geprüft. Kontrolliere Aufgabe, Projekt, Verantwortlichkeit, Status, Grund, Kommentare, Beteiligte, Links, Zeiten und Folgeaufgaben. Die Aufgabe wird niemals physisch gelöscht; erst die exakte Bestätigungsphrase archiviert oder stellt sie genau einmal wieder her.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.task-lifecycle.unavailable",
+      message: `${error instanceof JarvisActionDraftError ? error.message : "Die Aufgabenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
     };
   }
 }
@@ -2665,6 +2775,17 @@ export async function POST(req: Request) {
   const storageGuidance = resolveJarvisStorageGuidance(message);
   if (storageGuidance) {
     return respond(storageGuidance, "system");
+  }
+  if (looksLikeTaskLifecycleRequest(message)) {
+    return respond(
+      await buildJarvisTaskLifecycleDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "management"
+    );
   }
   if (looksLikeInvoiceLifecycleRequest(message)) {
     return respond(

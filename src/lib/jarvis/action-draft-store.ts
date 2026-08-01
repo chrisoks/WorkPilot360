@@ -25,6 +25,7 @@ import {
   type JarvisOfferDecisionDraftView,
   type JarvisOfferLifecycleDraftView,
   type JarvisInvoiceLifecycleDraftView,
+  type JarvisTaskLifecycleDraftView,
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
@@ -54,6 +55,7 @@ import {
   canManageOffers,
   canDeleteOffers,
   canDeleteInvoices,
+  canDeleteTasks,
   canManageInvoices,
   canSendInvoiceDocuments,
   canSendOfferDocuments,
@@ -151,6 +153,13 @@ import {
   matchesInvoiceLifecycleConfirmation,
   InvoiceLifecycleServiceError,
 } from "@/lib/invoices/invoice-lifecycle-service";
+import {
+  evaluateTaskLifecycle,
+  executeTaskLifecycle,
+  getTaskLifecycleConfirmationText,
+  matchesTaskLifecycleConfirmation,
+  TaskLifecycleServiceError,
+} from "@/lib/tasks/task-lifecycle-service";
 import {
   createConfirmedInvoiceDraft,
   evaluateInvoiceDraft,
@@ -754,6 +763,35 @@ const invoiceLifecyclePayloadSchema = z.object({
   invoiceId: z.string().trim().min(1).max(120),
   action: z.enum(["delete", "restore"]),
   reason: z.string().trim().min(1).max(500),
+}).strict();
+
+const taskLifecyclePayloadSchema = z.object({
+  taskId: z.string().trim().min(1).max(120),
+  action: z.enum(["archive", "restore"]),
+  reason: z.string().trim().min(1).max(500),
+}).strict();
+
+const taskLifecycleContextSchema = z.object({
+  action: z.enum(["archive", "restore"]),
+  reason: z.string(),
+  previousStatus: z.string(),
+  task: z.object({
+    id: z.string(), title: z.string(), description: z.string(), status: z.string(), priority: z.string(),
+    deadline: z.string().datetime({ offset: true }), customer: z.string(), projectId: z.string(), projectLabel: z.string(),
+    ownerId: z.string(), ownerName: z.string(), updatedAt: z.string().datetime({ offset: true }),
+  }).strict(),
+  comments: z.number().int().min(0),
+  participants: z.number().int().min(0),
+  links: z.number().int().min(0),
+  timeEntries: z.number().int().min(0),
+  runningTimeEntries: z.number().int().min(0),
+  childTasks: z.number().int().min(0),
+  checks: z.array(z.object({
+    key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string(),
+  }).strict()),
+  warnings: z.array(z.string()),
+  blockingIssues: z.array(z.string()),
+  fingerprint: z.string().length(64),
 }).strict();
 
 const invoiceLifecycleContextSchema = z.object({
@@ -3922,6 +3960,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "invoice.delete") {
     return getJarvisInvoiceLifecycleDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "task.delete") {
+    return getJarvisTaskLifecycleDraft(previewId, binding, now);
   }
   if (draft?.actionId === "invoice.finalize") {
     return getJarvisInvoiceFinalizationDraft(previewId, binding, now);
@@ -9194,6 +9235,219 @@ export async function confirmJarvisOfferLifecycleDraft(
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof OfferLifecycleServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     throw new JarvisActionDraftError("execution_failed", "Das Angebot wurde nicht geändert und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayChangeTaskLifecycle(binding: JarvisTaskDraftBinding) {
+  return canDeleteTasks(binding.profile.sessionActor) && canDeleteTasks(binding.profile.effectiveActor);
+}
+
+function validateTaskLifecycleBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Aufgabenänderung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  }
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) {
+    throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Aufgabenprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Aufgabenänderung ist ungültig.", 409);
+  }
+  const payload = taskLifecyclePayloadSchema.safeParse(draft.payload);
+  const context = taskLifecycleContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "task.delete" || !payload.success || !context.success ||
+    hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError("integrity_failed", "Aufgabenänderung oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundTaskLifecycleDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Aufgabenänderung wurde nicht gefunden.", 404);
+  validateTaskLifecycleBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateTaskLifecycleBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function toJarvisTaskLifecycleDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisTaskLifecycleDraftView {
+  const { context } = validateTaskLifecycleBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayChangeTaskLifecycle(binding);
+  const ready = state === "awaiting_confirmation" && permitted && context.blockingIssues.length === 0;
+  const reason: JarvisTaskLifecycleDraftView["confirmation"]["reason"] =
+    state === "expired" ? "expired" : state === "cancelled" ? "cancelled" :
+    state === "executed" ? "executed" : state === "executing" ? "executing" :
+    !permitted ? "not_permitted" : context.blockingIssues.length ? "blocked" : "ready";
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "task.delete",
+    title: "Aufgabe kontrolliert archivieren oder wiederherstellen",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" :
+      state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    taskId: context.task.id,
+    projectId: context.task.projectId,
+    lifecycleAction: context.action,
+    fields: [
+      { label: "Aktion", value: context.action === "archive" ? "Archivieren" : "Wiederherstellen" },
+      { label: "Aufgabe", value: context.task.title },
+      { label: "Projekt", value: context.task.projectLabel },
+      { label: "Kunde", value: context.task.customer || "–" },
+      { label: "Verantwortlich", value: context.task.ownerName || "–" },
+      { label: "Aktueller Status", value: context.task.status },
+      ...(context.action === "restore" ? [{ label: "Wiederhergestellter Status", value: context.previousStatus || "Manuelle Prüfung" }] : []),
+      { label: "Grund", value: context.reason },
+      { label: "Kommentare", value: String(context.comments) },
+      { label: "Beteiligte", value: String(context.participants) },
+      { label: "Links", value: String(context.links) },
+      { label: "Zeiteinträge", value: String(context.timeEntries) },
+      { label: "Aktive Folgeaufgaben", value: String(context.childTasks) },
+    ],
+    checks: context.checks,
+    warnings: context.warnings,
+    blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Archivieren und Wiederherstellen von Aufgaben sind für diese Rollenkombination nicht freigegeben."] : [])],
+    confirmation: {
+      enabled: ready,
+      reason,
+      requiredText: getTaskLifecycleConfirmationText(context.task.title, context.action),
+    },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? {
+      result: { entityType: "task" as const, entityId: draft.resultEntityId, label: "Geänderte Aufgabe öffnen" },
+    } : {}),
+  };
+}
+
+export async function createPersistedJarvisTaskLifecycleDraft(input: {
+  preview: JarvisActionPreview<"task.delete">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für Archivieren oder Wiederherstellen ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayChangeTaskLifecycle(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Aufgaben nicht archivieren oder wiederherstellen.", 403);
+  const now = input.now ?? new Date();
+  const payload = taskLifecyclePayloadSchema.parse(input.preview.payload);
+  const evaluation = await evaluateTaskLifecycle({ organizationId: input.organizationId, ...payload });
+  const context = taskLifecycleContextSchema.parse(evaluation);
+  const actorIds = getActorIds(input.profile);
+  const state = context.blockingIssues.length ? "awaiting_input" : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating, actionId: "task.delete", state, revision: 1,
+    payloadHash: hashJson(payload), contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS),
+    confirmedAt: null, cancelledAt: null, executedAt: null, resultEntityType: null, resultEntityId: null,
+    lastErrorCode: context.blockingIssues.length ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({ data: {
+      ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue,
+      integrityTag: createIntegrityTag(draftData),
+    } });
+    await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked" });
+    return draft;
+  });
+  return toJarvisTaskLifecycleDraftView(created, input);
+}
+
+export async function getJarvisTaskLifecycleDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const { draft } = await loadBoundTaskLifecycleDraft(previewId, binding, now);
+  return toJarvisTaskLifecycleDraftView(draft, binding);
+}
+
+export async function cancelJarvisTaskLifecycleDraft(
+  previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()
+) {
+  const { draft } = await loadBoundTaskLifecycleDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisTaskLifecycleDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Aufgabenänderung kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Aufgabenänderung wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag },
+      data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) },
+    });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Aufgabenänderung wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" });
+    return current;
+  });
+  return toJarvisTaskLifecycleDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisTaskLifecycleDraft(
+  previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number,
+  confirmationText: string, now = new Date()
+) {
+  const loaded = await loadBoundTaskLifecycleDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisTaskLifecycleDraftView(loaded.draft, binding);
+  const requiredText = getTaskLifecycleConfirmationText(loaded.context.task.title, loaded.context.action);
+  if (!matchesTaskLifecycleConfirmation(loaded.context.task.title, loaded.context.action, confirmationText)) {
+    throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
+  }
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") {
+    throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Aufgabenänderung darf bestätigt werden.", 409);
+  }
+  if (!mayChangeTaskLifecycle(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Aufgaben nicht archivieren oder wiederherstellen.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
+      if (!current) throw new JarvisActionDraftError("not_found", "Die Aufgabenänderung wurde nicht gefunden.", 404);
+      const parsed = validateTaskLifecycleBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) {
+        throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Aufgabenänderung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      }
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true, firstName: true, lastName: true, email: true } });
+      if (!actor || !canDeleteTasks(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Aufgabenberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
+      const claimed = await tx.jarvisActionDraft.updateMany({
+        where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag },
+        data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) },
+      });
+      if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Aufgabe wird bereits geändert.", 409);
+      const actorName = [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email;
+      const task = await executeTaskLifecycle({
+        tx, organizationId: binding.organizationId, taskId: parsed.payload.taskId,
+        action: parsed.payload.action, reason: parsed.payload.reason,
+        actorId: actor.id, actorName, expectedFingerprint: parsed.context.fingerprint, source: "jarvis",
+      });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "task", resultEntityId: task.id };
+      const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: {
+        state: "executed", executedAt, resultEntityType: "task", resultEntityId: task.id, integrityTag: createIntegrityTag(executedData),
+      } });
+      await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: task.id, entityType: "task" } });
+      return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisTaskLifecycleDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundTaskLifecycleDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") return toJarvisTaskLifecycleDraftView(latest.draft, binding);
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof TaskLifecycleServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
+    throw new JarvisActionDraftError("execution_failed", "Die Aufgabe wurde nicht geändert und die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

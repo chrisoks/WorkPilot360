@@ -114,6 +114,23 @@ describe("JARVIS action registry", () => {
     });
   });
 
+  it("releases task archiving and restoration only to delete-authorized leadership", () => {
+    const leadership = createJarvisAccessProfile({ id: "gf", role: Role.GESCHAEFTSFUEHRER });
+    const employee = createJarvisAccessProfile({ id: "employee", role: Role.MITARBEITER });
+    expect(getJarvisActionDecision("task.delete", leadership)).toMatchObject({
+      permitted: true,
+      executable: true,
+      reason: "allowed",
+      requiresConfirmation: true,
+      action: { risk: "critical", confirmation: "critical" },
+    });
+    expect(getJarvisActionDecision("task.delete", employee)).toMatchObject({
+      permitted: false,
+      executable: false,
+      reason: "role",
+    });
+  });
+
   it("releases invoice delivery only as a critical confirmed action", () => {
     const profile = createJarvisAccessProfile({
       id: "gf",

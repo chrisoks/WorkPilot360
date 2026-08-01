@@ -313,3 +313,27 @@ dabei verbindlich:
 Die vollständige verbindliche Beschreibung und Code-Landkarte steht in
 `docs/STORAGE_ARCHITEKTUR.md`. Secrets sind aus JARVIS-Wissen, Systemlandkarte,
 Prompts, Antworten und Telemetrie ausgeschlossen.
+
+## Aufgaben archivieren und wiederherstellen
+
+- Kritische JARVIS-Aktion: `task.delete`; fachlich ausschließlich
+  `archive | restore`, niemals physisches Löschen.
+- Gemeinsamer Fachservice für JARVIS und Aufgabenoberfläche:
+  `src/lib/tasks/task-lifecycle-service.ts`.
+- Natürliche Sprache und sichere Zielauflösung:
+  `src/lib/jarvis/task-lifecycle-intake.ts` und
+  `src/app/api/jarvis/chat/route.ts`.
+- Persistente, sitzungs-/rollen-/organisationsgebundene Vorschau mit
+  Integritätsnachweis, TTL, exakter Phrase, Advisory-Lock und Exactly-once:
+  `src/lib/jarvis/action-draft-store.ts` sowie
+  `/api/jarvis/action-drafts/[previewId]`.
+- Normaler Oberflächenweg: `/api/tasks`; Grund ist Pflicht, physisches Löschen
+  liefert `physical_delete_disabled`, Wiederherstellung setzt den belegten
+  früheren Status.
+- Erhaltene Nachweise: `Task.history`, `StatusTimelineEntry`, Kommentare,
+  Beteiligte, Links, Zeiteinträge, Folgeaufgaben, Benachrichtigungen und
+  Auditbezüge. Laufende Zeiterfassung oder nicht belegbarer früherer Status
+  blockieren fail-closed.
+- Permanente Abnahme: exakt 110 Fragen in
+  `src/lib/jarvis/live-question-corpus.ts`; isolierter Ausführungstest in
+  `scripts/qa-jarvis-task-lifecycle.mjs`.

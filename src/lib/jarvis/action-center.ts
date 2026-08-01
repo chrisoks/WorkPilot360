@@ -8,6 +8,7 @@ import {
 
 export const JARVIS_PREVIEW_ACTION_IDS = [
   "task.prepare",
+  "task.delete",
   "planning.prepare",
   "time.prepare",
   "project-logbook.prepare",
@@ -140,6 +141,14 @@ const taskCommentPreviewPayloadSchema = z
     taskId: boundedId.optional(),
     text: optionalText(4000),
     recipientUserId: boundedId.optional(),
+  })
+  .strict();
+
+const taskLifecyclePreviewPayloadSchema = z
+  .object({
+    taskId: boundedId,
+    action: z.enum(["archive", "restore"]),
+    reason: boundedText(500),
   })
   .strict();
 
@@ -286,6 +295,7 @@ const documentSendPreviewPayloadSchema = z
 
 const PREVIEW_PAYLOAD_SCHEMAS = {
   "task.prepare": taskPreviewPayloadSchema,
+  "task.delete": taskLifecyclePreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
@@ -307,6 +317,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
 
 export type JarvisActionPreviewPayloadMap = {
   "task.prepare": z.infer<typeof taskPreviewPayloadSchema>;
+  "task.delete": z.infer<typeof taskLifecyclePreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "project-logbook.prepare": z.infer<
@@ -1019,6 +1030,36 @@ export type JarvisInvoiceLifecycleDraftView = {
   };
   cancellation: { enabled: boolean };
   result?: { entityType: "invoice"; entityId: string; label: string };
+};
+
+export type JarvisTaskLifecycleDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "task.delete";
+  title: "Aufgabe kontrolliert archivieren oder wiederherstellen";
+  badge: "Prüfung" | "Bereit" | "Wird geändert" | "Abgebrochen" | "Abgelaufen" | "Ausgeführt";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  taskId: string;
+  projectId: string;
+  lifecycleAction: "archive" | "restore";
+  fields: Array<{ label: string; value: string }>;
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "ok" | "warning" | "blocked";
+    detail: string;
+  }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason: "ready" | "blocked" | "not_permitted" | "expired" | "cancelled" | "executing" | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: { entityType: "task"; entityId: string; label: string };
 };
 
 export type JarvisInvoicePaymentDraftView = {
