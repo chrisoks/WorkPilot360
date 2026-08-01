@@ -8,6 +8,7 @@ import {
   resolveJarvisDirectNavigationHelp,
   resolveJarvisOperationalGuidance,
   resolveJarvisProjectTypeOverview,
+  resolveJarvisStorageGuidance,
   resolveJarvisSystemHelp,
   resolveJarvisSystemHelpTopic,
   sanitizeJarvisSurfaceContext,
@@ -2660,6 +2661,10 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  const storageGuidance = resolveJarvisStorageGuidance(message);
+  if (storageGuidance) {
+    return respond(storageGuidance, "system");
   }
   if (looksLikeInvoiceLifecycleRequest(message)) {
     return respond(

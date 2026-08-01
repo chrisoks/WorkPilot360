@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisDirectNavigationHelp: vi.fn(),
   resolveJarvisOperationalGuidance: vi.fn(),
   resolveJarvisProjectTypeOverview: vi.fn(),
+  resolveJarvisStorageGuidance: vi.fn(),
   resolveJarvisSystemHelpTopic: vi.fn(),
   findJarvisExactHelpTopicId: vi.fn(),
   classifyJarvisIntentWithAi: vi.fn(),
@@ -81,6 +82,8 @@ vi.mock("@/lib/jarvis/knowledge", () => ({
     mocks.resolveJarvisOperationalGuidance,
   resolveJarvisProjectTypeOverview:
     mocks.resolveJarvisProjectTypeOverview,
+  resolveJarvisStorageGuidance:
+    mocks.resolveJarvisStorageGuidance,
   resolveJarvisSystemHelpTopic: mocks.resolveJarvisSystemHelpTopic,
   findJarvisExactHelpTopicId: mocks.findJarvisExactHelpTopicId,
 }));
@@ -574,6 +577,7 @@ describe("POST /api/jarvis/chat", () => {
     mocks.classifyJarvisIntentWithAi.mockResolvedValue(undefined);
     mocks.findJarvisExactHelpTopicId.mockReturnValue(undefined);
     mocks.resolveJarvisDirectNavigationHelp.mockReturnValue(undefined);
+    mocks.resolveJarvisStorageGuidance.mockReturnValue(undefined);
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",
       message: "Systemhilfe",
@@ -615,6 +619,36 @@ describe("POST /api/jarvis/chat", () => {
     });
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("explains an object-storage delivery question before invoice-send action routing", async () => {
+    mocks.resolveJarvisStorageGuidance.mockReturnValue({
+      type: "answer",
+      topicId: "storage.delivery",
+      message:
+        "WorkPilot löst den Beleg serverseitig auf und übergibt ihn als Anlage an Microsoft 365.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Wie versendet WorkPilot eine XRechnung aus dem Objektspeicher?",
+        }),
+      })
+    );
+    const body = await response.json();
+
+    expect(body).toMatchObject({
+      type: "answer",
+      topicId: "storage.delivery",
+    });
+    expect(mocks.createPersistedJarvisInvoiceDeliveryDraft).not.toHaveBeenCalled();
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 
   it.each([
