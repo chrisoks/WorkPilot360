@@ -2722,3 +2722,19 @@ Projektstatusvorschau. Der isolierte Rollen-, Mandanten-, Abbruch-,
 Bestätigungs-, Exactly-once- und Bereinigungstest liegt in
 `scripts/qa-jarvis-project-status.mjs`. Der separate Archivierungsprozess
 `project.archive` bleibt ein späterer eigener kritischer Vertikalschnitt.
+
+Produktiv ist dieser Vertikalschnitt auf Commit
+`ae296c4fd97f7bc14bb680130aa2760e982811ed` abgenommen. Das verifizierte
+Code-, Datenbank-, Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260801T221053Z-before-jarvis-project-status`.
+Lokal bestanden 150 Testdateien mit 1.573 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, DB-Synchronität und der
+90-Seiten-Build. Lokal und produktiv bestand der permanente Korpus 110/110
+Fragen; die isolierte Status-QA bestätigte Rollenbindung, vollständige
+Vorschau, falsche und exakte Phrase, sicheren Abbruch, atomare Exactly-once-
+Ausführung und unveränderte Nebenfelder. Der echte Produktions-Klicktest
+bestätigte dieselbe Vorschau in Projektmaske und JARVIS, deaktivierte
+Ausführung bei falscher Phrase, Freigabe bei exakter Phrase, sicheren Abbruch
+und null Browserfehler. Sämtliche QA-Daten wurden auf null bereinigt; der
+Live-Prisma-Diff ist leer. WorkPilot läuft unter PID `687327`,
+KlinikNavigator blieb unverändert unter PID `398228`.

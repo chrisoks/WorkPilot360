@@ -362,3 +362,9 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
 - Permanente Abnahme: exakt 110 Fragen in
   `src/lib/jarvis/live-question-corpus.ts`; isolierter Ausführungstest in
   `scripts/qa-jarvis-project-status.mjs`.
+- Produktiv abgenommen auf Commit
+  `ae296c4fd97f7bc14bb680130aa2760e982811ed`; verifiziertes Code-, DB-,
+  Konfigurations- und Runtime-Backup:
+  `/var/backups/workpilot360/20260801T221053Z-before-jarvis-project-status`.
+  110/110 Produktionsfragen, isolierte Exactly-once-QA, echter Klicktest in
+  Projektmaske und JARVIS, leerer Live-Prisma-Diff und null QA-Rückstände.
