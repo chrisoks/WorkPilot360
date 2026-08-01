@@ -1,4 +1,34 @@
 import { describe, expect, it, vi } from "vitest";
+
+const storageMocks = vi.hoisted(() => ({
+  cleanupStorageBackedPayload: vi.fn().mockResolvedValue(undefined),
+  persistStorageBackedPayload: vi.fn().mockResolvedValue(undefined),
+  prepareStorageBackedPayload: vi.fn(async (input: {
+    originalName: string;
+    contentType: string;
+    bytes: Uint8Array;
+  }) => ({
+    prepared: {
+      attachments: [
+        {
+          name: input.originalName,
+          type: "Dokument",
+          mimeType: input.contentType,
+          size: input.bytes.byteLength,
+          dataUrl: `data:${input.contentType};base64,${Buffer.from(input.bytes).toString("base64")}`,
+        },
+      ],
+      files: [],
+      provider: null,
+      fallbackCount: 1,
+    },
+    storedFileId: null,
+    reference: null,
+  })),
+}));
+
+vi.mock("@/lib/storage/document-file", () => storageMocks);
+
 import {
   addReminderDays,
   createInvoiceReminder,
@@ -188,6 +218,8 @@ describe("invoice reminder service", () => {
     expect(updateMany).toHaveBeenCalledTimes(1);
     expect(logbookCreate).toHaveBeenCalledTimes(1);
     expect(historyCreate).toHaveBeenCalledTimes(1);
+    expect(storageMocks.prepareStorageBackedPayload).toHaveBeenCalledTimes(1);
+    expect(storageMocks.persistStorageBackedPayload).toHaveBeenCalledTimes(1);
     expect(logbookCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

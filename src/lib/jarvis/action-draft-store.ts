@@ -220,7 +220,7 @@ async function externalizeJarvisDocumentPdf(input: {
   if (!input.entityId) return;
   try {
     if (input.kind === "offer") {
-      const offer = await prisma.offer.findFirst({
+      const offer = await prisma.offer?.findFirst({
         where: { id: input.entityId, organizationId: input.organizationId },
         select: { id: true, offerNumber: true, pdfData: true },
       });
@@ -239,7 +239,7 @@ async function externalizeJarvisDocumentPdf(input: {
       });
       return;
     }
-    const invoice = await prisma.invoice.findFirst({
+    const invoice = await prisma.invoice?.findFirst({
       where: { id: input.entityId, organizationId: input.organizationId },
       select: { id: true, invoiceNumber: true, pdfData: true },
     });
