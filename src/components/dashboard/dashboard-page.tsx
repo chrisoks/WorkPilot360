@@ -119,6 +119,77 @@ const ALLOWED_LOGBOOK_DOCUMENT_MIME_TYPES = new Set([
 const ALLOWED_LOGBOOK_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 const ALLOWED_LOGBOOK_DOCUMENT_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt"]);
 
+type RemoteFileImageButtonProps = {
+  src: string;
+  alt: string;
+  title?: string;
+  className?: string;
+  onOpen: () => void;
+  children?: ReactNode;
+};
+
+function RemoteFileImageButton({
+  src,
+  alt,
+  title,
+  className,
+  onOpen,
+  children,
+}: RemoteFileImageButtonProps) {
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    setLoadState("loading");
+    setAttempt(0);
+  }, [src]);
+
+  const handleClick = () => {
+    if (loadState === "error") {
+      setLoadState("loading");
+      setAttempt((current) => current + 1);
+      return;
+    }
+    if (loadState === "ready") onOpen();
+  };
+
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={handleClick}
+      title={title}
+      aria-busy={loadState === "loading"}
+      aria-label={loadState === "error" ? `${alt}: Laden erneut versuchen` : undefined}
+    >
+      <span className={styles.remoteFileImageFrame} data-state={loadState}>
+        <img
+          key={`${src}-${attempt}`}
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setLoadState("ready")}
+          onError={() => setLoadState("error")}
+        />
+        {loadState === "loading" ? (
+          <span className={styles.remoteFileImageStatus} role="status">
+            <span className={styles.remoteFileImageSpinner} aria-hidden="true" />
+            Vorschau wird geladen
+          </span>
+        ) : null}
+        {loadState === "error" ? (
+          <span className={styles.remoteFileImageStatus} role="alert">
+            <strong>Vorschau nicht verfügbar</strong>
+            <span>Erneut versuchen</span>
+          </span>
+        ) : null}
+      </span>
+      {children}
+    </button>
+  );
+}
+
 type ContactToolbarIconType = "bulk" | "export" | "columns";
 type DashboardFocusIconType =
   | "alert"
@@ -47778,21 +47849,21 @@ await addProjectLogbookEntry(
                               <div className={styles.customerImageGrid}>
                                 {group.images.map((image, imageIndex) =>
                                   image.dataUrl ? (
-                                    <button
+                                    <RemoteFileImageButton
                                       key={`${image.entryId}-${image.attachmentIndex}-${imageIndex}`}
-                                      type="button"
                                       className={styles.customerImageCard}
-                                      onClick={() => void openAttachmentDataUrl(image.dataUrl, image.name)}
+                                      onOpen={() => void openAttachmentDataUrl(image.dataUrl, image.name)}
                                       title={`${image.name} (${image.date})`}
+                                      src={image.dataUrl}
+                                      alt={image.name}
                                     >
-                                      <img src={image.dataUrl} alt={image.name} />
                                       <strong>{image.name}</strong>
                                       <small>
                                         {!isImmocareProject && image.category !== "Projektbilder"
                                           ? `${image.category} · ${image.date}`
                                           : image.date}
                                       </small>
-                                    </button>
+                                    </RemoteFileImageButton>
                                   ) : (
                                     <div
                                       key={`${image.entryId}-${image.attachmentIndex}-${imageIndex}`}
@@ -51219,15 +51290,15 @@ await addProjectLogbookEntry(
                                   key={`${image.entryId}-${image.name}-${index}`}
                                   className={styles.projectImageCard}
                                 >
-                                  <button
-                                    type="button"
+                                  <RemoteFileImageButton
                                     title={`${image.name} (${image.date})`}
                                     className={styles.projectImageLink}
-                                    onClick={() => void openAttachmentDataUrl(image.dataUrl, image.name)}
+                                    onOpen={() => void openAttachmentDataUrl(image.dataUrl, image.name)}
+                                    src={image.dataUrl}
+                                    alt={image.name}
                                   >
-                                    <img src={image.dataUrl} alt={image.name} />
                                     <span>{image.name}</span>
-                                  </button>
+                                  </RemoteFileImageButton>
                                   <div className={styles.projectImageActions}>
                                     {moveTargets.map((targetCategory) => (
                                       <button
