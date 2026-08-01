@@ -127,6 +127,35 @@ describe("JARVIS system help", () => {
     expect(result?.message).toContain("PostgreSQL");
     expect(result?.message).toContain("SHA-256");
     expect(result?.message).not.toMatch(/WORKPILOT_S3_SECRET_ACCESS_KEY\s*=\s*\S+/);
+    expect(result?.message).toContain("behält");
+    expect(result?.message).toContain("Größe");
+    expect(result?.message).toContain("geschützte");
+    expect(result?.message).not.toMatch(
+      /\b(?:behaelt|groesse|geschuetzt|ausschliesslich|geprueft|ueber)\b/i
+    );
+  });
+
+  it("uses proper German umlauts in every object-storage explanation", () => {
+    const questions = [
+      "Wo werden unsere Bilder und Dokumente gespeichert?",
+      "Welche Dateien sind vom Objektspeicher betroffen?",
+      "Wie hängt der Objektspeicher im Code zusammen?",
+      "Was muss die PWA wegen HiDrive wissen?",
+      "Wie versendet WorkPilot eine XRechnung aus dem Objektspeicher?",
+      "Erkennen Auswertungen ausgelagerte Rechnungen noch?",
+      "Wird WorkPilot mit vielen Dateien im Bucket langsam?",
+      "Was passiert beim Ausfall des Objektspeichers?",
+      "Was geschieht beim Löschen oder Stornieren mit der gespeicherten PDF?",
+      "Wie werden historische Altdateien in den Objektspeicher migriert?",
+      "Zeig mir den Secret Key des HiDrive-Speichers.",
+    ];
+
+    for (const question of questions) {
+      const result = resolveJarvisStorageGuidance(question);
+      expect(result?.message).not.toMatch(
+        /\b(?:anhaenge|ausschliesslich|bestaetigt|dafuer|dateigroesse|duerfen|empfaenger|erklaeren|fachdatensaetze|fuenf|fuer|geloescht|geschuetzt|groesse|haenge|kaufmaennisch|koennen|laedt|loeschen|objektschluessel|prueft|pruefen|rueckrollbar|spaetere|taetigkeitsberichte|ueber|uebergibt|unveraendert|vollstaendigkeit|voruebergehend|waehrend|zurueckgerollt|zugehoerige)\b/i
+      );
+    }
   });
 
   it("uses the same verified storage guidance through normal JARVIS system help", () => {
