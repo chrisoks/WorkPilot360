@@ -77,6 +77,7 @@ import type {
   JarvisOfferLifecycleDraftView,
   JarvisInvoiceLifecycleDraftView,
   JarvisTaskLifecycleDraftView,
+  JarvisProjectStatusDraftView,
   JarvisInvoiceDraftView,
   JarvisInvoiceDeliveryDraftView,
   JarvisInvoiceFinalizationDraftView,
@@ -761,6 +762,7 @@ type ManagementAiChatMessage = {
     | JarvisOfferLifecycleDraftView
     | JarvisInvoiceLifecycleDraftView
     | JarvisTaskLifecycleDraftView
+    | JarvisProjectStatusDraftView
     | JarvisInvoiceDraftView
     | JarvisInvoiceDeliveryDraftView
     | JarvisInvoiceFinalizationDraftView
@@ -786,6 +788,7 @@ const jarvisAnswerTones = new Set(["neutral", "positive", "warning"]);
 const jarvisPreviewActionIds = new Set([
   "task.prepare",
   "task.delete",
+  "project.status.change",
   "planning.prepare",
   "time.prepare",
   "offer.prepare",
@@ -2335,6 +2338,7 @@ function parseJarvisActionDraft(
   | JarvisOfferLifecycleDraftView
   | JarvisInvoiceLifecycleDraftView
   | JarvisTaskLifecycleDraftView
+  | JarvisProjectStatusDraftView
   | JarvisInvoiceDraftView
   | JarvisInvoiceDeliveryDraftView
   | JarvisInvoiceFinalizationDraftView
@@ -2357,6 +2361,7 @@ function parseJarvisActionDraft(
     parseJarvisOfferLifecycleDraft(value) ??
     parseJarvisInvoiceLifecycleDraft(value) ??
     parseJarvisTaskLifecycleDraft(value) ??
+    parseJarvisProjectStatusDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
     parseJarvisInvoiceDeliveryDraft(value) ??
     parseJarvisInvoicePaymentDraft(value) ??
@@ -2742,6 +2747,28 @@ function parseJarvisTaskLifecycleDraft(
   const cancellation = candidate.cancellation as Record<string, unknown>;
   if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
   return candidate as unknown as JarvisTaskLifecycleDraftView;
+}
+
+function parseJarvisProjectStatusDraft(
+  value: unknown
+): JarvisProjectStatusDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 || candidate.actionId !== "project.status.change" ||
+    typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
+    typeof candidate.projectId !== "string" || typeof candidate.targetStatus !== "string" ||
+    !Array.isArray(candidate.fields) || !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) || !Array.isArray(candidate.blockingIssues) ||
+    !candidate.confirmation || typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation || typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
+  return candidate as unknown as JarvisProjectStatusDraftView;
 }
 
 function parseJarvisInvoiceFinalizationDraft(
@@ -3651,11 +3678,11 @@ function JarvisOfferFinalizationCard({
   onChange,
   onOpenOffer,
 }: {
-  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView;
+  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectStatusDraftView;
   actorId: string;
   disabled: boolean;
-  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView, message?: string) => void;
-  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView) => void;
+  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectStatusDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectStatusDraftView) => void;
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -3687,18 +3714,20 @@ function JarvisOfferFinalizationCard({
         ? parseJarvisOfferDecisionDraft(data?.actionDraft)
         : draft.actionId === "task.delete"
           ? parseJarvisTaskLifecycleDraft(data?.actionDraft)
+        : draft.actionId === "project.status.change"
+          ? parseJarvisProjectStatusDraft(data?.actionDraft)
         : draft.actionId === "offer.delete"
           ? parseJarvisOfferLifecycleDraft(data?.actionDraft)
           : draft.actionId === "invoice.delete"
             ? parseJarvisInvoiceLifecycleDraft(data?.actionDraft)
             : parseJarvisOfferFinalizationDraft(data?.actionDraft);
       if (!response.ok || !next) {
-        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
+        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
         return;
       }
       onChange(next, typeof data?.message === "string" ? data.message : undefined);
     } catch {
-      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
+      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
     } finally {
       setIsWorking(false);
     }
@@ -3709,11 +3738,11 @@ function JarvisOfferFinalizationCard({
       <header><div><span>Action Center · Kritische Aktion</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
       <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
       <div className={styles.jarvisPlanningChecks}>
-        <strong>{draft.actionId === "task.delete" ? "Aktuelle Aufgabenprüfung" : draft.actionId === "invoice.delete" ? "Aktuelle Rechnungsprüfung" : "Aktuelle Angebotsprüfung"}</strong>
+        <strong>{draft.actionId === "task.delete" ? "Aktuelle Aufgabenprüfung" : draft.actionId === "project.status.change" ? "Aktuelle Projektstatusprüfung" : draft.actionId === "invoice.delete" ? "Aktuelle Rechnungsprüfung" : "Aktuelle Angebotsprüfung"}</strong>
         {draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}
       </div>
       {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
-      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>{draft.actionId === "offer.manage" ? "Entscheidung" : draft.actionId === "task.delete" ? "Aufgabenänderung" : draft.actionId === "offer.delete" ? "Angebotsänderung" : draft.actionId === "invoice.delete" ? "Rechnungsänderung" : "Finalisierung"} ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>{draft.actionId === "offer.manage" ? "Entscheidung" : draft.actionId === "task.delete" ? "Aufgabenänderung" : draft.actionId === "project.status.change" ? "Projektstatusänderung" : draft.actionId === "offer.delete" ? "Angebotsänderung" : draft.actionId === "invoice.delete" ? "Rechnungsänderung" : "Finalisierung"} ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
       {draft.confirmation.enabled && isOpen ? (
         <div className={styles.jarvisActionDraftEditor}>
           <label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label>
@@ -3721,11 +3750,11 @@ function JarvisOfferFinalizationCard({
       ) : null}
       {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
       <div className={styles.jarvisActionDraftActions}>
-        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.actionId === "offer.manage" ? `Angebot als ${draft.decision === "won" ? "gewonnen" : "verloren"} markieren` : draft.actionId === "task.delete" ? (draft.lifecycleAction === "archive" ? "Aufgabe jetzt archivieren" : "Aufgabe jetzt wiederherstellen") : draft.actionId === "offer.delete" ? (draft.lifecycleAction === "delete" ? "Angebot jetzt löschen" : "Angebot jetzt wiederherstellen") : draft.actionId === "invoice.delete" ? (draft.lifecycleAction === "delete" ? "Rechnungsentwurf jetzt löschen" : "Rechnungsentwurf jetzt wiederherstellen") : "Angebot jetzt finalisieren"}</button> : null}
-        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>{draft.actionId === "offer.manage" ? "Entscheidung abbrechen" : draft.actionId === "task.delete" ? "Aufgabenänderung abbrechen" : draft.actionId === "offer.delete" ? "Angebotsänderung abbrechen" : draft.actionId === "invoice.delete" ? "Rechnungsänderung abbrechen" : "Finalisierung abbrechen"}</button> : null}
+        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.actionId === "offer.manage" ? `Angebot als ${draft.decision === "won" ? "gewonnen" : "verloren"} markieren` : draft.actionId === "task.delete" ? (draft.lifecycleAction === "archive" ? "Aufgabe jetzt archivieren" : "Aufgabe jetzt wiederherstellen") : draft.actionId === "project.status.change" ? `Projektstatus auf ${draft.targetStatus} setzen` : draft.actionId === "offer.delete" ? (draft.lifecycleAction === "delete" ? "Angebot jetzt löschen" : "Angebot jetzt wiederherstellen") : draft.actionId === "invoice.delete" ? (draft.lifecycleAction === "delete" ? "Rechnungsentwurf jetzt löschen" : "Rechnungsentwurf jetzt wiederherstellen") : "Angebot jetzt finalisieren"}</button> : null}
+        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>{draft.actionId === "offer.manage" ? "Entscheidung abbrechen" : draft.actionId === "task.delete" ? "Aufgabenänderung abbrechen" : draft.actionId === "project.status.change" ? "Projektstatusänderung abbrechen" : draft.actionId === "offer.delete" ? "Angebotsänderung abbrechen" : draft.actionId === "invoice.delete" ? "Rechnungsänderung abbrechen" : "Finalisierung abbrechen"}</button> : null}
         {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
       </div>
-      <footer>{draft.actionId === "offer.manage" ? (draft.state === "executed" ? "Das Angebot wurde genau einmal entschieden. Projektstatus, Termine, Aufgaben, Rechnungen und Versand blieben unverändert." : draft.state === "cancelled" ? "Die Entscheidung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Entscheidungsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "task.delete" ? (draft.state === "executed" ? `Die Aufgabe wurde genau einmal ${draft.lifecycleAction === "archive" ? "archiviert" : "wiederhergestellt"}. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten.` : draft.state === "cancelled" ? "Die Aufgabenänderung wurde beendet. Die Aufgabe blieb unverändert." : draft.state === "expired" ? "Die Aufgabenänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "offer.delete" ? (draft.state === "executed" ? `Das Angebot wurde genau einmal ${draft.lifecycleAction === "delete" ? "gelöscht" : "wiederhergestellt"}. Projektstatus, Termine, Aufgaben, Rechnungen und Versandprotokolle blieben unverändert.` : draft.state === "cancelled" ? "Die Angebotsänderung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Angebotsänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "invoice.delete" ? (draft.state === "executed" ? `Der Rechnungsentwurf wurde genau einmal ${draft.lifecycleAction === "delete" ? "gelöscht" : "wiederhergestellt"}. Stempelungen, Lager, Zahlungen, Mahnungen, Versand, Angebote und Projektstatus blieben unverändert.` : draft.state === "cancelled" ? "Die Rechnungsänderung wurde beendet. Der Entwurf blieb unverändert." : draft.state === "expired" ? "Die Rechnungsänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : (draft.state === "executed" ? "Das Angebot wurde genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert." : draft.state === "cancelled" ? "Die Finalisierung wurde beendet. Das Angebot blieb ein Entwurf." : draft.state === "expired" ? "Die Angebotsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`)}</footer>
+      <footer>{draft.actionId === "offer.manage" ? (draft.state === "executed" ? "Das Angebot wurde genau einmal entschieden. Projektstatus, Termine, Aufgaben, Rechnungen und Versand blieben unverändert." : draft.state === "cancelled" ? "Die Entscheidung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Entscheidungsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "task.delete" ? (draft.state === "executed" ? `Die Aufgabe wurde genau einmal ${draft.lifecycleAction === "archive" ? "archiviert" : "wiederhergestellt"}. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten.` : draft.state === "cancelled" ? "Die Aufgabenänderung wurde beendet. Die Aufgabe blieb unverändert." : draft.state === "expired" ? "Die Aufgabenänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "project.status.change" ? (draft.state === "executed" ? `Der Projektstatus wurde genau einmal auf „${draft.targetStatus}“ geändert. Angebote, Rechnungen, Termine, Aufgaben, Zeiten und Dateien blieben unverändert.` : draft.state === "cancelled" ? "Die Projektstatusänderung wurde beendet. Das Projekt blieb unverändert." : draft.state === "expired" ? "Die Projektstatusprüfung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "offer.delete" ? (draft.state === "executed" ? `Das Angebot wurde genau einmal ${draft.lifecycleAction === "delete" ? "gelöscht" : "wiederhergestellt"}. Projektstatus, Termine, Aufgaben, Rechnungen und Versandprotokolle blieben unverändert.` : draft.state === "cancelled" ? "Die Angebotsänderung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Angebotsänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "invoice.delete" ? (draft.state === "executed" ? `Der Rechnungsentwurf wurde genau einmal ${draft.lifecycleAction === "delete" ? "gelöscht" : "wiederhergestellt"}. Stempelungen, Lager, Zahlungen, Mahnungen, Versand, Angebote und Projektstatus blieben unverändert.` : draft.state === "cancelled" ? "Die Rechnungsänderung wurde beendet. Der Entwurf blieb unverändert." : draft.state === "expired" ? "Die Rechnungsänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : (draft.state === "executed" ? "Das Angebot wurde genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert." : draft.state === "cancelled" ? "Die Finalisierung wurde beendet. Das Angebot blieb ein Entwurf." : draft.state === "expired" ? "Die Angebotsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`)}</footer>
     </section>
   );
 }
@@ -8632,6 +8661,44 @@ type HeroProjectPreview = {
     note: string;
     createdAt: string;
   }>;
+};
+
+type ProjectStatusChangeEvaluation = {
+  reason: string;
+  targetStatus: string;
+  fingerprint: string;
+  project: {
+    id: string;
+    projectNumber: string;
+    title: string;
+    customer: string;
+    currentStatus: string;
+    projectKind: string;
+    responsibleName: string;
+  };
+  evidence: {
+    activeOffers: number;
+    confirmedPlanningEntries: number;
+    projectTimeEntries: number;
+    runningStampSessions: number;
+    finalInspections: number;
+    activeFinalInvoices: number;
+    openTasks: number;
+  };
+  checks: Array<{ key: string; label: string; status: "ok" | "warning" | "blocked"; detail: string }>;
+  warnings: string[];
+  blockingIssues: string[];
+};
+
+type ProjectStatusChangeDialog = {
+  projectId: string;
+  nextStatus: string;
+  reason: string;
+  confirmationText: string;
+  requiredText: string;
+  evaluation: ProjectStatusChangeEvaluation | null;
+  isLoading: boolean;
+  error: string;
 };
 
 type StatusTimelineEntry = {
@@ -14380,6 +14447,7 @@ export function DashboardPage() {
     getDashboardUrlText("project") || getStoredDashboardText("workpilot-selected-project-file-id")
   );
   const [isProjectStatusMenuOpen, setIsProjectStatusMenuOpen] = useState(false);
+  const [projectStatusChangeDialog, setProjectStatusChangeDialog] = useState<ProjectStatusChangeDialog | null>(null);
   const [isProjectUpsellMenuOpen, setIsProjectUpsellMenuOpen] = useState(false);
   const projectStatusActionRef = useRef<HTMLDivElement | null>(null);
   const [projectFileTab, setProjectFileTab] = useState<ProjectFileTab>(() =>
@@ -32341,27 +32409,105 @@ await addProjectLogbookEntry(
     const currentProject = heroProjects.find((project) => project.id === selectedProjectFileId);
     if (!currentProject) return;
 
-    const updatedProject = { ...currentProject, status: nextStatus };
-    try {
-      await persistProject(updatedProject);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Projektstatus konnte nicht gespeichert werden.");
+    // Archivierung bleibt bis zum eigenen kritischen Vertikalschnitt auf dem
+    // vorhandenen Projektweg. Alle operativen Statuswechsel verwenden den
+    // gemeinsamen atomaren Statusservice von normaler UI und JARVIS.
+    if (normalizeProjectPipelineStatus(nextStatus) === "Archiviert") {
+      const updatedProject = { ...currentProject, status: nextStatus };
+      try {
+        await persistProject(updatedProject);
+        setHeroProjects((currentProjects) => currentProjects.map((project) =>
+          project.id === selectedProjectFileId ? { ...project, status: nextStatus } : project
+        ));
+        await addProjectLogbookEntry(currentProject.id, "Projektstatus", `Projektstatus geändert: ${currentProject.status || "-"} -> ${nextStatus}.`);
+        setSelectedProjectPipelineStatus(nextStatus);
+        setSelectedHeroDetailId(selectedProjectFileId);
+        setIsProjectStatusMenuOpen(false);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Projektstatus konnte nicht gespeichert werden.");
+      }
       return;
     }
 
-    setHeroProjects((currentProjects) =>
-      currentProjects.map((project) =>
-        project.id === selectedProjectFileId ? { ...project, status: nextStatus } : project
-      )
-    );
-    await addProjectLogbookEntry(
-      currentProject.id,
-      "Projektstatus",
-      `Projektstatus geändert: ${currentProject.status || "-"} -> ${nextStatus}.`
-    );
-    setSelectedProjectPipelineStatus(nextStatus);
-    setSelectedHeroDetailId(selectedProjectFileId);
+    setProjectStatusChangeDialog({
+      projectId: currentProject.id,
+      nextStatus,
+      reason: "",
+      confirmationText: "",
+      requiredText: "",
+      evaluation: null,
+      isLoading: false,
+      error: "",
+    });
     setIsProjectStatusMenuOpen(false);
+  }
+
+  async function previewSelectedProjectStatusChange() {
+    const dialog = projectStatusChangeDialog;
+    if (!dialog) return;
+    const reason = dialog.reason.trim();
+    if (reason.length < 3) {
+      setProjectStatusChangeDialog((current) => current ? { ...current, error: "Bitte dokumentiere einen nachvollziehbaren Grund mit mindestens 3 Zeichen." } : current);
+      return;
+    }
+    setProjectStatusChangeDialog((current) => current ? { ...current, isLoading: true, error: "", evaluation: null, requiredText: "", confirmationText: "" } : current);
+    try {
+      const previewResponse = await fetch("/api/hero/projects/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: activeUserId, projectId: dialog.projectId, targetStatus: dialog.nextStatus, reason }),
+      });
+      const previewData = await previewResponse.json().catch(() => null);
+      if (!previewResponse.ok) throw new Error(previewData?.error || "Der Statuswechsel konnte nicht geprüft werden.");
+      if (!previewData?.evaluation || !previewData?.requiredText) throw new Error("Die Statusprüfung ist unvollständig. Es wurde nichts verändert.");
+      setProjectStatusChangeDialog((current) => current ? {
+        ...current,
+        isLoading: false,
+        evaluation: previewData.evaluation as ProjectStatusChangeEvaluation,
+        requiredText: String(previewData.requiredText),
+        confirmationText: "",
+        error: "",
+      } : current);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Der Statuswechsel konnte nicht geprüft werden.";
+      setProjectStatusChangeDialog((current) => current ? { ...current, isLoading: false, error: message } : current);
+    }
+  }
+
+  async function confirmSelectedProjectStatusChange() {
+    const dialog = projectStatusChangeDialog;
+    if (!dialog?.evaluation || dialog.evaluation.blockingIssues.length) return;
+    setProjectStatusChangeDialog((current) => current ? { ...current, isLoading: true, error: "" } : current);
+    try {
+      const response = await fetch("/api/hero/projects/status", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: activeUserId,
+          projectId: dialog.projectId,
+          targetStatus: dialog.nextStatus,
+          reason: dialog.reason.trim(),
+          fingerprint: dialog.evaluation.fingerprint,
+          confirmationText: dialog.confirmationText,
+          requestId: crypto.randomUUID(),
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || "Projektstatus konnte nicht gespeichert werden.");
+      const currentProject = heroProjects.find((project) => project.id === dialog.projectId);
+      if (!currentProject) throw new Error("Das geänderte Projekt ist nicht mehr in der aktuellen Ansicht vorhanden.");
+      const savedProject = { ...currentProject, ...(data?.project || {}), status: dialog.nextStatus };
+      setHeroProjects((currentProjects) => currentProjects.map((project) =>
+        project.id === dialog.projectId ? savedProject : project
+      ));
+      setSelectedProjectPipelineStatus(dialog.nextStatus);
+      setSelectedHeroDetailId(dialog.projectId);
+      setIsProjectStatusMenuOpen(false);
+      setProjectStatusChangeDialog(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Projektstatus konnte nicht gespeichert werden.";
+      setProjectStatusChangeDialog((current) => current ? { ...current, isLoading: false, error: message } : current);
+    }
   }
 
   function openProjectTaskModal(project: HeroProjectPreview, mode: "task" | "appointment") {
@@ -39629,6 +39775,7 @@ await addProjectLogbookEntry(
       | JarvisOfferLifecycleDraftView
       | JarvisInvoiceLifecycleDraftView
       | JarvisTaskLifecycleDraftView
+      | JarvisProjectStatusDraftView
       | JarvisOfferDeliveryDraftView
       | JarvisInvoiceDraftView
       | JarvisInvoiceDeliveryDraftView
@@ -39666,6 +39813,10 @@ await addProjectLogbookEntry(
       } else if (nextDraft.actionId === "task.delete") {
         void loadTasks();
         void loadNotifications(true);
+      } else if (nextDraft.actionId === "project.status.change") {
+        void loadHeroProjects();
+        void loadProjectLogbookEntries();
+        void loadProjectStatusTimelineEntries();
       } else if (nextDraft.actionId === "offer.prepare") {
         void loadOffers();
       } else if (
@@ -51004,6 +51155,142 @@ await addProjectLogbookEntry(
             </div>
           </div>
         </header>
+
+        {projectStatusChangeDialog ? (
+          <div
+            className={styles.modalOverlay}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Projektstatus kontrolliert ändern"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !projectStatusChangeDialog.isLoading) {
+                setProjectStatusChangeDialog(null);
+              }
+            }}
+          >
+            <div className={`${styles.standardModal} ${styles.projectStatusChangeModal}`}>
+              <header className={styles.standardModalHeader}>
+                <div>
+                  <h2>Projektstatus kontrolliert ändern</h2>
+                  <p>{projectStatusChangeDialog.evaluation
+                    ? `${projectStatusChangeDialog.evaluation.project.currentStatus} → ${projectStatusChangeDialog.nextStatus}`
+                    : `Zielstatus: ${projectStatusChangeDialog.nextStatus}`}</p>
+                </div>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  aria-label="Projektstatusdialog schließen"
+                  disabled={projectStatusChangeDialog.isLoading}
+                  onClick={() => setProjectStatusChangeDialog(null)}
+                >
+                  ×
+                </button>
+              </header>
+              <div className={styles.standardModalBody}>
+                <label className={styles.projectStatusReasonField}>
+                  Nachvollziehbarer Grund
+                  <textarea
+                    value={projectStatusChangeDialog.reason}
+                    rows={3}
+                    maxLength={500}
+                    disabled={projectStatusChangeDialog.isLoading}
+                    placeholder="Warum soll der Projektstatus geändert werden?"
+                    onChange={(event) => setProjectStatusChangeDialog((current) => current ? {
+                      ...current,
+                      reason: event.target.value,
+                      evaluation: null,
+                      requiredText: "",
+                      confirmationText: "",
+                      error: "",
+                    } : current)}
+                  />
+                </label>
+
+                {projectStatusChangeDialog.evaluation ? (
+                  <>
+                    <div className={styles.projectStatusSummaryGrid}>
+                      {[
+                        ["Projekt", `${projectStatusChangeDialog.evaluation.project.projectNumber} · ${projectStatusChangeDialog.evaluation.project.title}`],
+                        ["Kunde", projectStatusChangeDialog.evaluation.project.customer || "–"],
+                        ["Projektart", projectStatusChangeDialog.evaluation.project.projectKind || "–"],
+                        ["Verantwortlich", projectStatusChangeDialog.evaluation.project.responsibleName || "–"],
+                        ["Aktueller Status", projectStatusChangeDialog.evaluation.project.currentStatus],
+                        ["Neuer Status", projectStatusChangeDialog.nextStatus],
+                      ].map(([label, value]) => (
+                        <div key={label}><span>{label}</span><strong>{value}</strong></div>
+                      ))}
+                    </div>
+                    <section className={styles.projectStatusReviewSection}>
+                      <h3>Fachprüfungen</h3>
+                      {projectStatusChangeDialog.evaluation.checks.map((check) => (
+                        <article key={check.key} data-status={check.status}>
+                          <strong>{check.status === "ok" ? "✓" : check.status === "blocked" ? "✕" : "!"} {check.label}</strong>
+                          <p>{check.detail}</p>
+                        </article>
+                      ))}
+                    </section>
+                    <section className={styles.projectStatusEvidenceSection}>
+                      <h3>Geprüfte Nachweise</h3>
+                      <div>
+                        {[
+                          ["Aktive Angebote", projectStatusChangeDialog.evaluation.evidence.activeOffers],
+                          ["Bestätigte Planungen", projectStatusChangeDialog.evaluation.evidence.confirmedPlanningEntries],
+                          ["Projektzeiten", projectStatusChangeDialog.evaluation.evidence.projectTimeEntries],
+                          ["Laufende Stempelungen", projectStatusChangeDialog.evaluation.evidence.runningStampSessions],
+                          ["Endkontrollen", projectStatusChangeDialog.evaluation.evidence.finalInspections],
+                          ["Abschlussrechnungen", projectStatusChangeDialog.evaluation.evidence.activeFinalInvoices],
+                          ["Offene Aufgaben", projectStatusChangeDialog.evaluation.evidence.openTasks],
+                        ].map(([label, value]) => <span key={label}><strong>{value}</strong>{label}</span>)}
+                      </div>
+                    </section>
+                    {projectStatusChangeDialog.evaluation.warnings.map((warning) => (
+                      <p key={warning} className={styles.projectStatusWarning}>{warning}</p>
+                    ))}
+                    {projectStatusChangeDialog.evaluation.blockingIssues.length ? (
+                      <div className={styles.projectStatusBlockingIssues}>
+                        <strong>Projektstatusänderung ist blockiert</strong>
+                        {projectStatusChangeDialog.evaluation.blockingIssues.map((issue) => <p key={issue}>{issue}</p>)}
+                      </div>
+                    ) : (
+                      <label className={styles.projectStatusConfirmationField}>
+                        Zur kritischen Bestätigung exakt eingeben:
+                        <strong>{projectStatusChangeDialog.requiredText}</strong>
+                        <input
+                          value={projectStatusChangeDialog.confirmationText}
+                          disabled={projectStatusChangeDialog.isLoading}
+                          onChange={(event) => setProjectStatusChangeDialog((current) => current ? { ...current, confirmationText: event.target.value, error: "" } : current)}
+                        />
+                      </label>
+                    )}
+                  </>
+                ) : null}
+                {projectStatusChangeDialog.error ? <p className={styles.projectStatusDialogError}>{projectStatusChangeDialog.error}</p> : null}
+              </div>
+              <footer className={styles.standardModalFooter}>
+                <span>JARVIS und Projektmaske verwenden dieselbe Fachprüfung.</span>
+                <div className={styles.modalActions}>
+                  <button type="button" className={styles.secondaryButton} disabled={projectStatusChangeDialog.isLoading} onClick={() => setProjectStatusChangeDialog(null)}>
+                    Abbrechen
+                  </button>
+                  {!projectStatusChangeDialog.evaluation ? (
+                    <button type="button" className={styles.primaryButton} disabled={projectStatusChangeDialog.isLoading || projectStatusChangeDialog.reason.trim().length < 3} onClick={previewSelectedProjectStatusChange}>
+                      {projectStatusChangeDialog.isLoading ? "Prüfung läuft..." : "Statuswechsel prüfen"}
+                    </button>
+                  ) : projectStatusChangeDialog.evaluation.blockingIssues.length === 0 ? (
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={projectStatusChangeDialog.isLoading || projectStatusChangeDialog.confirmationText !== projectStatusChangeDialog.requiredText}
+                      onClick={confirmSelectedProjectStatusChange}
+                    >
+                      {projectStatusChangeDialog.isLoading ? "Wird gespeichert..." : `Status auf ${projectStatusChangeDialog.nextStatus} setzen`}
+                    </button>
+                  ) : null}
+                </div>
+              </footer>
+            </div>
+          </div>
+        ) : null}
 
         {isProjectPlanningDayOverlayOpen ? (
           <div
@@ -76288,6 +76575,7 @@ await addProjectLogbookEntry(
                     (message.actionDraft?.actionId === "offer.finalize" ||
                       message.actionDraft?.actionId === "offer.manage" ||
                       message.actionDraft?.actionId === "task.delete" ||
+                      message.actionDraft?.actionId === "project.status.change" ||
                       message.actionDraft?.actionId === "offer.delete" ||
                       message.actionDraft?.actionId === "invoice.delete") ? (
                       <JarvisOfferFinalizationCard
@@ -76305,6 +76593,15 @@ await addProjectLogbookEntry(
                               return;
                             }
                             openEditModal(task);
+                            return;
+                          }
+                          if (offerDraft.actionId === "project.status.change") {
+                            const project = heroProjects.find((candidate) => candidate.id === offerDraft.projectId);
+                            if (!project) {
+                              setManagementAiError("Das Projekt ist mit der aktuellen Rolle nicht sichtbar. Lade die Projektansicht neu.");
+                              return;
+                            }
+                            openProjectFile(project);
                             return;
                           }
                           const project = heroProjects.find((candidate) => candidate.id === offerDraft.projectId);

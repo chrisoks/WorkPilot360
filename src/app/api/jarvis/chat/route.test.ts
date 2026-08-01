@@ -57,6 +57,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisInvoiceCreditDraft: vi.fn(),
   createPersistedJarvisInvoiceLifecycleDraft: vi.fn(),
   createPersistedJarvisTaskLifecycleDraft: vi.fn(),
+  createPersistedJarvisProjectStatusDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -142,6 +143,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisTaskLifecycleDraft:
     mocks.createPersistedJarvisTaskLifecycleDraft,
+  createPersistedJarvisProjectStatusDraft:
+    mocks.createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3266,6 +3269,89 @@ describe("POST /api/jarvis/chat", () => {
     );
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("asks for a documented reason before preparing a project-status change", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Setze GLR-449 auf Angebot." }),
+    }));
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "clarification",
+      topicId: "action.project-status.reason-required",
+    });
+    expect(payload.message).toContain("nachvollziehbaren Grund");
+    expect(mocks.createPersistedJarvisProjectStatusDraft).not.toHaveBeenCalled();
+  });
+
+  it("prepares a uniquely scoped project-status change without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const projectLookup = vi.spyOn(prisma.workPilotProject, "findMany").mockResolvedValueOnce([
+      { id: "project-1", projectNumber: "GLR-449" },
+    ] as never);
+    mocks.createPersistedJarvisProjectStatusDraft.mockImplementation(async ({ preview }) => ({
+      version: 2,
+      previewId: preview.previewId,
+      actionId: "project.status.change",
+      title: "Projektstatus kontrolliert ändern",
+      badge: "Bereit",
+      state: "awaiting_confirmation",
+      revision: 1,
+      expiresAt: "2026-08-02T01:00:00.000Z",
+      projectId: "project-1",
+      targetStatus: "Angebot",
+      fields: [],
+      checks: [],
+      warnings: [],
+      blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "PROJEKTSTATUS GLR-449 AUF Angebot" },
+      cancellation: { enabled: true },
+      execution: { enabled: false, reason: "requires_confirmation" },
+    }));
+
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: "user-1",
+        message: "Setze GLR-449 auf Angebot. Grund: Der Angebotsprozess wurde gestartet.",
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.project-status",
+      actionDraft: {
+        actionId: "project.status.change",
+        state: "awaiting_confirmation",
+        execution: { enabled: false, reason: "requires_confirmation" },
+      },
+    });
+    expect(projectLookup).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: "organization-1", projectNumber: { equals: "GLR-449", mode: "insensitive" } },
+      take: 2,
+    }));
+    expect(mocks.createPersistedJarvisProjectStatusDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1",
+      sessionId: "session-1",
+      preview: expect.objectContaining({
+        actionId: "project.status.change",
+        payload: {
+          projectId: "project-1",
+          targetStatus: "Angebot",
+          reason: "Der Angebotsprozess wurde gestartet",
+        },
+      }),
+    }));
+    projectLookup.mockRestore();
   });
 
   it("prepares an invoice draft with preflight but never fakturizes or sends", async () => {

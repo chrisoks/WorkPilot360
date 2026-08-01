@@ -2682,3 +2682,43 @@ Löschens; Aufgaben, Entwürfe, Sitzungen und Timeline-Rückstände standen dana
 jeweils auf null. Lokal sind 147 Testdateien mit 1.549 Tests, TypeScript,
 Mojibake-/Regressionschecks, Prisma und der 90-Seiten-Build grün. WorkPilot
 läuft unter PID `681938`, KlinikNavigator blieb unter PID `398228`.
+
+## 24. Kontrollierte Projektstatusänderung
+
+JARVIS kann einen eindeutig über die Projektnummer bestimmten operativen
+Projektstatus als kritische Aktion `project.status.change` vorbereiten. Er
+entscheidet den Zielstatus niemals selbst und archiviert keine Projekte über
+diesen Pfad. Pflicht sind Projektnummer, ausdrücklich genannter Zielstatus und
+ein nachvollziehbarer Grund. Die Vorschau zeigt Projekt, Kunde, Projektart,
+Verantwortlichkeit, bisherigen und neuen Status sowie Angebote, bestätigte
+Planungen, Projektzeiten, laufende Stempelungen, Endkontrollen,
+Abschlussrechnungen und offene Aufgaben. Angebote, Rechnungen, Aufgaben,
+Termine, Zeiten, Dateien und Kundenbezüge werden ausdrücklich als unverändert
+ausgewiesen.
+
+`src/lib/projects/project-status-service.ts` ist der gemeinsame Fachservice
+für JARVIS und die normale Projektoberfläche. Er bindet alle Abfragen an die
+Organisation und prüft den aktuellen Status, die Zielstatus-Freigabe sowie die
+fachlichen Mindestnachweise fail-closed. Insbesondere benötigt `Geplant` eine
+bestätigte Planung, `Abrechnungsprüfung` einen Arbeits- oder
+Endkontrollnachweis, `Zur Abrechnung bereit` eine Endkontrolle und
+`Abgeschlossen` eine aktive fakturierte oder bezahlte Abschlussrechnung;
+Dauerläufer mit zukünftiger Laufzeit dürfen nicht abgeschlossen werden.
+
+Erst die exakte, groß-/kleinschreibungssensitive Phrase
+`PROJEKTSTATUS <Projektnummer> AUF <Zielstatus>` darf ausführen. Organisation,
+Sitzung, Session- und Effektivrolle, Impersonation, Revision, TTL, HMAC,
+Payload-/Kontexthash und ein Fingerprint der Projekt- und Fachnachweise werden
+erneut geprüft. Ein organisations- und projektgebundener PostgreSQL-Advisory-
+Lock, eine serialisierbare Transaktion und ein bedingtes Update schützen
+Doppelklick, Parallelzugriff und Replay. Ausschließlich Projektstatus,
+Status-Timeline, Projektlogbuch, Audit und die Auflösung überholter
+Statuseskalationen entstehen gemeinsam oder gar nicht.
+
+Die normale Projektmaske verwendet `/api/hero/projects/status` und zeigt vor
+der Bestätigung dieselben Fachprüfungen und ausgeschlossenen Nebenwirkungen.
+Der permanente Korpus bleibt exakt 110 Fälle groß und enthält nun die reine
+Projektstatusvorschau. Der isolierte Rollen-, Mandanten-, Abbruch-,
+Bestätigungs-, Exactly-once- und Bereinigungstest liegt in
+`scripts/qa-jarvis-project-status.mjs`. Der separate Archivierungsprozess
+`project.archive` bleibt ein späterer eigener kritischer Vertikalschnitt.

@@ -42,6 +42,29 @@ const fake = vi.hoisted(() => {
   const reminderInvoices: Array<Record<string, any>> = [];
   const cancellationInvoices: Array<Record<string, any>> = [];
   const creditInvoices: Array<Record<string, any>> = [];
+  const projectStatusChanges: Array<Record<string, any>> = [];
+  const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
+    reason,
+    targetStatus,
+    project: {
+      id: projectId, projectNumber: "MKG-209", title: "Marketing", customer: "Musterkunde",
+      currentStatus: "Umsetzung", projectKind: "Einmalprojekt", projectType: "Marketing",
+      runtimeUntil: "", responsibleName: "Jarvis Tester", updatedAt: "2026-07-29T18:00:00.000Z",
+    },
+    evidence: {
+      activeOffers: 1, confirmedPlanningEntries: 1, projectTimeEntries: 1,
+      runningStampSessions: 0, finalInspections: 0, activeFinalInvoices: 0, openTasks: 1,
+    },
+    checks: [{ key: "transition", label: "Statuswechsel", status: "ok", detail: "Geprüft." }],
+    warnings: ["Fachdaten bleiben unverändert."],
+    blockingIssues: [],
+    fingerprint: "e".repeat(64),
+  }));
+  const executeProjectStatusChange = vi.fn(async (input: Record<string, any>) => {
+    const row = { id: input.projectId, status: input.targetStatus };
+    projectStatusChanges.push(row);
+    return { project: row, replayed: false };
+  });
   const evaluateInvoicePayment = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate?: string }) => ({
     invoice: {
       id: invoiceId,
@@ -598,6 +621,7 @@ const fake = vi.hoisted(() => {
       reminderInvoices.length = 0;
       cancellationInvoices.length = 0;
       creditInvoices.length = 0;
+      projectStatusChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
       evaluateInvoicePayment.mockClear();
@@ -608,6 +632,8 @@ const fake = vi.hoisted(() => {
       createInvoiceCancellation.mockClear();
       evaluateInvoiceCredit.mockClear();
       createInvoiceCredit.mockClear();
+      evaluateProjectStatusChange.mockClear();
+      executeProjectStatusChange.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -639,10 +665,24 @@ const fake = vi.hoisted(() => {
     creditInvoices,
     evaluateInvoiceCredit,
     createInvoiceCredit,
+    projectStatusChanges,
+    evaluateProjectStatusChange,
+    executeProjectStatusChange,
   };
 });
 
 vi.mock("@/lib/db/client", () => ({ prisma: fake.prisma }));
+vi.mock("@/lib/projects/project-status-service", () => ({
+  evaluateProjectStatusChange: fake.evaluateProjectStatusChange,
+  executeProjectStatusChange: fake.executeProjectStatusChange,
+  getProjectStatusConfirmationText: (projectNumber: string, targetStatus: string) =>
+    `PROJEKTSTATUS ${projectNumber} AUF ${targetStatus}`,
+  matchesProjectStatusConfirmation: (projectNumber: string, targetStatus: string, value: string) =>
+    value.trim() === `PROJEKTSTATUS ${projectNumber} AUF ${targetStatus}`,
+  ProjectStatusServiceError: class ProjectStatusServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
 vi.mock("@/lib/invoices/invoice-draft-service", () => ({
   evaluateInvoiceDraft: fake.evaluateInvoiceDraft,
   loadInvoiceDraftWorkspace: vi.fn(async () => ({
@@ -803,6 +843,9 @@ import {
   completeJarvisInvoiceCreditDraft,
   confirmJarvisInvoiceCreditDraft,
   createPersistedJarvisInvoiceCreditDraft,
+  cancelJarvisProjectStatusDraft,
+  confirmJarvisProjectStatusDraft,
+  createPersistedJarvisProjectStatusDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 import { calculateWinterService } from "@/lib/winter-service/calculation";
@@ -2667,5 +2710,92 @@ describe("persistent JARVIS invoice credit drafts", () => {
       ready.previewId, binding(), ready.revision, ready.confirmation.requiredText.toLowerCase(), baseNow
     )).rejects.toMatchObject({ code: "invalid_input" });
     expect(fake.creditInvoices).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS project-status drafts", () => {
+  beforeEach(() => fake.reset());
+
+  const preview = (previewId: string) => ({
+    version: 1 as const,
+    previewId,
+    actionId: "project.status.change" as const,
+    actionTitle: "Projektstatus kontrolliert ändern",
+    state: "awaiting_confirmation" as const,
+    organizationId: "org-1",
+    sessionActorId: "user-1",
+    effectiveActorId: "user-1",
+    impersonating: false,
+    payload: {
+      projectId: "project-1",
+      targetStatus: "Angebot",
+      reason: "Angebotsprozess fachlich eröffnet",
+    },
+    execution: { enabled: false as const, reason: "preview_only" as const },
+    audit: [],
+  });
+
+  it("executes the bound status exactly once after the exact phrase", async () => {
+    const created = await createPersistedJarvisProjectStatusDraft({
+      ...binding(), now: baseNow, preview: preview("project-status-1"),
+    });
+    expect(created).toMatchObject({
+      state: "awaiting_confirmation",
+      targetStatus: "Angebot",
+      confirmation: { enabled: true, requiredText: "PROJEKTSTATUS MKG-209 AUF Angebot" },
+    });
+
+    const first = await confirmJarvisProjectStatusDraft(
+      created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow
+    );
+    const replay = await confirmJarvisProjectStatusDraft(
+      created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow
+    );
+
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("project-1");
+    expect(fake.projectStatusChanges).toEqual([{ id: "project-1", status: "Angebot" }]);
+    expect(fake.executeProjectStatusChange).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "org-1",
+      projectId: "project-1",
+      targetStatus: "Angebot",
+      reason: "Angebotsprozess fachlich eröffnet",
+      requestId: "project-status-1",
+      expectedFingerprint: "e".repeat(64),
+      source: "jarvis",
+    }));
+  });
+
+  it("rejects employees and an inexact critical phrase", async () => {
+    await expect(createPersistedJarvisProjectStatusDraft({
+      organizationId: "org-1",
+      sessionId: "session-1",
+      profile: profile(Role.MITARBEITER),
+      now: baseNow,
+      preview: preview("project-status-employee"),
+    })).rejects.toMatchObject({ code: "scope_mismatch" });
+
+    const created = await createPersistedJarvisProjectStatusDraft({
+      ...binding(), now: baseNow, preview: preview("project-status-phrase"),
+    });
+    await expect(confirmJarvisProjectStatusDraft(
+      created.previewId,
+      binding(),
+      created.revision,
+      created.confirmation.requiredText.toLowerCase(),
+      baseNow
+    )).rejects.toMatchObject({ code: "invalid_input" });
+    expect(fake.projectStatusChanges).toHaveLength(0);
+  });
+
+  it("cancels without invoking the status service", async () => {
+    const created = await createPersistedJarvisProjectStatusDraft({
+      ...binding(), now: baseNow, preview: preview("project-status-cancel"),
+    });
+    const cancelled = await cancelJarvisProjectStatusDraft(
+      created.previewId, binding(), created.revision, baseNow
+    );
+    expect(cancelled.state).toBe("cancelled");
+    expect(fake.executeProjectStatusChange).not.toHaveBeenCalled();
   });
 });

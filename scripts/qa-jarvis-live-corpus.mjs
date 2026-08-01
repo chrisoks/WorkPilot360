@@ -251,6 +251,21 @@ async function main() {
     },
     select: { id: true, title: true, status: true, archiveReason: true, archivedAt: true, updatedAt: true },
   });
+  const projectStatusProject = await prisma.workPilotProject.create({
+    data: {
+      id: randomUUID(),
+      organizationId: actor.organizationId,
+      projectNumber: `QAS-${Date.now().toString().slice(-9)}`,
+      title: "QA JARVIS Projektstatus",
+      customer: "QA Kunde",
+      status: "Lead / Klärung",
+      projectType: "Glasreinigung",
+      projectKind: "Einmalprojekt",
+      responsibleName: "QA Verantwortung",
+      source: "qa-jarvis-live-corpus",
+    },
+    select: { id: true, projectNumber: true, status: true, updatedAt: true },
+  });
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -277,6 +292,7 @@ async function main() {
   let offerLifecycleDraftPrepared = false;
   let invoiceLifecycleDraftPrepared = false;
   let taskLifecycleDraftPrepared = false;
+  let projectStatusDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -293,6 +309,7 @@ async function main() {
         const isOfferLifecycleCase = item.question.includes("Lösche Angebot");
         const isInvoiceLifecycleCase = item.question.includes("Lösche Rechnungsentwurf");
         const isTaskLifecycleCase = item.question.includes("QA JARVIS Aufgaben-Lebenszyklus");
+        const isProjectStatusCase = item.question.includes("QA-100");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -317,6 +334,8 @@ async function main() {
               ? `Lösche Rechnungsentwurf ${lifecycleInvoice.invoiceNumber} kontrolliert. Grund: Irrtümlich doppelt angelegt.`
             : isTaskLifecycleCase
               ? `Archiviere die Aufgabe „${lifecycleTask.title}“ kontrolliert. Grund: Irrtümlich doppelt angelegt.`
+            : isProjectStatusCase
+              ? `Setze Projekt ${projectStatusProject.projectNumber} auf Angebot. Grund: Der Angebotsprozess wurde fachlich eröffnet.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -369,6 +388,28 @@ async function main() {
             });
           } else {
             invoicePaymentDraftPrepared = true;
+          }
+        }
+        if (isProjectStatusCase) {
+          if (payload.actionDraft?.actionId !== "project.status.change") {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Projektstatusfrage hat keine kontrollierte project.status.change-Vorschau erzeugt.",
+            });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length ||
+            payload.actionDraft.targetStatus !== "Angebot"
+          ) {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Projektstatusfrage hat keine vollständig prüfbare, unblockierte Bestätigungsvorschau erzeugt.",
+            });
+          } else {
+            projectStatusDraftPrepared = true;
           }
         }
         if (isReminderCase && reminderInvoice) {
@@ -766,6 +807,33 @@ async function main() {
         error: "Die 110-Fragen-Prüfung hat unerwartet eine Aufgabe archiviert oder wiederhergestellt.",
       });
     }
+    const [currentStatusProject, statusTimelineWrites, statusLogbookWrites, statusAuditWrites] = await Promise.all([
+      prisma.workPilotProject.findUnique({
+        where: { id: projectStatusProject.id },
+        select: { status: true, updatedAt: true },
+      }),
+      prisma.statusTimelineEntry.count({
+        where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id, createdAt: { gte: now } },
+      }),
+      prisma.projectLogbookEntry.count({
+        where: { organizationId: actor.organizationId, projectId: projectStatusProject.id, source: "project-status", createdAt: { gte: now } },
+      }),
+      prisma.auditLog.count({
+        where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id, action: "project.status.changed", createdAt: { gte: now } },
+      }),
+    ]);
+    if (
+      !currentStatusProject ||
+      currentStatusProject.status !== projectStatusProject.status ||
+      currentStatusProject.updatedAt.toISOString() !== projectStatusProject.updatedAt.toISOString() ||
+      statusTimelineWrites !== 0 || statusLogbookWrites !== 0 || statusAuditWrites !== 0
+    ) {
+      failures.push({
+        id: "side-effect-project-status",
+        status: 0,
+        error: "Die 110-Fragen-Prüfung hat unerwartet Projektstatus, Timeline, Logbuch oder Audit verändert.",
+      });
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -793,6 +861,10 @@ async function main() {
       await prisma.invoice.deleteMany({ where: { id: lifecycleInvoice.id, organizationId: actor.organizationId } });
     }
     await prisma.task.deleteMany({ where: { id: lifecycleTask.id, organizationId: actor.organizationId } });
+    await prisma.statusTimelineEntry.deleteMany({ where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id } });
+    await prisma.projectLogbookEntry.deleteMany({ where: { organizationId: actor.organizationId, projectId: projectStatusProject.id } });
+    await prisma.auditLog.deleteMany({ where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id } });
+    await prisma.workPilotProject.deleteMany({ where: { id: projectStatusProject.id, organizationId: actor.organizationId } });
     await prisma.authSession.deleteMany({ where: { id: sessionId } });
   }
 
@@ -815,6 +887,7 @@ async function main() {
     offerLifecycleDraftPrepared,
     invoiceLifecycleDraftPrepared,
     taskLifecycleDraftPrepared,
+    projectStatusDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
       ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
       : 0,
@@ -828,6 +901,7 @@ async function main() {
       ? await prisma.invoice.count({ where: { id: lifecycleInvoice.id } })
       : 0,
     qaLifecycleTaskRemaining: await prisma.task.count({ where: { id: lifecycleTask.id } }),
+    qaProjectStatusProjectRemaining: await prisma.workPilotProject.count({ where: { id: projectStatusProject.id } }),
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

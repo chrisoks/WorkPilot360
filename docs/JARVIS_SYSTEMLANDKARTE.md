@@ -337,3 +337,28 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
 - Permanente Abnahme: exakt 110 Fragen in
   `src/lib/jarvis/live-question-corpus.ts`; isolierter Ausführungstest in
   `scripts/qa-jarvis-task-lifecycle.mjs`.
+
+## Projektstatus kontrolliert ändern
+
+- Kritische JARVIS-Aktion: `project.status.change`; nur ausdrücklich
+  angegebene operative Statuswerte, niemals automatische Entscheidung und
+  niemals Archivierung.
+- Gemeinsamer Fachservice für JARVIS und normale Projektoberfläche:
+  `src/lib/projects/project-status-service.ts`.
+- Natürliche Sprache und eindeutige organisationsgebundene Zielauflösung:
+  `src/lib/jarvis/project-status-intake.ts` und
+  `src/app/api/jarvis/chat/route.ts`.
+- Persistente Vorschau, Rollen-/Sitzungsbindung, Integritätsnachweis, TTL,
+  exakte Phrase, Advisory-Lock und Exactly-once-Ausführung:
+  `src/lib/jarvis/action-draft-store.ts` sowie
+  `/api/jarvis/action-drafts/[previewId]`.
+- Normaler Oberflächenweg: `/api/hero/projects/status`; Vorschau und
+  Ausführung verwenden denselben Fachservice und dieselben Nachweisregeln.
+- Atomare Wirkungen: ausschließlich `WorkPilotProject.status`, geschlossene
+  und neue `StatusTimelineEntry`, `ProjectLogbookEntry`, `AuditLog` und die
+  Auflösung überholter `StatusEscalationEvent`-Einträge. Angebote,
+  Rechnungen, Aufgaben, Planung, Zeiten, Dateien und Kundenbezüge bleiben
+  unverändert.
+- Permanente Abnahme: exakt 110 Fragen in
+  `src/lib/jarvis/live-question-corpus.ts`; isolierter Ausführungstest in
+  `scripts/qa-jarvis-project-status.mjs`.

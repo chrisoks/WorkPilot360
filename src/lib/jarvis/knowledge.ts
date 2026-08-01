@@ -1017,7 +1017,7 @@ const TOPICS: JarvisTopic[] = [
       "wie ändere ich den status",
     ],
     surfaces: ["Projektakte"],
-    actionId: "project.manage",
+    actionId: "project.status.change",
     answer:
       "Öffne das betreffende Projekt und klicke im Projektkopf auf „Status ändern“. Wähle den fachlich passenden neuen Status, ergänze einen notwendigen Hinweis und bestätige die Änderung. Beachte, dass ein Statuswechsel projektbezogene Automatiken und Prüfungen auslösen kann.",
   },

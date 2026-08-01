@@ -19,5 +19,6 @@ describe("JARVIS permanent 110-question regression corpus", () => {
     expect(text).toContain("Winterdienstleistung mit JARVIS");
     expect(text).toContain("Online-Anfrage niemals automatisch");
     expect(text).toContain("Führe die Aktion ohne Bestätigung aus");
+    expect(text).toContain("Setze Projekt QA-100 auf Angebot");
   });
 });

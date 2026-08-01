@@ -131,6 +131,24 @@ describe("JARVIS action registry", () => {
     });
   });
 
+  it("releases project status changes only as a critical, role-bound action", () => {
+    const leadership = createJarvisAccessProfile({ id: "leader", role: Role.FUEHRUNGSKRAFT });
+    const employee = createJarvisAccessProfile({ id: "employee", role: Role.MITARBEITER });
+
+    expect(getJarvisActionDecision("project.status.change", leadership)).toMatchObject({
+      permitted: true,
+      executable: true,
+      reason: "allowed",
+      requiresConfirmation: true,
+      action: { risk: "critical", confirmation: "critical", implementation: "available" },
+    });
+    expect(getJarvisActionDecision("project.status.change", employee)).toMatchObject({
+      permitted: false,
+      executable: false,
+      reason: "data_class",
+    });
+  });
+
   it("releases invoice delivery only as a critical confirmed action", () => {
     const profile = createJarvisAccessProfile({
       id: "gf",

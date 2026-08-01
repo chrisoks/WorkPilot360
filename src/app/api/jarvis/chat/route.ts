@@ -101,6 +101,7 @@ import {
   createPersistedJarvisOfferLifecycleDraft,
   createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisTaskLifecycleDraft,
+  createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -156,6 +157,10 @@ import {
   extractTaskLifecycle,
   looksLikeTaskLifecycleRequest,
 } from "@/lib/jarvis/task-lifecycle-intake";
+import {
+  extractProjectStatusChange,
+  looksLikeProjectStatusChangeRequest,
+} from "@/lib/jarvis/project-status-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -898,6 +903,88 @@ async function buildJarvisTaskLifecycleDraft(input: {
       type: "refusal" as const,
       topicId: "action.task-lifecycle.unavailable",
       message: `${error instanceof JarvisActionDraftError ? error.message : "Die Aufgabenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
+    };
+  }
+}
+
+async function buildJarvisProjectStatusDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.project-status.session-required",
+      message: "Für eine Projektstatusänderung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const details = extractProjectStatusChange(input.question);
+  if (!details.projectNumber) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.project-status.project-required",
+      message: "Bei welchem Projekt soll der Status geändert werden? Nenne bitte die eindeutige Projektnummer. Es wurde noch nichts verändert.",
+    };
+  }
+  if (!details.targetStatus) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.project-status.target-required",
+      message: "Welcher neue WorkPilot-Projektstatus soll gesetzt werden? Es wurde noch nichts verändert.",
+    };
+  }
+  if (!details.reason || details.reason.length < 3) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.project-status.reason-required",
+      message: `Für den Statuswechsel brauche ich einen nachvollziehbaren Grund, zum Beispiel: „Setze ${details.projectNumber} auf ${details.targetStatus}. Grund: Arbeitsbeginn vor Ort bestätigt.“ Es wurde nichts verändert.`,
+    };
+  }
+  const projects = await prisma.workPilotProject.findMany({
+    where: { organizationId: input.organizationId, projectNumber: { equals: details.projectNumber, mode: "insensitive" } },
+    take: 2,
+    select: { id: true, projectNumber: true },
+  });
+  if (projects.length !== 1) {
+    return {
+      type: projects.length ? "clarification" as const : "refusal" as const,
+      topicId: projects.length ? "action.project-status.ambiguous" : "action.project-status.not-found",
+      message: projects.length
+        ? `Die Projektnummer „${details.projectNumber}“ ist nicht eindeutig. Öffne das richtige Projekt und wiederhole den Wunsch. Es wurde nichts verändert.`
+        : `Das Projekt ${details.projectNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts verändert.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "project.status.change",
+    payload: { projectId: projects[0].id, targetStatus: details.targetStatus, reason: details.reason },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return { type: "refusal" as const, topicId: "action.project-status.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisProjectStatusDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.project-status",
+      message: "Ich habe den Projektstatuswechsel serverseitig geprüft. Kontrolliere Projekt, Kunde, Verantwortlichkeit, bisherigen und neuen Status, Grund, Planung, Ausführungsnachweise, Endkontrolle, Abschlussrechnung und offene Aufgaben. Erst die exakte Bestätigungsphrase setzt ausschließlich den angezeigten Status genau einmal; alle übrigen Fachdaten bleiben unverändert.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.project-status.unavailable",
+      message: `${error instanceof JarvisActionDraftError ? error.message : "Die Projektstatusänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
     };
   }
 }
@@ -2779,6 +2866,17 @@ export async function POST(req: Request) {
   if (looksLikeTaskLifecycleRequest(message)) {
     return respond(
       await buildJarvisTaskLifecycleDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "management"
+    );
+  }
+  if (looksLikeProjectStatusChangeRequest(message)) {
+    return respond(
+      await buildJarvisProjectStatusDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,

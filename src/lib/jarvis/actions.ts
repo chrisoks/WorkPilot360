@@ -329,6 +329,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: canManageProjectTimeEntries,
   },
   {
+    id: "project.status.change",
+    title: "Projektstatus kontrolliert ändern",
+    category: "project",
+    risk: "critical",
+    confirmation: "critical",
+    dataClasses: ["customer"],
+    implementation: "available",
+    canUse: canManageProjects,
+  },
+  {
     id: "project.manage",
     title: "Projekt anlegen oder bearbeiten",
     category: "project",

@@ -124,6 +124,50 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     });
   });
 
+  it("creates a critical project-status preview with only the intended fields", () => {
+    const result = createJarvisActionPreview({
+      previewId: "preview-project-status",
+      actionId: "project.status.change",
+      payload: {
+        projectId: "project-1",
+        targetStatus: "Angebot",
+        reason: "Angebotsphase wurde fachlich eröffnet",
+      },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-01T20:00:00.000Z",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        actionId: "project.status.change",
+        payload: {
+          projectId: "project-1",
+          targetStatus: "Angebot",
+          reason: "Angebotsphase wurde fachlich eröffnet",
+        },
+        execution: { enabled: false, reason: "preview_only" },
+      },
+    });
+  });
+
+  it("rejects undeclared project-status side effects", () => {
+    expect(createJarvisActionPreview({
+      previewId: "preview-project-status-tampered",
+      actionId: "project.status.change",
+      payload: {
+        projectId: "project-1",
+        targetStatus: "Angebot",
+        reason: "Angebotsphase wurde fachlich eröffnet",
+        archiveProject: true,
+      },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-01T20:00:00.000Z",
+    })).toMatchObject({ ok: false, code: "invalid_payload" });
+  });
+
   it("creates an explicitly registered critical offer-finalization preview", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-offer-finalize",

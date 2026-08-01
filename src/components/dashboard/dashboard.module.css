@@ -24824,6 +24824,158 @@
   margin-top: 0;
 }
 
+.projectStatusChangeModal {
+  width: min(920px, calc(100vw - 16px));
+}
+
+.projectStatusReasonField,
+.projectStatusConfirmationField {
+  color: #334155;
+  display: grid;
+  font-size: 0.86rem;
+  font-weight: 700;
+  gap: 7px;
+}
+
+.projectStatusReasonField textarea,
+.projectStatusConfirmationField input {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  color: #0f172a;
+  font: inherit;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.projectStatusConfirmationField strong {
+  background: #f1f5f9;
+  border-radius: 8px;
+  color: #0f766e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  padding: 9px 11px;
+}
+
+.projectStatusSummaryGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.projectStatusSummaryGrid > div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+}
+
+.projectStatusSummaryGrid span {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.projectStatusSummaryGrid strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.projectStatusReviewSection,
+.projectStatusEvidenceSection {
+  display: grid;
+  gap: 8px;
+}
+
+.projectStatusReviewSection h3,
+.projectStatusEvidenceSection h3 {
+  color: #0f172a;
+  font-size: 0.95rem;
+  margin: 4px 0 0;
+}
+
+.projectStatusReviewSection article {
+  border-left: 4px solid #d97706;
+  border-radius: 8px;
+  background: #fffbeb;
+  padding: 8px 10px;
+}
+
+.projectStatusReviewSection article[data-status="ok"] {
+  background: #ecfdf5;
+  border-left-color: #059669;
+}
+
+.projectStatusReviewSection article[data-status="blocked"] {
+  background: #fef2f2;
+  border-left-color: #dc2626;
+}
+
+.projectStatusReviewSection article strong,
+.projectStatusReviewSection article p {
+  color: #334155;
+  font-size: 0.84rem;
+  margin: 0;
+}
+
+.projectStatusEvidenceSection > div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.projectStatusEvidenceSection span {
+  background: #f8fafc;
+  border-radius: 9px;
+  color: #64748b;
+  display: grid;
+  font-size: 0.76rem;
+  gap: 2px;
+  padding: 8px 10px;
+}
+
+.projectStatusEvidenceSection span strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.projectStatusWarning,
+.projectStatusBlockingIssues,
+.projectStatusDialogError {
+  border-radius: 9px;
+  color: #92400e;
+  margin: 0;
+  padding: 9px 11px;
+}
+
+.projectStatusWarning {
+  background: #fffbeb;
+}
+
+.projectStatusBlockingIssues,
+.projectStatusDialogError {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.projectStatusBlockingIssues p {
+  margin: 5px 0 0;
+}
+
+@media (max-width: 760px) {
+  .projectStatusSummaryGrid,
+  .projectStatusEvidenceSection > div {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .projectStatusChangeModal .standardModalFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .planningOverbookingConfirmation {
   display: grid;
   gap: 10px;
