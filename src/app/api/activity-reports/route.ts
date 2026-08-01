@@ -10,6 +10,11 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { isInternalAutomationRequest } from "@/lib/auth/internal-automation";
 import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
+import {
+  cleanupStorageBackedPayload,
+  persistStorageBackedPayload,
+  prepareStorageBackedPayload,
+} from "@/lib/storage/document-file";
 
 type LogbookAttachment = {
   name: string;
@@ -808,7 +813,8 @@ export async function POST(req: Request) {
     (!useMonth || entry.projectMonth === month || (!entry.projectMonth && getMonthKey(entry.createdAt) === month)) &&
     cleanAttachments(entry.attachments).some((attachment) =>
       attachment.type === "Dokument" &&
-      attachment.dataUrl?.startsWith("data:application/pdf")
+      attachment.mimeType === "application/pdf" &&
+      Boolean(attachment.dataUrl)
     )
   );
 
@@ -820,7 +826,8 @@ export async function POST(req: Request) {
         const isSameContext = entry.body.includes(`Zuordnung: ${reportContextKey}`);
         const hasPdf = cleanAttachments(entry.attachments).some((attachment) =>
           attachment.type === "Dokument" &&
-          attachment.dataUrl?.startsWith("data:application/pdf")
+          attachment.mimeType === "application/pdf" &&
+          Boolean(attachment.dataUrl)
         );
         return isActivityReportEntry && isSamePeriod && isSameContext && hasPdf;
       })
@@ -878,39 +885,69 @@ export async function POST(req: Request) {
       { status: 413 }
     );
   }
+  const preparedPdf = await prepareStorageBackedPayload({
+    organizationId: organization.id,
+    ownerType: "project",
+    ownerId: projectId,
+    sourceType: "activity-report-pdf",
+    category: "activity-reports",
+    originalName: attachment.name,
+    contentType: "application/pdf",
+    bytes: Buffer.from(pdfData, "base64"),
+    createdByUserId: actor.id,
+  });
+  const storedAttachment = preparedPdf.prepared.attachments[0] ?? attachment;
   const reportCreatedAt = useMonth ? new Date(`${month}-01T12:00:00`) : new Date();
   const contextNote = reportContextKey
     ? ` Zuordnung: ${reportContextKey}${reportContextLabel ? ` (${reportContextLabel})` : ""}.`
     : "";
 
   if (existingReport) {
-    const rows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
-      UPDATE "ProjectLogbookEntry"
-      SET "attachments" = ${JSON.stringify([attachment])}::jsonb,
-          "body" = ${`${reportName} automatisch aktualisiert.${contextNote}`},
-          "author" = ${getUserName(actor)},
-          "projectMonth" = ${useMonth ? month : null}
-      WHERE "id" = ${existingReport.id}
-        AND "organizationId" = ${organization.id}
-      RETURNING *
-    `;
+    let rows: ProjectLogbookEntryRow[];
+    try {
+      rows = await prisma.$transaction(async (tx) => {
+        await persistStorageBackedPayload(tx, preparedPdf);
+        return tx.$queryRaw<ProjectLogbookEntryRow[]>`
+          UPDATE "ProjectLogbookEntry"
+          SET "attachments" = ${JSON.stringify([storedAttachment])}::jsonb,
+              "body" = ${`${reportName} automatisch aktualisiert.${contextNote}`},
+              "author" = ${getUserName(actor)},
+              "projectMonth" = ${useMonth ? month : null}
+          WHERE "id" = ${existingReport.id}
+            AND "organizationId" = ${organization.id}
+          RETURNING *
+        `;
+      });
+    } catch (error) {
+      await cleanupStorageBackedPayload(preparedPdf);
+      throw error;
+    }
 
     return NextResponse.json(formatEntry(rows[0]));
   }
 
-  const rows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
-    INSERT INTO "ProjectLogbookEntry" (
-      "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments", "projectMonth", "createdAt"
-    ) VALUES (
-      ${randomUUID()}, ${organization.id}, ${projectId}, ${"Dokumente: Tätigkeitsberichte"},
-      ${`${reportName} automatisch erstellt.${contextNote}`}, ${getUserName(actor)}, ${""},
-      ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Buchhaltung"])}::jsonb,
-      ${JSON.stringify([attachment])}::jsonb,
-      ${useMonth ? month : null},
-      ${reportCreatedAt}
-    )
-    RETURNING *
-  `;
+  let rows: ProjectLogbookEntryRow[];
+  try {
+    rows = await prisma.$transaction(async (tx) => {
+      await persistStorageBackedPayload(tx, preparedPdf);
+      return tx.$queryRaw<ProjectLogbookEntryRow[]>`
+        INSERT INTO "ProjectLogbookEntry" (
+          "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments", "projectMonth", "createdAt"
+        ) VALUES (
+          ${randomUUID()}, ${organization.id}, ${projectId}, ${"Dokumente: Tätigkeitsberichte"},
+          ${`${reportName} automatisch erstellt.${contextNote}`}, ${getUserName(actor)}, ${""},
+          ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Buchhaltung"])}::jsonb,
+          ${JSON.stringify([storedAttachment])}::jsonb,
+          ${useMonth ? month : null},
+          ${reportCreatedAt}
+        )
+        RETURNING *
+      `;
+    });
+  } catch (error) {
+    await cleanupStorageBackedPayload(preparedPdf);
+    throw error;
+  }
 
   return NextResponse.json(formatEntry(rows[0]), { status: 201 });
 }

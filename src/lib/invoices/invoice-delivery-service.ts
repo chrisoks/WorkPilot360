@@ -23,6 +23,7 @@ import {
   sendMicrosoftGraphMail,
   type MicrosoftGraphMailAttachment,
 } from "@/lib/mail/microsoft";
+import { resolveStorageBackedBytes } from "@/lib/storage/document-file";
 
 type InvoiceDeliveryDb = Prisma.TransactionClient | typeof prisma;
 
@@ -433,6 +434,25 @@ async function buildInvoiceDeliveryPackage(input: {
     | null = null;
   let kosit: KositValidationResult | null = null;
   let zugferd: InvoiceDeliveryEvaluation["validation"]["zugferd"] = null;
+  let invoicePdfBytes: Buffer | null = null;
+  if (invoice.pdfData) {
+    try {
+      invoicePdfBytes = await resolveStorageBackedBytes({
+        organizationId: input.organizationId,
+        payload: invoice.pdfData,
+        expectedOwnerType: "invoice",
+        expectedOwnerId: invoice.id,
+      });
+      if (!invoicePdfBytes) {
+        blockingIssues.push("Das freigegebene Rechnungs-PDF ist vorübergehend nicht verfügbar.");
+      }
+    } catch (error) {
+      console.error("Invoice delivery PDF could not be loaded", error);
+      blockingIssues.push(
+        "Das freigegebene Rechnungs-PDF ist vorübergehend nicht verfügbar. Bitte den Versand später erneut versuchen."
+      );
+    }
+  }
 
   if (!payload.to.length) {
     blockingIssues.push("Mindestens eine gültige Empfängeradresse fehlt.");
@@ -450,12 +470,12 @@ async function buildInvoiceDeliveryPackage(input: {
   if (needsPdf) {
     if (!invoice.pdfData) {
       blockingIssues.push("Das freigegebene Rechnungs-PDF fehlt.");
-    } else if (payload.format !== "zugferd") {
+    } else if (invoicePdfBytes && payload.format !== "zugferd") {
       attachments.push(
         toMailAttachment(
           `${invoice.invoiceNumber}.pdf`,
           "application/pdf",
-          Buffer.from(invoice.pdfData, "base64")
+          invoicePdfBytes
         )
       );
     }
@@ -546,9 +566,9 @@ async function buildInvoiceDeliveryPackage(input: {
     );
   }
 
-  if (payload.format === "zugferd" && xml && invoice.pdfData) {
+  if (payload.format === "zugferd" && xml && invoicePdfBytes) {
     const result = await buildValidatedZugferdPdf({
-      invoicePdfBytes: Buffer.from(invoice.pdfData, "base64"),
+      invoicePdfBytes,
       xrechnungXml: Buffer.from(xml, "utf8"),
     });
     zugferd = {
@@ -590,9 +610,7 @@ async function buildInvoiceDeliveryPackage(input: {
       id: invoice.id,
       status: invoice.status,
       updatedAt: invoice.updatedAt.toISOString(),
-      pdfSha256: invoice.pdfData
-        ? hashBytes(Buffer.from(invoice.pdfData, "base64"))
-        : "",
+      pdfSha256: invoicePdfBytes ? hashBytes(invoicePdfBytes) : "",
       lines: invoice.lines.map((line) => ({
         id: line.id,
         updatedAt: line.updatedAt.toISOString(),

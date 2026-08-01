@@ -29,6 +29,9 @@
     "online-requests:configure:apply": "node --env-file=.env scripts/configure-online-request-portal.mjs --apply",
     "online-requests:qa": "node --env-file=.env scripts/qa-online-requests.mjs",
     "online-requests:qa:apply": "node --env-file=.env scripts/qa-online-requests.mjs --apply",
+    "storage:migrate:dry-run": "node --env-file=.env scripts/migrate-object-storage.mjs",
+    "storage:migrate:mirror": "node --env-file=.env scripts/migrate-object-storage.mjs --apply=mirror",
+    "storage:migrate:switch": "node --env-file=.env scripts/migrate-object-storage.mjs --apply=switch",
     "test": "vitest run",
     "test:watch": "vitest"
   },

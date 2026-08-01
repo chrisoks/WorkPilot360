@@ -9,6 +9,11 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getBerlinMonthKey } from "@/lib/date-time";
+import {
+  cleanupStorageBackedPayload,
+  persistStorageBackedPayload,
+  prepareStorageBackedPayload,
+} from "@/lib/storage/document-file";
 
 const A4_WIDTH = 595.276;
 const INK = rgb(0.08, 0.1, 0.14);
@@ -337,18 +342,25 @@ export async function POST(req: Request) {
     .join("\n");
 
   const attachmentName = `Endkontrolle_${sanitizeFileNamePart(resolvedProjectLabel, "Projekt")}_${formatGermanDate(now)}.pdf`;
-  const attachments = [
-    {
-      name: attachmentName,
-      type: "Dokument",
-      mimeType: "application/pdf",
-      size: Math.round((pdfData.length * 3) / 4),
-      dataUrl: `data:application/pdf;base64,${pdfData}`,
-    },
-  ];
+  const preparedPdf = await prepareStorageBackedPayload({
+    organizationId: organization.id,
+    ownerType: "project",
+    ownerId: projectId,
+    sourceType: "final-inspection-pdf",
+    category: "final-inspections",
+    originalName: attachmentName,
+    contentType: "application/pdf",
+    bytes: Buffer.from(pdfData, "base64"),
+    createdByUserId: actor.id,
+  });
+  const attachments = preparedPdf.prepared.attachments;
 
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-    INSERT INTO "ProjectLogbookEntry" (
+  let rows: Array<{ id: string }>;
+  try {
+    rows = await prisma.$transaction(async (tx) => {
+      await persistStorageBackedPayload(tx, preparedPdf);
+      return tx.$queryRaw<Array<{ id: string }>>`
+        INSERT INTO "ProjectLogbookEntry" (
       "id",
       "organizationId",
       "projectId",
@@ -374,8 +386,13 @@ export async function POST(req: Request) {
       ${JSON.stringify(attachments)}::jsonb,
       ${projectMonth || null}
     )
-    RETURNING "id"
-  `;
+        RETURNING "id"
+      `;
+    });
+  } catch (error) {
+    await cleanupStorageBackedPayload(preparedPdf);
+    throw error;
+  }
 
   if (upsellNotes) {
     const recipients = await prisma.$queryRaw<Array<{ id: string }>>`

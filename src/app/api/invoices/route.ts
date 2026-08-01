@@ -58,6 +58,10 @@ import {
   executeInvoiceLifecycle,
   InvoiceLifecycleServiceError,
 } from "@/lib/invoices/invoice-lifecycle-service";
+import {
+  externalizePdfPayload,
+  resolveStorageBackedBytes,
+} from "@/lib/storage/document-file";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -1643,6 +1647,21 @@ async function cancelInvoice(input: {
       where: { id: result.originalInvoiceId, organizationId: input.organizationId },
       include: { lines: { orderBy: { position: "asc" }, include: { laborItems: true } } },
     });
+    await externalizePdfPayload({
+      organizationId: input.organizationId,
+      ownerType: "invoice",
+      ownerId: result.cancellationInvoice.id,
+      sourceType: "invoice-pdf",
+      category: "invoices",
+      originalName: `${result.cancellationInvoice.invoiceNumber}.pdf`,
+      pdfBase64: result.cancellationInvoice.pdfData,
+      createdByUserId: input.actorUserId,
+      writeReference: (tx, reference) =>
+        tx.invoice.update({
+          where: { id: result.cancellationInvoice.id },
+          data: { pdfData: reference },
+        }),
+    });
     return NextResponse.json({
       originalInvoice: serializeInvoice(
         originalInvoice as unknown as InvoiceRow,
@@ -1702,6 +1721,21 @@ async function creditInvoice(input: {
       }),
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
+    await externalizePdfPayload({
+      organizationId: input.organizationId,
+      ownerType: "invoice",
+      ownerId: result.creditInvoice.id,
+      sourceType: "invoice-pdf",
+      category: "invoices",
+      originalName: `${result.creditInvoice.invoiceNumber}.pdf`,
+      pdfBase64: result.creditInvoice.pdfData,
+      createdByUserId: input.actorUserId,
+      writeReference: (tx, reference) =>
+        tx.invoice.update({
+          where: { id: result.creditInvoice.id },
+          data: { pdfData: reference },
+        }),
+    });
     return NextResponse.json({
       creditInvoice: serializeInvoice(
         result.creditInvoice as unknown as InvoiceRow,
@@ -1868,8 +1902,26 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "ZUGFeRD kann nicht erzeugt werden: Rechnungs-PDF fehlt." }, { status: 404 });
       }
 
+      let invoicePdfBytes: Buffer;
+      try {
+        const resolvedPdf = await resolveStorageBackedBytes({
+          organizationId: organization.id,
+          payload: invoice.pdfData,
+          expectedOwnerType: "invoice",
+          expectedOwnerId: invoice.id,
+        });
+        if (!resolvedPdf) throw new Error("invoice_pdf_missing");
+        invoicePdfBytes = resolvedPdf;
+      } catch (error) {
+        console.error("ZUGFeRD source PDF could not be loaded", error);
+        return NextResponse.json(
+          { error: "ZUGFeRD kann momentan nicht erzeugt werden: Rechnungs-PDF ist vorübergehend nicht verfügbar." },
+          { status: 503, headers: { "Retry-After": "30" } }
+        );
+      }
+
       const zugferd = await buildValidatedZugferdPdf({
-        invoicePdfBytes: Buffer.from(invoice.pdfData, "base64"),
+        invoicePdfBytes,
         xrechnungXml: Buffer.from(xml, "utf8"),
       });
       if (!zugferd.conversion.available) {
@@ -1975,7 +2027,7 @@ export async function GET(req: Request) {
         draftLines
       );
       const bytes = Buffer.from(draftPdf.pdfData ?? "", "base64");
-      return new Response(bytes, {
+      return new Response(new Uint8Array(bytes), {
         headers: {
           "Content-Type": "application/pdf",
           "Content-Disposition": `inline; filename="Rechnungsentwurf-${Invoice.projectNumber || Invoice.id}.pdf"`,
@@ -1985,8 +2037,24 @@ export async function GET(req: Request) {
     if (!Invoice.pdfData) {
       return NextResponse.json({ error: "PDF wurde nicht gefunden." }, { status: 404 });
     }
-    const bytes = Buffer.from(Invoice.pdfData, "base64");
-    return new Response(bytes, {
+    let bytes: Buffer;
+    try {
+      const resolvedPdf = await resolveStorageBackedBytes({
+        organizationId: organization.id,
+        payload: Invoice.pdfData,
+        expectedOwnerType: "invoice",
+        expectedOwnerId: Invoice.id,
+      });
+      if (!resolvedPdf) throw new Error("invoice_pdf_missing");
+      bytes = resolvedPdf;
+    } catch (error) {
+      console.error("Invoice PDF could not be loaded", error);
+      return NextResponse.json(
+        { error: "Das Rechnungs-PDF ist vorübergehend nicht verfügbar." },
+        { status: 503, headers: { "Retry-After": "30" } }
+      );
+    }
+    return new Response(new Uint8Array(bytes), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${Invoice.invoiceNumber}.pdf"`,
@@ -2232,6 +2300,19 @@ export async function POST(req: Request) {
     });
   }
 
+  await externalizePdfPayload({
+    organizationId: organization.id,
+    ownerType: "invoice",
+    ownerId: id,
+    sourceType: "invoice-pdf",
+    category: "invoices",
+    originalName: `${invoiceNumber}.pdf`,
+    pdfBase64: pdf.pdfData,
+    createdByUserId: actor.id,
+    writeReference: (tx, reference) =>
+      tx.invoice.update({ where: { id }, data: { pdfData: reference } }),
+  });
+
   await syncInvoiceInventoryMovements({
     db: prisma,
     organizationId: organization.id,
@@ -2388,6 +2469,21 @@ export async function PATCH(req: Request) {
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
       );
+      await externalizePdfPayload({
+        organizationId: organization.id,
+        ownerType: "invoice",
+        ownerId: finalized.id,
+        sourceType: "invoice-pdf",
+        category: "invoices",
+        originalName: `${finalized.invoiceNumber}.pdf`,
+        pdfBase64: finalizedPdf.pdfData,
+        createdByUserId: actor.id,
+        writeReference: (tx, reference) =>
+          tx.invoice.update({
+            where: { id: finalized.id },
+            data: { pdfData: reference },
+          }),
+      });
       try {
         await syncInvoiceInventoryMovements({
           db: prisma,
@@ -2788,6 +2884,19 @@ export async function PATCH(req: Request) {
       invoiceHours: invoiceLaborHours,
     });
   }
+
+  await externalizePdfPayload({
+    organizationId: organization.id,
+    ownerType: "invoice",
+    ownerId: id,
+    sourceType: "invoice-pdf",
+    category: "invoices",
+    originalName: `${existingInvoice.invoiceNumber}.pdf`,
+    pdfBase64: pdf.pdfData,
+    createdByUserId: actor.id,
+    writeReference: (tx, reference) =>
+      tx.invoice.update({ where: { id }, data: { pdfData: reference } }),
+  });
 
   await syncInvoiceInventoryMovements({
     db: prisma,

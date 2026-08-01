@@ -30,6 +30,10 @@ import {
   executeOfferLifecycle,
   OfferLifecycleServiceError,
 } from "@/lib/offers/offer-lifecycle-service";
+import {
+  externalizePdfPayload,
+  resolveStorageBackedBytes,
+} from "@/lib/storage/document-file";
 
 type OfferCompany = "OK solutions" | "OK immocare";
 type OfferType = "base" | "addendum";
@@ -1030,8 +1034,28 @@ export async function GET(req: Request) {
     if (!offer?.pdfData) {
       return NextResponse.json({ error: "PDF wurde nicht gefunden." }, { status: 404 });
     }
-    const bytes = Buffer.from(offer.pdfData, "base64");
-    return new Response(bytes, {
+    let bytes: Buffer | null = null;
+    try {
+      bytes = await resolveStorageBackedBytes({
+        organizationId: organization.id,
+        payload: offer.pdfData,
+        expectedOwnerType: "offer",
+        expectedOwnerId: pdfId,
+      });
+    } catch (error) {
+      console.error("Offer PDF storage read failed", {
+        offerId: pdfId,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+      return NextResponse.json(
+        { error: "Der Dateispeicher ist voruebergehend nicht erreichbar." },
+        { status: 503, headers: { "Retry-After": "30" } }
+      );
+    }
+    if (!bytes) {
+      return NextResponse.json({ error: "PDF wurde nicht gefunden." }, { status: 404 });
+    }
+    return new Response(new Uint8Array(bytes), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${offer.offerNumber}.pdf"`,
@@ -1224,6 +1248,19 @@ export async function POST(req: Request) {
         saveAsDraft ? "als Entwurf gespeichert" : "erstellt"
       }.`,
       actorName,
+    });
+
+    await externalizePdfPayload({
+      organizationId: organization.id,
+      ownerType: "offer",
+      ownerId: id,
+      sourceType: "offer-pdf",
+      category: "offers",
+      originalName: `${offerNumber}.pdf`,
+      pdfBase64: pdf.pdfData,
+      createdByUserId: actor.id,
+      writeReference: (tx, reference) =>
+        tx.offer.update({ where: { id }, data: { pdfData: reference } }),
     });
 
     return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
@@ -1642,6 +1679,19 @@ export async function PATCH(req: Request) {
     title: saveAsDraft ? "Angebotsentwurf gespeichert" : "Angebot bearbeitet",
     note: `${existingOffer.offerNumber} wurde ${saveAsDraft ? "als Entwurf gespeichert" : "aktualisiert"}.`,
     actorName,
+  });
+
+  await externalizePdfPayload({
+    organizationId: organization.id,
+    ownerType: "offer",
+    ownerId: id,
+    sourceType: "offer-pdf",
+    category: "offers",
+    originalName: `${existingOffer.offerNumber}.pdf`,
+    pdfBase64: pdf.pdfData,
+    createdByUserId: actor.id,
+    writeReference: (tx, reference) =>
+      tx.offer.update({ where: { id }, data: { pdfData: reference } }),
   });
 
   return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));

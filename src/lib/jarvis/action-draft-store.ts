@@ -11,6 +11,7 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
+import { externalizePdfPayload } from "@/lib/storage/document-file";
 import {
   createJarvisActionPreview,
   type JarvisActionPreview,
@@ -38,6 +39,7 @@ import {
   type JarvisVehicleTripCalculationDraftView,
   type JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
+
 import {
   authorizeJarvisQuestion,
   type JarvisAccessProfile,
@@ -208,6 +210,58 @@ import {
   sendInvoiceDelivery,
   type InvoiceDeliveryEvaluation,
 } from "@/lib/invoices/invoice-delivery-service";
+
+async function externalizeJarvisDocumentPdf(input: {
+  organizationId: string;
+  kind: "offer" | "invoice";
+  entityId: string | null;
+  actorUserId: string;
+}) {
+  if (!input.entityId) return;
+  try {
+    if (input.kind === "offer") {
+      const offer = await prisma.offer.findFirst({
+        where: { id: input.entityId, organizationId: input.organizationId },
+        select: { id: true, offerNumber: true, pdfData: true },
+      });
+      if (!offer?.pdfData) return;
+      await externalizePdfPayload({
+        organizationId: input.organizationId,
+        ownerType: "offer",
+        ownerId: offer.id,
+        sourceType: "offer-pdf",
+        category: "offers",
+        originalName: `${offer.offerNumber}.pdf`,
+        pdfBase64: offer.pdfData,
+        createdByUserId: input.actorUserId,
+        writeReference: (tx, reference) =>
+          tx.offer.update({ where: { id: offer.id }, data: { pdfData: reference } }),
+      });
+      return;
+    }
+    const invoice = await prisma.invoice.findFirst({
+      where: { id: input.entityId, organizationId: input.organizationId },
+      select: { id: true, invoiceNumber: true, pdfData: true },
+    });
+    if (!invoice?.pdfData) return;
+    await externalizePdfPayload({
+      organizationId: input.organizationId,
+      ownerType: "invoice",
+      ownerId: invoice.id,
+      sourceType: "invoice-pdf",
+      category: "invoices",
+      originalName: `${invoice.invoiceNumber}.pdf`,
+      pdfBase64: invoice.pdfData,
+      createdByUserId: input.actorUserId,
+      writeReference: (tx, reference) =>
+        tx.invoice.update({ where: { id: invoice.id }, data: { pdfData: reference } }),
+    });
+  } catch (error) {
+    // Die fachliche Aktion bleibt gueltig; das PDF liegt bei einem Speicherfehler
+    // weiterhin vollstaendig in der Datenbank und kann spaeter migriert werden.
+    console.error("JARVIS document PDF externalization deferred", error);
+  }
+}
 
 const JARVIS_TASK_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_TASK_DRAFT_MAX_FUTURE_MS = 5 * 365 * 24 * 60 * 60 * 1000;
@@ -8695,6 +8749,12 @@ export async function confirmJarvisOfferFinalizationDraft(
       });
       return finalDraft;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    await externalizeJarvisDocumentPdf({
+      organizationId: binding.organizationId,
+      kind: "offer",
+      entityId: executed.resultEntityId,
+      actorUserId: executed.effectiveActorId,
+    });
     return toJarvisOfferFinalizationDraftView(executed, binding);
   } catch (error) {
     if (error instanceof JarvisActionDraftError && error.code === "conflict") {
@@ -9845,6 +9905,12 @@ export async function confirmJarvisInvoiceFinalizationDraft(
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
     if (executed.resultEntityId) {
+      await externalizeJarvisDocumentPdf({
+        organizationId: binding.organizationId,
+        kind: "invoice",
+        entityId: executed.resultEntityId,
+        actorUserId: executed.effectiveActorId,
+      });
       try {
         await syncInvoiceInventoryMovements({
           db: prisma,
@@ -11086,6 +11152,12 @@ export async function confirmJarvisInvoiceCancellationDraft(previewId: string, b
       await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: result.cancellationInvoice.id, entityType: "invoice" } });
       return finalDraft;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    await externalizeJarvisDocumentPdf({
+      organizationId: binding.organizationId,
+      kind: "invoice",
+      entityId: executed.resultEntityId,
+      actorUserId: executed.effectiveActorId,
+    });
     return toJarvisInvoiceCancellationDraftView(executed, binding);
   } catch (error) {
     if (error instanceof JarvisActionDraftError && error.code === "conflict") {
@@ -11317,6 +11389,12 @@ export async function confirmJarvisInvoiceCreditDraft(previewId: string, binding
       await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: result.creditInvoice.id, entityType: "invoice" } });
       return finalDraft;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    await externalizeJarvisDocumentPdf({
+      organizationId: binding.organizationId,
+      kind: "invoice",
+      entityId: executed.resultEntityId,
+      actorUserId: executed.effectiveActorId,
+    });
     return toJarvisInvoiceCreditDraftView(executed, binding);
   } catch (error) {
     if (error instanceof JarvisActionDraftError && error.code === "conflict") {

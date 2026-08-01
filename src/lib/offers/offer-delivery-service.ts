@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/client";
 import { getDocumentMailTemplates } from "@/lib/company-settings/mail-templates";
 import { parseStoredMailAccount } from "@/lib/mail/microsoft";
 import { POST as sendDocumentMailRequest } from "@/app/api/document-mail/route";
+import { resolveStorageBackedBytes } from "@/lib/storage/document-file";
 
 const emailSchema = z.string().trim().email().max(320);
 const recipientListSchema = z.array(emailSchema).max(20);
@@ -254,12 +255,30 @@ export async function evaluateOfferDelivery(input: {
     ...input.payload,
     offerId: offer.id,
   });
-  const pdfBytes = offer.pdfData ? Buffer.from(offer.pdfData, "base64") : Buffer.alloc(0);
+  let pdfBytes: Buffer | null = null;
+  let pdfLoadFailed = false;
+  if (offer.pdfData) {
+    try {
+      pdfBytes = await resolveStorageBackedBytes({
+        organizationId: input.organizationId,
+        payload: offer.pdfData,
+        expectedOwnerType: "offer",
+        expectedOwnerId: offer.id,
+      });
+      if (!pdfBytes) pdfLoadFailed = true;
+    } catch (error) {
+      pdfLoadFailed = true;
+      console.error("Offer delivery PDF could not be loaded", error);
+    }
+  }
   const blockingIssues = [
     ...(offer.status !== "Erstellt"
       ? [`${offer.offerNumber} ist im Status ${offer.status} nicht versandbereit.`]
       : []),
     ...(!offer.pdfData ? ["Das finale Angebots-PDF fehlt."] : []),
+    ...(pdfLoadFailed
+      ? ["Das finale Angebots-PDF ist vorübergehend nicht verfügbar. Bitte den Versand später erneut versuchen."]
+      : []),
     ...(payload.to.length === 0 ? ["Mindestens ein Empfänger fehlt."] : []),
     ...(account.status !== "connected"
       ? ["Das Microsoft-365-Konto des Absenders ist nicht verbunden."]
@@ -270,7 +289,7 @@ export async function evaluateOfferDelivery(input: {
         "Der Versand erzeugt einen 30 Tage gültigen Link zur digitalen Angebotsannahme; ältere offene Links dieser Angebotsversion werden widerrufen.",
       ]
     : ["Der Versand enthält bewusst keinen Link zur digitalen Angebotsannahme."];
-  const attachments = offer.pdfData
+  const attachments = pdfBytes
     ? [
         {
           name: `${offer.offerNumber}.pdf`,
@@ -284,9 +303,9 @@ export async function evaluateOfferDelivery(input: {
     {
       key: "offer",
       label: "Finales Angebot",
-      status: offer.status === "Erstellt" && offer.pdfData ? "ok" : "blocked",
+      status: offer.status === "Erstellt" && Boolean(pdfBytes) ? "ok" : "blocked",
       detail:
-        offer.status === "Erstellt" && offer.pdfData
+        offer.status === "Erstellt" && pdfBytes
           ? `${offer.offerNumber} ist finalisiert; das gespeicherte PDF wird angehängt.`
           : blockingIssues.slice(0, 2).join(" · "),
     },

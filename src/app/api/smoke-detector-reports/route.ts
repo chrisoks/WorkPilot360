@@ -9,6 +9,11 @@ import { getDemoContext } from "@/lib/demo/context";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
+import {
+  cleanupStorageBackedPayload,
+  persistStorageBackedPayload,
+  prepareStorageBackedPayload,
+} from "@/lib/storage/document-file";
 
 type LogbookAttachment = {
   name: string;
@@ -783,7 +788,8 @@ export async function POST(req: Request) {
       (attachment) =>
         attachment.type === "Dokument" &&
         attachment.name.toLowerCase() === `${reportName}.pdf`.toLowerCase() &&
-        attachment.dataUrl?.startsWith("data:application/pdf")
+        attachment.mimeType === "application/pdf" &&
+        Boolean(attachment.dataUrl)
     )
   );
   if (existingReport) {
@@ -824,18 +830,39 @@ export async function POST(req: Request) {
       { status: 413 }
     );
   }
-  const rows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
-    INSERT INTO "ProjectLogbookEntry" (
-      "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments", "createdAt"
-    ) VALUES (
-      ${randomUUID()}, ${organization.id}, ${project.id}, ${"Dokumente: Checklisten"},
-      ${`${reportName} erstellt. ${payload.devices.length} Rauchwarnmelder dokumentiert.`}, ${getUserName(actor)}, ${""},
-      ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Monteur", "Buchhaltung"])}::jsonb,
-      ${JSON.stringify([attachment])}::jsonb,
-      ${installationDate}
-    )
-    RETURNING *
-  `;
+  const preparedPdf = await prepareStorageBackedPayload({
+    organizationId: organization.id,
+    ownerType: "project",
+    ownerId: project.id,
+    sourceType: "smoke-detector-report-pdf",
+    category: "smoke-detector-reports",
+    originalName: attachment.name,
+    contentType: "application/pdf",
+    bytes: Buffer.from(pdfData, "base64"),
+    createdByUserId: actor.id,
+  });
+  const storedAttachment = preparedPdf.prepared.attachments[0] ?? attachment;
+  let rows: ProjectLogbookEntryRow[];
+  try {
+    rows = await prisma.$transaction(async (tx) => {
+      await persistStorageBackedPayload(tx, preparedPdf);
+      return tx.$queryRaw<ProjectLogbookEntryRow[]>`
+        INSERT INTO "ProjectLogbookEntry" (
+          "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments", "createdAt"
+        ) VALUES (
+          ${randomUUID()}, ${organization.id}, ${project.id}, ${"Dokumente: Checklisten"},
+          ${`${reportName} erstellt. ${payload.devices.length} Rauchwarnmelder dokumentiert.`}, ${getUserName(actor)}, ${""},
+          ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Monteur", "Buchhaltung"])}::jsonb,
+          ${JSON.stringify([storedAttachment])}::jsonb,
+          ${installationDate}
+        )
+        RETURNING *
+      `;
+    });
+  } catch (error) {
+    await cleanupStorageBackedPayload(preparedPdf);
+    throw error;
+  }
 
   return NextResponse.json(formatEntry(rows[0]), { status: 201 });
 }

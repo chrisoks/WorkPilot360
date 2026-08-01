@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db/client";
 import { getAuthenticatedSessionUser } from "@/lib/auth/session";
 import {
   canUploadEmployeeDocument,
   canViewEmployeeDocuments,
 } from "@/lib/employee-documents/permissions";
+import {
+  cleanupStorageBackedPayload,
+  persistStorageBackedPayload,
+  prepareStorageBackedPayload,
+} from "@/lib/storage/document-file";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const CATEGORIES = new Set([
@@ -104,28 +110,52 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Dateiinhalt und Dateityp stimmen nicht überein." }, { status: 415 });
   }
   const originalFileName = file.name.replace(/[\\/\u0000-\u001f]/g, "_").trim().slice(0, 180) || "Dokument";
-  const document = await prisma.employeeDocument.create({
-    data: {
-      organizationId: actor.organizationId,
-      employeeId: userId,
-      category,
-      originalFileName,
-      mimeType: file.type,
-      size: file.size,
-      fileData: bytes,
-      uploadedById: actor.id,
-      uploadedByName: `${actor.firstName} ${actor.lastName}`.trim(),
-    },
-    select: {
-      id: true,
-      category: true,
-      originalFileName: true,
-      mimeType: true,
-      size: true,
-      uploadedById: true,
-      uploadedByName: true,
-      createdAt: true,
-    },
+  const documentId = randomUUID();
+  const preparedFile = await prepareStorageBackedPayload({
+    organizationId: actor.organizationId,
+    ownerType: "employee",
+    ownerId: documentId,
+    sourceType: "employee-document",
+    category: "employee-documents",
+    originalName: originalFileName,
+    contentType: file.type as "application/pdf" | "image/jpeg" | "image/png",
+    bytes,
+    createdByUserId: actor.id,
   });
-  return NextResponse.json({ document }, { status: 201 });
+  try {
+    const document = await prisma.$transaction(async (tx) => {
+      await persistStorageBackedPayload(tx, preparedFile);
+      return tx.employeeDocument.create({
+        data: {
+          id: documentId,
+          organizationId: actor.organizationId,
+          employeeId: userId,
+          category,
+          originalFileName,
+          mimeType: file.type,
+          size: file.size,
+          // Nur bei erfolgreich verifiziertem Objektspeicher wird die schwere
+          // ByteA-Nutzlast aus PostgreSQL herausgehalten. Sonst bleibt der
+          // bisherige Datenbankpfad als Fail-safe erhalten.
+          fileData: preparedFile.storedFileId ? new Uint8Array() : bytes,
+          uploadedById: actor.id,
+          uploadedByName: `${actor.firstName} ${actor.lastName}`.trim(),
+        },
+        select: {
+          id: true,
+          category: true,
+          originalFileName: true,
+          mimeType: true,
+          size: true,
+          uploadedById: true,
+          uploadedByName: true,
+          createdAt: true,
+        },
+      });
+    });
+    return NextResponse.json({ document }, { status: 201 });
+  } catch (error) {
+    await cleanupStorageBackedPayload(preparedFile);
+    throw error;
+  }
 }

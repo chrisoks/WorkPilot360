@@ -29,6 +29,10 @@ import {
   claimDocumentMailDispatch,
   InvoiceDeliveryServiceError,
 } from "@/lib/invoices/invoice-delivery-service";
+import {
+  readStoredFileBytes,
+  resolveStorageBackedBase64,
+} from "@/lib/storage/document-file";
 
 type MailAccount = {
   provider?: string;
@@ -329,6 +333,15 @@ async function prepareOfferAcceptance(req: Request, organizationId: string, body
   `;
   const offer = offers[0];
   if (!offer?.pdfData) return null;
+  const offerPdfData = await resolveStorageBackedBase64({
+    organizationId,
+    payload: offer.pdfData,
+    expectedOwnerType: "offer",
+    expectedOwnerId: offer.id,
+  });
+  if (!offerPdfData) {
+    throw new Error("Der Angebotsstand ist vorübergehend nicht verfügbar. Der Versand wurde nicht gestartet.");
+  }
   const projects = await prisma.$queryRaw<Array<{ contactId: string | null }>>`
     SELECT "contactId" FROM "WorkPilotProject" WHERE id = ${offer.projectId} AND "organizationId" = ${organizationId} LIMIT 1
   `;
@@ -368,7 +381,7 @@ async function prepareOfferAcceptance(req: Request, organizationId: string, body
       "withdrawalNoticePdfData", "withdrawalNoticePdfHash"
     ) VALUES (
       ${id}, ${organizationId}, ${offerId}, ${offer.projectId}, ${customerId}, ${hashAcceptanceValue(token)}, ${offer.offerNumber},
-      ${hashAcceptanceValue(offer.pdfData)}, ${offer.pdfData}, ${recipientEmail}, ${cleanText(body.customerName)}, ${actor.id},
+      ${hashAcceptanceValue(offerPdfData)}, ${offerPdfData}, ${recipientEmail}, ${cleanText(body.customerName)}, ${actor.id},
       ${actorName}, ${senderEmail}, 'prepared', ${expiresAt}, ${consumerFlow},
       ${withdrawalNotice?.base64 ?? null}, ${withdrawalNotice?.hash ?? ""}
     )
@@ -604,32 +617,51 @@ function formatDispatch(row: {
   };
 }
 
-async function getPdfAttachment(kind: string, documentId: string, documentNumber: string) {
+async function getPdfAttachment(organizationId: string, kind: string, documentId: string, documentNumber: string) {
   if (kind === "offer") {
     const rows = await prisma.$queryRaw<Array<{ pdfData: string | null }>>`
-      SELECT "pdfData" FROM "Offer" WHERE id = ${documentId} LIMIT 1
+      SELECT "pdfData" FROM "Offer"
+      WHERE id = ${documentId} AND "organizationId" = ${organizationId} LIMIT 1
     `;
-    return rows[0]?.pdfData
-      ? [{ "@odata.type": "#microsoft.graph.fileAttachment", name: `${documentNumber}.pdf`, contentType: "application/pdf", contentBytes: rows[0].pdfData }]
+    const contentBytes = rows[0]?.pdfData
+      ? await resolveStorageBackedBase64({
+          organizationId,
+          payload: rows[0].pdfData,
+          expectedOwnerType: "offer",
+          expectedOwnerId: documentId,
+        })
+      : "";
+    return contentBytes
+      ? [{ "@odata.type": "#microsoft.graph.fileAttachment", name: `${documentNumber}.pdf`, contentType: "application/pdf", contentBytes }]
       : [];
   }
 
   if (kind === "activityReport") {
     try {
-      const rows = await prisma.$queryRaw<Array<{ reportPdfData: string | null }>>`
-        SELECT "reportPdfData" FROM "WinterServiceRun" WHERE id = ${documentId} LIMIT 1
+      const rows = await prisma.$queryRaw<Array<{ projectId: string; reportPdfData: string | null }>>`
+        SELECT "projectId", "reportPdfData" FROM "WinterServiceRun"
+        WHERE id = ${documentId} AND "organizationId" = ${organizationId} LIMIT 1
       `;
       if (rows[0]?.reportPdfData) {
-        return [{ "@odata.type": "#microsoft.graph.fileAttachment", name: `${documentNumber}.pdf`, contentType: "application/pdf", contentBytes: rows[0].reportPdfData }];
+        const contentBytes = await resolveStorageBackedBase64({
+          organizationId,
+          payload: rows[0].reportPdfData,
+          expectedOwnerType: "project",
+          expectedOwnerId: rows[0].projectId,
+        });
+        return contentBytes
+          ? [{ "@odata.type": "#microsoft.graph.fileAttachment", name: `${documentNumber}.pdf`, contentType: "application/pdf", contentBytes }]
+          : [];
       }
     } catch {
       // Project activity reports are stored in the project logbook instead of WinterServiceRun.
     }
 
     const legacyLogbookEntryId = documentId.replace(/-\d+$/, "");
-    const logbookRows = await prisma.$queryRaw<Array<{ attachments: unknown }>>`
-      SELECT "attachments" FROM "ProjectLogbookEntry"
-      WHERE id = ${documentId} OR id = ${legacyLogbookEntryId}
+    const logbookRows = await prisma.$queryRaw<Array<{ projectId: string; attachments: unknown }>>`
+      SELECT "projectId", "attachments" FROM "ProjectLogbookEntry"
+      WHERE "organizationId" = ${organizationId}
+        AND (id = ${documentId} OR id = ${legacyLogbookEntryId})
       LIMIT 1
     `;
     const attachments = Array.isArray(logbookRows[0]?.attachments) ? logbookRows[0].attachments : [];
@@ -638,28 +670,61 @@ async function getPdfAttachment(kind: string, documentId: string, documentNumber
       .filter(Boolean)
       .find((attachment) => {
         const name = cleanText(attachment?.name);
-        const dataUrl = cleanText(attachment?.dataUrl);
-        return name.toLowerCase().includes(documentNumber.toLowerCase()) && dataUrl.startsWith("data:application/pdf");
+        const mimeType = cleanText(attachment?.mimeType);
+        return name.toLowerCase().includes(documentNumber.toLowerCase()) && mimeType === "application/pdf";
       });
     const dataUrlAttachment = reportAttachment
       ? getDataUrlAttachment(cleanText(reportAttachment.name) || `${documentNumber}.pdf`, cleanText(reportAttachment.dataUrl))
       : null;
-    return dataUrlAttachment ? [dataUrlAttachment] : [];
+    if (dataUrlAttachment) return [dataUrlAttachment];
+    const storedFileId = cleanText(reportAttachment?.storageFileId);
+    if (!storedFileId || !logbookRows[0]?.projectId) return [];
+    const stored = await readStoredFileBytes({
+      organizationId,
+      fileId: storedFileId,
+      expectedOwnerType: "project",
+      expectedOwnerId: logbookRows[0].projectId,
+    });
+    return stored
+      ? [{
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          name: cleanText(reportAttachment?.name) || `${documentNumber}.pdf`,
+          contentType: "application/pdf",
+          contentBytes: stored.bytes.toString("base64"),
+        }]
+      : [];
   }
 
   const rows = await prisma.$queryRaw<Array<{ pdfData: string | null }>>`
-    SELECT "pdfData" FROM "Invoice" WHERE id = ${documentId} LIMIT 1
+    SELECT "pdfData" FROM "Invoice"
+    WHERE id = ${documentId} AND "organizationId" = ${organizationId} LIMIT 1
   `;
-  return rows[0]?.pdfData
-    ? [{ "@odata.type": "#microsoft.graph.fileAttachment", name: `${documentNumber}.pdf`, contentType: "application/pdf", contentBytes: rows[0].pdfData }]
+  const contentBytes = rows[0]?.pdfData
+    ? await resolveStorageBackedBase64({
+        organizationId,
+        payload: rows[0].pdfData,
+        expectedOwnerType: "invoice",
+        expectedOwnerId: documentId,
+      })
+    : "";
+  return contentBytes
+    ? [{ "@odata.type": "#microsoft.graph.fileAttachment", name: `${documentNumber}.pdf`, contentType: "application/pdf", contentBytes }]
     : [];
 }
 
-async function getInvoicePdfBase64(documentId: string) {
+async function getInvoicePdfBase64(organizationId: string, documentId: string) {
   const rows = await prisma.$queryRaw<Array<{ pdfData: string | null }>>`
-    SELECT "pdfData" FROM "Invoice" WHERE id = ${documentId} LIMIT 1
+    SELECT "pdfData" FROM "Invoice"
+    WHERE id = ${documentId} AND "organizationId" = ${organizationId} LIMIT 1
   `;
-  return rows[0]?.pdfData || "";
+  return rows[0]?.pdfData
+    ? resolveStorageBackedBase64({
+        organizationId,
+        payload: rows[0].pdfData,
+        expectedOwnerType: "invoice",
+        expectedOwnerId: documentId,
+      })
+    : "";
 }
 
 function getXRechnungSellerProfile(): XRechnungSeller {
@@ -791,7 +856,7 @@ async function getXRechnungAttachment(organizationId: string, invoiceId: string,
 
 async function getZugferdAttachment(organizationId: string, invoiceId: string, documentNumber: string) {
   const xrechnungAttachment = await getXRechnungAttachment(organizationId, invoiceId, documentNumber);
-  const pdfData = await getInvoicePdfBase64(invoiceId);
+  const pdfData = await getInvoicePdfBase64(organizationId, invoiceId);
   if (!pdfData) {
     throw new Error("ZUGFeRD konnte nicht erzeugt werden: Rechnungs-PDF fehlt.");
   }
@@ -902,7 +967,7 @@ export async function POST(req: Request) {
     (Boolean(body.attachPdf) && eInvoiceFormat !== "zugferd") ||
     (kind === "invoice" && eInvoiceFormat === "pdf-xrechnung");
   const storedAttachments = shouldAttachStoredPdf
-    ? await getPdfAttachment(kind, cleanText(body.documentId), cleanText(body.documentNumber))
+    ? await getPdfAttachment(organization.id, kind, cleanText(body.documentId), cleanText(body.documentNumber))
     : [];
   const uploadedAttachment =
     shouldAttachStoredPdf && cleanText(body.attachmentDataUrl)

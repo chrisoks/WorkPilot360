@@ -12,6 +12,11 @@ import {
 } from "pdf-lib";
 import { prisma } from "@/lib/db/client";
 import {
+  cleanupStorageBackedPayload,
+  persistStorageBackedPayload,
+  prepareStorageBackedPayload,
+} from "@/lib/storage/document-file";
+import {
   formatInvoicePaymentDate,
   getBerlinDateKey,
   normalizeInvoicePaymentDate,
@@ -435,6 +440,7 @@ async function renderReminderPdf(evaluation: InvoiceReminderEvaluation, actorNam
   return {
     documentNumber: evaluation.documentNumber,
     fileName: `${evaluation.documentNumber}.pdf`,
+    bytes: Buffer.from(pdfBytes),
     attachment: {
       name: `${evaluation.documentNumber}.pdf`,
       type: "Dokument",
@@ -501,31 +507,48 @@ export async function createInvoiceReminder(input: {
   const invoice = await input.tx.invoice.findFirstOrThrow({
     where: { id: input.invoiceId, organizationId: input.organizationId },
   });
-  await input.tx.projectLogbookEntry.create({
-    data: {
-      id: randomUUID(),
-      organizationId: input.organizationId,
-      projectId: invoice.projectId,
-      title: "Dokumente: Mahnung",
-      body: `Mahnung ${document.documentNumber} zu Rechnung ${invoice.invoiceNumber} erstellt.`,
-      author: input.actorName || "System",
-      authorUserId: input.actorUserId || null,
-      visibleFor: ["GF", "Büro", "Mitarbeiter"],
-      attachments: [document.attachment],
-      source: input.source,
-    },
+  const preparedPdf = await prepareStorageBackedPayload({
+    organizationId: input.organizationId,
+    ownerType: "project",
+    ownerId: invoice.projectId,
+    sourceType: "invoice-reminder-pdf",
+    category: "invoice-reminders",
+    originalName: document.fileName,
+    contentType: "application/pdf",
+    bytes: document.bytes,
+    createdByUserId: input.actorUserId,
   });
-  await input.tx.invoiceHistory.create({
-    data: {
-      organizationId: input.organizationId,
-      invoiceId: invoice.id,
-      projectId: invoice.projectId,
-      invoiceNumber: invoice.invoiceNumber,
-      eventType: "reminder-document",
-      title: `Mahnung ${document.documentNumber} erstellt`,
-      note: `${document.fileName} wurde${input.source === "jarvis" ? " durch JARVIS" : ""} unter Dokumente: Mahnung abgelegt. Neue Zahlungsfrist: ${formatInvoicePaymentDate(evaluated.paymentDeadline)}.`,
-      actorName: input.actorName,
-    },
-  });
+  try {
+    await persistStorageBackedPayload(input.tx, preparedPdf);
+    await input.tx.projectLogbookEntry.create({
+      data: {
+        id: randomUUID(),
+        organizationId: input.organizationId,
+        projectId: invoice.projectId,
+        title: "Dokumente: Mahnung",
+        body: `Mahnung ${document.documentNumber} zu Rechnung ${invoice.invoiceNumber} erstellt.`,
+        author: input.actorName || "System",
+        authorUserId: input.actorUserId || null,
+        visibleFor: ["GF", "Büro", "Mitarbeiter"],
+        attachments: preparedPdf.prepared.attachments,
+        source: input.source,
+      },
+    });
+    await input.tx.invoiceHistory.create({
+      data: {
+        organizationId: input.organizationId,
+        invoiceId: invoice.id,
+        projectId: invoice.projectId,
+        invoiceNumber: invoice.invoiceNumber,
+        eventType: "reminder-document",
+        title: `Mahnung ${document.documentNumber} erstellt`,
+        note: `${document.fileName} wurde${input.source === "jarvis" ? " durch JARVIS" : ""} unter Dokumente: Mahnung abgelegt. Neue Zahlungsfrist: ${formatInvoicePaymentDate(evaluated.paymentDeadline)}.`,
+        actorName: input.actorName,
+      },
+    });
+  } catch (error) {
+    await cleanupStorageBackedPayload(preparedPdf);
+    throw error;
+  }
   return { invoice, evaluation: evaluated, reminderDocument: { documentNumber: document.documentNumber, fileName: document.fileName } };
 }

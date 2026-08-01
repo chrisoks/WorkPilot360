@@ -1,12 +1,23 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { getDemoContext } from "@/lib/demo/context";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
+import {
+  cleanupPreparedStorageUploads,
+  persistPreparedStoredFiles,
+  prepareStorageAttachments,
+} from "@/lib/storage/file-pilot";
+import {
+  cleanupStorageBackedPayload,
+  persistStorageBackedPayload,
+  prepareStorageBackedPayload,
+  resolveStorageBackedBytes,
+} from "@/lib/storage/document-file";
 
 type WinterServiceImage = {
   name: string;
@@ -14,6 +25,7 @@ type WinterServiceImage = {
   mimeType?: string;
   size?: number;
   dataUrl?: string;
+  storageFileId?: string;
 };
 
 type WinterServiceRunRow = {
@@ -123,6 +135,7 @@ function cleanImages(value: unknown): WinterServiceImage[] {
       mimeType: cleanString(candidate.mimeType) || "image/jpeg",
       size: Number.isFinite(Number(candidate.size)) ? Number(candidate.size) : 0,
       dataUrl,
+      storageFileId: cleanString(candidate.storageFileId),
     });
     return images;
   }, []);
@@ -132,7 +145,7 @@ function validateWinterServiceImages(images: WinterServiceImage[]) {
   let totalBytes = 0;
 
   for (const image of images) {
-    if (!image.dataUrl?.startsWith("data:")) {
+    if (!image.dataUrl?.startsWith("data:") && !image.dataUrl?.startsWith("/api/files/")) {
       return {
         status: 400,
         error: `Bild "${image.name}" hat ein ungueltiges Datenformat.`,
@@ -317,7 +330,9 @@ async function drawImageGrid(
   images: WinterServiceImage[],
   x: number,
   startY: number,
-  fonts: { regular: PDFFont; bold: PDFFont }
+  fonts: { regular: PDFFont; bold: PDFFont },
+  organizationId: string,
+  projectId: string
 ) {
   const width = 150;
   const height = 105;
@@ -339,8 +354,20 @@ async function drawImageGrid(
     });
 
     try {
-      const base64 = image.dataUrl?.split(",")[1] ?? "";
-      const bytes = Buffer.from(base64, "base64");
+      let bytes: Buffer;
+      if (image.storageFileId) {
+        const stored = await resolveStorageBackedBytes({
+          organizationId,
+          payload: `stored-file:${image.storageFileId}`,
+          expectedOwnerType: "project",
+          expectedOwnerId: projectId,
+        });
+        if (!stored) throw new Error("winter_service_image_missing");
+        bytes = stored;
+      } else {
+        const base64 = image.dataUrl?.split(",")[1] ?? "";
+        bytes = Buffer.from(base64, "base64");
+      }
       const embedded =
         image.mimeType?.toLowerCase().includes("png")
           ? await pdfDoc.embedPng(bytes)
@@ -395,10 +422,10 @@ async function generateActivityReportPdf(row: WinterServiceRunRow, reportNumber:
   drawText(page, "anbei erhalten Sie den Tätigkeitsbericht zum durchgeführten Winterdiensteinsatz.", 42, 594, fonts.regular, 10);
 
   drawText(page, "Vorherbilder", 42, 555, fonts.bold, 13);
-  await drawImageGrid(pdfDoc, page, cleanImages(row.beforeImages), 42, 532, fonts);
+  await drawImageGrid(pdfDoc, page, cleanImages(row.beforeImages), 42, 532, fonts, row.organizationId, row.projectId);
 
   drawText(page, "Nachherbilder", 42, 275, fonts.bold, 13);
-  await drawImageGrid(pdfDoc, page, cleanImages(row.afterImages), 42, 252, fonts);
+  await drawImageGrid(pdfDoc, page, cleanImages(row.afterImages), 42, 252, fonts, row.organizationId, row.projectId);
 
   drawText(page, "Mit freundlichen Grüßen", 42, 44, fonts.regular, 10);
   drawText(page, "WorkPilot360", 42, 28, fonts.bold, 10);
@@ -424,10 +451,15 @@ async function ensureProjectLogbookEntryTable() {
   `;
 }
 
-async function addProjectDocumentLogbookEntry(row: WinterServiceRunRow, reportNumber: string, pdfData: string, actor: User) {
+async function addProjectDocumentLogbookEntry(
+  tx: Prisma.TransactionClient,
+  row: WinterServiceRunRow,
+  reportNumber: string,
+  attachment: Record<string, unknown>,
+  actor: User
+) {
   const actorName = [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email || "System";
-  await ensureProjectLogbookEntryTable();
-  const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+  const existing = await tx.$queryRaw<Array<{ id: string }>>`
     SELECT id
     FROM "ProjectLogbookEntry"
     WHERE "organizationId" = ${row.organizationId}
@@ -438,22 +470,14 @@ async function addProjectDocumentLogbookEntry(row: WinterServiceRunRow, reportNu
   `;
   if (existing.length > 0) return;
 
-  await prisma.$executeRaw`
+  await tx.$executeRaw`
     INSERT INTO "ProjectLogbookEntry" (
       "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments"
     ) VALUES (
       ${randomUUID()}, ${row.organizationId}, ${row.projectId}, ${"Dokumente: Tätigkeitsberichte"},
       ${`Tätigkeitsbericht ${reportNumber} automatisch erstellt.`}, ${actorName}, ${""},
       ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Buchhaltung"])}::jsonb,
-      ${JSON.stringify([
-        {
-          name: `${reportNumber}.pdf`,
-          type: "Dokument",
-          mimeType: "application/pdf",
-          size: Math.round((pdfData.length * 3) / 4),
-          dataUrl: `data:application/pdf;base64,${pdfData}`,
-        },
-      ])}::jsonb
+      ${JSON.stringify([attachment])}::jsonb
     )
   `;
 }
@@ -479,7 +503,24 @@ export async function GET(req: Request) {
     if (!run?.reportPdfData) {
       return NextResponse.json({ error: "Tätigkeitsbericht wurde nicht gefunden." }, { status: 404 });
     }
-    return new NextResponse(Buffer.from(run.reportPdfData, "base64"), {
+    let bytes: Buffer;
+    try {
+      const resolved = await resolveStorageBackedBytes({
+        organizationId: organization.id,
+        payload: run.reportPdfData,
+        expectedOwnerType: "project",
+        expectedOwnerId: run.projectId,
+      });
+      if (!resolved) throw new Error("winter_service_report_missing");
+      bytes = resolved;
+    } catch (error) {
+      console.error("Winter service report could not be loaded", error);
+      return NextResponse.json(
+        { error: "Der Tätigkeitsbericht ist vorübergehend nicht verfügbar." },
+        { status: 503, headers: { "Retry-After": "30" } }
+      );
+    }
+    return new NextResponse(new Uint8Array(bytes), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${run.reportNumber || "Taetigkeitsbericht"}.pdf"`,
@@ -537,8 +578,24 @@ export async function POST(req: Request) {
   }
 
   const id = cleanString(body.id) || randomUUID();
-  const rows = await prisma.$queryRaw<WinterServiceRunRow[]>`
-    INSERT INTO "WinterServiceRun" (
+  const combinedImages = [...beforeImages, ...afterImages];
+  const preparedImages = await prepareStorageAttachments({
+    organizationId: organization.id,
+    ownerType: "project",
+    ownerId: projectId,
+    sourceType: "winter-service-image",
+    category: "winter-service",
+    createdByUserId: actor.id,
+    attachments: combinedImages,
+  });
+  const storedBeforeImages = preparedImages.attachments.slice(0, beforeImages.length);
+  const storedAfterImages = preparedImages.attachments.slice(beforeImages.length);
+  let rows: WinterServiceRunRow[];
+  try {
+    rows = await prisma.$transaction(async (tx) => {
+      await persistPreparedStoredFiles(tx, preparedImages);
+      return tx.$queryRaw<WinterServiceRunRow[]>`
+        INSERT INTO "WinterServiceRun" (
       "id", "organizationId", "projectId", "projectNumber", "projectTitle", "customerName",
       "contactId", "contactPersonId", "serviceDate", "month", "serviceType",
       "beforeImages", "afterImages", "updatedAt"
@@ -546,8 +603,8 @@ export async function POST(req: Request) {
       ${id}, ${organization.id}, ${projectId}, ${cleanString(body.projectNumber)},
       ${cleanString(body.projectTitle)}, ${cleanString(body.customerName)}, ${cleanString(body.contactId)},
       ${cleanString(body.contactPersonId)}, ${serviceDate}, ${month}, ${cleanString(body.serviceType)},
-      ${JSON.stringify(beforeImages)}::jsonb,
-      ${JSON.stringify(afterImages)}::jsonb,
+      ${JSON.stringify(storedBeforeImages)}::jsonb,
+      ${JSON.stringify(storedAfterImages)}::jsonb,
       CURRENT_TIMESTAMP
     )
     ON CONFLICT ("id") DO UPDATE SET
@@ -563,8 +620,13 @@ export async function POST(req: Request) {
       "beforeImages" = EXCLUDED."beforeImages",
       "afterImages" = EXCLUDED."afterImages",
       "updatedAt" = CURRENT_TIMESTAMP
-    RETURNING *
-  `;
+        RETURNING *
+      `;
+    });
+  } catch (error) {
+    await cleanupPreparedStorageUploads(preparedImages);
+    throw error;
+  }
 
   return NextResponse.json(formatRun(rows[0]), { status: 201 });
 }
@@ -625,17 +687,47 @@ export async function PATCH(req: Request) {
         { status: 413 }
       );
     }
-    const rows = await prisma.$queryRaw<WinterServiceRunRow[]>`
-      UPDATE "WinterServiceRun"
-      SET "reportStatus" = 'erstellt',
-          "reportNumber" = ${reportNumber},
-          "reportPdfData" = ${reportPdfData},
-          "reportGeneratedAt" = CURRENT_TIMESTAMP,
-          "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
-      RETURNING *
-    `;
-    await addProjectDocumentLogbookEntry(rows[0], reportNumber, reportPdfData, actor);
+    const preparedPdf = await prepareStorageBackedPayload({
+      organizationId: organization.id,
+      ownerType: "project",
+      ownerId: current.projectId,
+      sourceType: "winter-service-report-pdf",
+      category: "winter-service-reports",
+      originalName: `${reportNumber}.pdf`,
+      contentType: "application/pdf",
+      bytes: Buffer.from(reportPdfData, "base64"),
+      createdByUserId: actor.id,
+    });
+    const reportPayload = preparedPdf.reference ?? reportPdfData;
+    const reportAttachment = preparedPdf.prepared.attachments[0] ?? {
+      name: `${reportNumber}.pdf`,
+      type: "Dokument",
+      mimeType: "application/pdf",
+      size: reportBytes,
+      dataUrl: `data:application/pdf;base64,${reportPdfData}`,
+    };
+    await ensureProjectLogbookEntryTable();
+    let rows: WinterServiceRunRow[];
+    try {
+      rows = await prisma.$transaction(async (tx) => {
+        await persistStorageBackedPayload(tx, preparedPdf);
+        const updated = await tx.$queryRaw<WinterServiceRunRow[]>`
+          UPDATE "WinterServiceRun"
+          SET "reportStatus" = 'erstellt',
+              "reportNumber" = ${reportNumber},
+              "reportPdfData" = ${reportPayload},
+              "reportGeneratedAt" = CURRENT_TIMESTAMP,
+              "updatedAt" = CURRENT_TIMESTAMP
+          WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+          RETURNING *
+        `;
+        await addProjectDocumentLogbookEntry(tx, updated[0], reportNumber, reportAttachment, actor);
+        return updated;
+      });
+    } catch (error) {
+      await cleanupStorageBackedPayload(preparedPdf);
+      throw error;
+    }
     return NextResponse.json(formatRun(rows[0]));
   }
 
