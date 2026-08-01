@@ -1,5 +1,31 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierter Aufgaben-Lebenszyklus 2026-08-01: JARVIS und die
+  normale Aufgabenoberfläche verwenden jetzt denselben organisationsgebundenen
+  Fachservice zum reversiblen Archivieren und Wiederherstellen. Physisches
+  Löschen ist gesperrt. Ein Grund mit mindestens drei Zeichen und die exakte
+  Phrase `AUFGABE ARCHIVIEREN <Titel>` beziehungsweise
+  `AUFGABE WIEDERHERSTELLEN <Titel>` sind Pflicht; gleichnamige Aufgaben werden
+  nur über ihre sichtbare Aufgaben-ID aufgelöst. Laufende Zeiterfassung oder
+  ein nicht belegbarer Vorstatus blockieren fail-closed. Kommentare,
+  Beteiligte, Links, Zeiten, Folgeaufgaben, Projekt und Benachrichtigungen
+  bleiben erhalten. Organisation, Sitzung, Rollenpaar, Impersonation,
+  Revision, TTL, HMAC, Payload-/Kontexthash, SHA-256-Fachfingerprint,
+  serialisierbare Transaktion, PostgreSQL-Advisory-Lock, bedingtes Update,
+  Historie, Status-Timeline und Exactly-once-Replay sichern die Aktion.
+  Produktiv auf Commit `991dbb8ef935a425f8a301a4900d108f3375483f`;
+  Backup: `/var/backups/workpilot360/20260801-210641-jarvis-task-lifecycle-v3`.
+  Lokal und produktiv sind 147 Testdateien mit 1.549 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma-Validierung, Schema-Synchronität und der
+  90-Seiten-Build grün. Der produktive permanente Korpus bestand 110/110 und
+  bereitete 17 Entwürfe ohne Ausführung oder Rückstände vor. Die isolierte
+  Produktions-QA bestand Rollenprüfung, falsche Phrase, Archivierung,
+  Wiederherstellung, Abbruch, Exactly-once-Replay, Beweiserhalt und das Verbot
+  physischen Löschens mit null Rückständen. Der echte sichtbare Klicktest
+  bestätigte vollständige Vorschau, exakte Phrase, deaktivierte Ausführung bei
+  falscher Phrase und sicheren Abbruch. WorkPilot läuft unter PID `681938`;
+  KlinikNavigator blieb unverändert unter PID `398228`.
+
 - JARVIS-Wissen privater Datei- und Objektspeicher 2026-08-01: Die bisherige
   Pilotnotiz wurde durch die verbindliche Gesamtarchitektur in
   `docs/STORAGE_ARCHITEKTUR.md` ersetzt. JARVIS kennt den nicht navigierbaren,

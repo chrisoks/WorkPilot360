@@ -2668,3 +2668,17 @@ Organisationsgrenzen, falsche Phrase, Abbruch, Exactly-once-Replay,
 Archivieren/Wiederherstellen, unverändertes Projekt, vollständig erhaltene
 Nachweise und null Rückstände; der echte Oberflächen-Klicktest bestätigte die
 sichtbare Vorschau und den deaktivierten Ausführen-Button bei falscher Phrase.
+
+Produktiv ist der Vertikalschnitt auf Commit
+`991dbb8ef935a425f8a301a4900d108f3375483f` abgenommen. Das verifizierte
+Code-, Datenbank- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260801-210641-jarvis-task-lifecycle-v3`. Der
+permanente Produktionskorpus bestand 110/110 Fragen, bereitete 17 kritische
+Entwürfe vor und führte keine Aktion aus. Die isolierte Produktions-QA
+bestätigte Rollenprüfung, falsche Phrase, Archivierung, Wiederherstellung,
+Abbruch, Exactly-once-Replay, unverändertes Projekt, erhaltene Kommentare,
+Beteiligte, Links, Zeiten und Folgeaufgaben sowie das Verbot physischen
+Löschens; Aufgaben, Entwürfe, Sitzungen und Timeline-Rückstände standen danach
+jeweils auf null. Lokal sind 147 Testdateien mit 1.549 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma und der 90-Seiten-Build grün. WorkPilot
+läuft unter PID `681938`, KlinikNavigator blieb unter PID `398228`.
