@@ -8,7 +8,8 @@ export type JarvisSystemAreaKind =
   | "project_file"
   | "customer_file"
   | "settings"
-  | "calculator";
+  | "calculator"
+  | "system_service";
 
 export type JarvisNavigationTarget = {
   label: string;
@@ -63,6 +64,7 @@ const MASTER_DATA_ROLES: Role[] = [Role.ADMIN, Role.GESCHAEFTSFUEHRER];
 const ACCOUNTING_NAVIGATION_ROLES: Role[] = [Role.ADMIN, Role.GESCHAEFTSFUEHRER, Role.FUEHRUNGSKRAFT];
 
 const DASHBOARD_SOURCE = "src/components/dashboard/dashboard-page.tsx";
+const STORAGE_ARCHITECTURE_SOURCE = "docs/STORAGE_ARCHITEKTUR.md";
 const VERIFIED_AT = "2026-07-30";
 
 function area(
@@ -322,6 +324,45 @@ const CUSTOMER_FILE_AREAS = CUSTOMER_FILE_DEFINITIONS.map(([id, label, purpose])
   })
 );
 
+const SYSTEM_SERVICE_AREAS: JarvisSystemArea[] = [
+  area({
+    id: "system.objectStorage",
+    label: "Datei- und Objektspeicher",
+    kind: "system_service",
+    keywords: [
+      "Objektspeicher",
+      "HiDrive",
+      "S3 Speicher",
+      "Dateispeicher",
+      "Dokumentenspeicher",
+      "Bilder speichern",
+      "PDF speichern",
+      "stored-file",
+      "PWA Dateiupload",
+    ],
+    purpose:
+      "Private, verifizierte Byte-Ablage fuer Bilder, PDFs und E-Rechnungen bei unveraenderter Fach-, Rechte- und Auswertungslogik in WorkPilot360.",
+    workflows: [
+      "Datei im zustaendigen WorkPilot-Fachweg hochladen oder erzeugen",
+      "Inhalt, Groesse und SHA-256 vor der Fachreferenz verifizieren",
+      "Datei nur organisations- und besitzergebunden ueber WorkPilot ausliefern",
+      "Fallback, Audit, Aufbewahrung und kontrollierte Migration getrennt behandeln",
+    ],
+    roles: REPORT_NAVIGATION_ROLES,
+    verification: {
+      status: "verified",
+      checkedAt: "2026-08-01",
+      sourceRefs: [
+        STORAGE_ARCHITECTURE_SOURCE,
+        "prisma/schema.prisma",
+        "src/lib/storage/file-pilot.ts",
+        "src/lib/storage/document-file.ts",
+        "src/app/api/files/[fileId]/route.ts",
+      ],
+    },
+  }),
+];
+
 export const JARVIS_SYSTEM_AREAS: JarvisSystemArea[] = [
   ...MAIN_AREAS,
   ...TASK_AREAS,
@@ -335,6 +376,7 @@ export const JARVIS_SYSTEM_AREAS: JarvisSystemArea[] = [
   ...CALCULATOR_AREAS,
   ...PROJECT_FILE_AREAS,
   ...CUSTOMER_FILE_AREAS,
+  ...SYSTEM_SERVICE_AREAS,
 ];
 
 export const JARVIS_MAIN_NAVIGATION_AREA_IDS = MAIN_AREAS.map((item) => item.id);

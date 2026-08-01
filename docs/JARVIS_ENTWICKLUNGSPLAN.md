@@ -2600,3 +2600,32 @@ Storno-Umbau versehentlich entfernte lesende Rechnungsroute wurde ebenfalls
 wiederhergestellt und mit einem dauerhaften Regressionsmarker abgesichert.
 Produktiv liefert sie HTTP 200 und alle GU-Referenzfelder. WorkPilot läuft
 unter PID `494621`, KlinikNavigator unverändert unter PID `398228`.
+
+## 22. Verifiziertes Wissen zum privaten Datei- und Objektspeicher
+
+JARVIS kennt den produktiven Objektspeicher nicht nur als Infrastrukturwort,
+sondern als geprüften Zusammenhang zwischen Fachdatensatz, Dateimetadaten,
+privaten Bytes, API, PWA, Versand, Auswertung, Aufbewahrung und Fehlerfall.
+Die maschinenlesbare Systemlandkarte enthält dafür den nicht navigierbaren
+Systemdienst `system.objectStorage` mit verifizierten Quellreferenzen.
+
+Die deterministische Systemhilfe unterscheidet eigene Fragefamilien für:
+
+- eine einfache Erklärung für Normalnutzer,
+- aktuell angebundene und noch historische Dateifamilien,
+- den technischen Codefluss von Validierung bis Rollback,
+- PWA- und API-Kompatibilität,
+- Angebots-, Rechnungs-, XRechnungs-, ZUGFeRD- und Microsoft-365-Versand,
+- unveränderte kaufmännische Auswertungen,
+- Lazy Loading, ETag, privaten Cache und Skalierungsverhalten,
+- Providerfehler, Datenbank-Fallback, Prüfsummen und kontrollierte HTTP-Fehler,
+- fachliches Löschen, Storno, Audit und Aufbewahrung,
+- Dry-run-/Mirror-/Switch-Migration historischer Altdateien,
+- konsequente Verweigerung jeder Ausgabe von Access Keys, Secret Keys,
+  Passwörtern, Tokens oder anderen Geheimnissen.
+
+Verbindliche Detailquelle ist `docs/STORAGE_ARCHITEKTUR.md`. Normale Maske,
+PWA und JARVIS bleiben über dieselben Fach- und Speicherservices gekoppelt;
+JARVIS erfindet keinen Speicherzustand und darf ein technisches Speicherproblem
+nicht in einen anderen Belegstatus oder eine falsche kaufmännische Kennzahl
+umdeuten.

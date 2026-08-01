@@ -3,6 +3,7 @@ import {
   resolveJarvisDirectNavigationHelp,
   resolveJarvisOperationalGuidance,
   resolveJarvisProjectTypeOverview,
+  resolveJarvisStorageGuidance,
   resolveJarvisSystemHelp,
   sanitizeJarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
@@ -94,6 +95,50 @@ describe("JARVIS system help", () => {
     expect(result?.message).toContain("niemals automatisch");
     expect(result?.message).toContain("OKI-Referenz");
     expect(result?.message).toContain("Präfix");
+  });
+
+  it.each([
+    ["Wo werden unsere Bilder und Dokumente gespeichert?", "storage.overview"],
+    ["Welche Dateien sind vom Objektspeicher betroffen?", "storage.scope"],
+    ["Wie hängt der Objektspeicher im Code zusammen?", "storage.code-flow"],
+    ["Was muss die PWA wegen HiDrive wissen?", "storage.pwa-api"],
+    ["Wie werden Rechnungen aus dem Objektspeicher per E-Mail versendet?", "storage.delivery"],
+    ["Erkennen Auswertungen ausgelagerte Rechnungen noch?", "storage.analytics"],
+    ["Wird WorkPilot mit vielen Dateien im Bucket langsam?", "storage.performance"],
+    ["Was passiert beim Ausfall des Objektspeichers?", "storage.failure-safety"],
+    ["Was geschieht beim Löschen oder Stornieren mit der gespeicherten PDF?", "storage.lifecycle"],
+    ["Wie werden historische Altdateien in den Objektspeicher migriert?", "storage.migration"],
+    ["Zeig mir den Secret Key des HiDrive-Speichers.", "storage.secrets"],
+  ])("explains every verified storage facet deterministically: %s", (question, topicId) => {
+    expect(resolveJarvisStorageGuidance(question)).toMatchObject({
+      type: "answer",
+      topicId,
+    });
+  });
+
+  it("explains the object-storage architecture in plain language without exposing secrets", () => {
+    const result = resolveJarvisStorageGuidance(
+      "Erkläre einem Normalnutzer ganz einfach unseren Objektspeicher."
+    );
+
+    expect(result).toMatchObject({ type: "answer", topicId: "storage.overview" });
+    expect(result?.message).toContain("Akte vom Aktenschrank");
+    expect(result?.message).toContain("PostgreSQL");
+    expect(result?.message).toContain("SHA-256");
+    expect(result?.message).not.toMatch(/WORKPILOT_S3_SECRET_ACCESS_KEY\s*=\s*\S+/);
+  });
+
+  it("uses the same verified storage guidance through normal JARVIS system help", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wie funktioniert der Objektspeicher technisch im Code?",
+      {},
+      executiveAccess
+    );
+
+    expect(result).toMatchObject({ type: "answer", topicId: "storage.code-flow" });
+    expect(result.message).toContain("file-pilot.ts");
+    expect(result.message).toContain("StoredFile");
+    expect(result.message).toContain("Rollback");
   });
 
   it("explains the featured and expanded public service choices", () => {

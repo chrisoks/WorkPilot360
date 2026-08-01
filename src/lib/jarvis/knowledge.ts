@@ -62,6 +62,127 @@ export function resolveJarvisProjectTypeOverview(
   };
 }
 
+export function resolveJarvisStorageGuidance(
+  question: string
+): JarvisHelpResult | undefined {
+  const normalized = normalizeJarvisIntentText(question);
+  const hasStorageSignal =
+    /\b(?:objektspeicher\w*|object storage|hidrive|s3|dateispeicher\w*|dokumentenspeicher\w*|stored file|stored-file|auslager\w*|ausgelager\w*|bucket)\b/.test(
+      normalized
+    ) ||
+    /\b(?:wo|wie)\b.*\b(?:bilder|dateien|dokumente|pdfs?|xrechnungen?)\b.*\b(?:gespeichert|abgelegt|geladen|geholt)\b/.test(
+      normalized
+    ) ||
+    /\b(?:gespeichert\w*|ausgelager\w*)\b.*\b(?:pdfs?|dateien?|dokumente?)\b/.test(
+      normalized
+    );
+  if (!hasStorageSignal) return undefined;
+
+  if (
+    /\b(?:access key|secret|zugangsschlussel|schlussel|passwort|token|credentials?|anmeldedaten)\b/.test(
+      normalized
+    )
+  ) {
+    return {
+      type: "answer",
+      topicId: "storage.secrets",
+      message:
+        "Die Zugangsdaten zum Objektspeicher sind ausschliesslich geschuetzte Server-Secrets. Sie stehen weder in Fachdatensaetzen noch in Browser, PWA, Dokumentation oder JARVIS-Antworten. Ich kann Architektur, Betriebszustand und Fehler erklaeren, aber niemals Access Key, Secret Key, Passwort, Token oder einen anderen geheimen Wert anzeigen. Browser und PWA sprechen nur mit WorkPilot und erhalten auch keine direkte dauerhafte S3-Adresse.",
+    };
+  }
+
+  if (/\b(?:pwa|mobile|app|api|schnittstelle)\b/.test(normalized)) {
+    return {
+      type: "answer",
+      topicId: "storage.pwa-api",
+      message:
+        "Die PWA muss wegen des Objektspeichers nicht direkt mit STRATO verbunden werden. Sie laedt Bilder und Dokumente weiterhin ueber die WorkPilot-API hoch und ab; WorkPilot prueft Sitzung, Organisation, Projekt, Rolle und Dateityp, speichert die Bytes und liefert sie geschuetzt wieder aus. Alte API-Wege mit eingebetteten Dateien bleiben waehrend der Migration kompatibel. Ein Wechsel auf reine Datei-IDs erfolgt erst mit einem gemeinsam getesteten PWA-Release; Zugangsdaten, Bucket und Objektschluessel verlassen den Server nie.",
+    };
+  }
+
+  if (
+    /\b(?:welche|was fur|umfang|dateityp|dateifamil|alles|betroffen)\b/.test(normalized) &&
+    /\b(?:bild|datei|dokument|pdf|rechnung|angebot|bericht)\w*\b/.test(normalized)
+  ) {
+    return {
+      type: "answer",
+      topicId: "storage.scope",
+      message:
+        "Aktuell sind neue Anfrage- und Projektbilder, PDF-/XML-Logbuchanhaenge, Winterdienstbilder und -berichte, allgemeine Taetigkeitsberichte, Rauchmelderberichte, Endkontrollen, Angebots-PDFs, Rechnungs-PDFs einschliesslich Storno, Gutschrift und Mahnung, XRechnung-XML, ZUGFeRD-PDF sowie neue Mitarbeiterdokumente in PDF/JPG/PNG angebunden. Angebote und Rechnungen behalten ihre Fachfelder; dort steht nach erfolgreicher Auslagerung nur die interne Referenz `stored-file:<id>`. Historische Altdateien koennen weiterhin in PostgreSQL liegen und bleiben lesbar, bis sie kontrolliert migriert wurden.",
+    };
+  }
+
+  if (/\b(?:code|technisch|klasse|dateipfad|route|zusammenhang|implement|ablauf)\b/.test(normalized)) {
+    return {
+      type: "answer",
+      topicId: "storage.code-flow",
+      message:
+        "Technisch beginnt der gemeinsame Weg in `src/lib/storage/file-pilot.ts`: Datei dekodieren, Magic Bytes pruefen, SHA-256 berechnen, neutralen Objektschluessel bilden, privat hochladen und Groesse plus Pruefsumme erneut verifizieren. `StoredFile` in `prisma/schema.prisma` speichert Organisation, Besitzer, Quelle, Kategorie, Inhaltstyp, Groesse, Hash, ETag und Status. `src/lib/storage/document-file.ts` erzeugt beziehungsweise liest `stored-file:<id>` und prueft beim Aufloesen erneut Organisation, Besitzer, Groesse und Hash. Projektanhaenge werden ueber `/api/files/[fileId]` gestreamt; Angebote, Rechnungen und Mitarbeiterdokumente bleiben in ihren eigenen Fachrouten. Schlaegt die anschliessende Fachdatenbank-Transaktion fehl, entfernt der Rollback nur das in diesem Versuch neu hochgeladene Objekt.",
+    };
+  }
+
+  if (/\b(?:mail|e mail|email|versand|anhang|microsoft 365|xrechnung|zugferd)\b/.test(normalized)) {
+    return {
+      type: "answer",
+      topicId: "storage.delivery",
+      message:
+        "Der Dokumentversand bleibt unveraendert sicher: WorkPilot loest die interne Speicherreferenz serverseitig in die echten Bytes auf und uebergibt diese als normale Anlage an Microsoft 365. Der Empfaenger bekommt keinen S3-Link und keine Zugangsdaten. XRechnung wird weiterhin fachlich und mit KoSIT geprueft; ZUGFeRD bleibt ein erzeugtes PDF mit eingebetteter E-Rechnung. Nach erfolgreichem Erzeugen beziehungsweise Versand wird das exakte XML oder PDF als eigenes unveraenderliches Artefakt archiviert. Ist die Datei nicht eindeutig lesbar, wird der Versand blockiert statt ohne oder mit falscher Anlage fortgesetzt.",
+    };
+  }
+
+  if (/\b(?:auswertung\w*|kennzahl\w*|umsatz\w*|offene posten|forecast|statistik\w*|reporting)\b/.test(normalized)) {
+    return {
+      type: "answer",
+      topicId: "storage.analytics",
+      message:
+        "Die Auswertungen verlieren durch die Auslagerung keine Rechnungen, Angebote oder Statusinformationen. Summen, Positionen, Kunde, Projekt, Zahlungsstatus, Storno, Gutschrift und Versandhistorie bleiben als strukturierte Fachdatensaetze in PostgreSQL; nur die schweren Datei-Bytes liegen extern. Auswertungen rechnen mit diesen Fachfeldern und nicht mit dem Speicherort einer PDF. Eine voruebergehend nicht ladbare Datei ist deshalb ein getrenntes Nachweis- oder Speicherproblem und darf den kaufmaennischen Datensatz nicht aus einer Kennzahl entfernen.",
+    };
+  }
+
+  if (/\b(?:langsam|performance|ladezeit|laden|cache|etag|skalier|viele dateien)\b/.test(normalized)) {
+    return {
+      type: "answer",
+      topicId: "storage.performance",
+      message:
+        "Listen und Projektstart laden keine schweren PDF-Bytes; Bilder und Dokumente werden erst bei Bedarf nachgeladen. Geschuetzte Projektdateien verwenden ETag sowie einen privaten Kurzzeit-Cache von fuenf Minuten mit kurzer Wiederverwendung im Hintergrund, wodurch unveraenderte Dateien nicht erneut voll uebertragen werden. Lademasken und sichtbare Fehlerzustaende verhindern den Eindruck, WorkPilot haenge. Die Gesamtzahl der Objekte im Bucket macht einen gezielten Abruf nicht linear langsamer; entscheidend sind Dateigroesse, Netzwerk, Providerlatenz und die Zahl gleichzeitig sichtbarer Dateien. Fuer grosse Galerien bleiben Lazy Loading, begrenzte Parallelitaet und spaetere Vorschaubilder die richtige Skalierungsstrategie.",
+    };
+  }
+
+  if (/\b(?:fehler|ausfall|nicht erreichbar|fallback|crash|rollback|prufsumme|kaputt|konsistent)\b/.test(normalized)) {
+    return {
+      type: "answer",
+      topicId: "storage.failure-safety",
+      message:
+        "Ein Speicherausfall darf WorkPilot nicht unkontrolliert zum Absturz bringen. Bei dafuer vorgesehenen neuen Uploads bleibt der bisherige Base64-/ByteA-Weg als Fallback aktiv, solange noch keine verifizierte Speicherreferenz gesetzt wurde. Vorhandene externe Dateien werden beim Lesen auf Organisation, Besitzer, Groesse und SHA-256 geprueft; eine Abweichung liefert einen kontrollierten Fehler und niemals still eine andere Datei. Projektdateien antworten bei einem voruebergehenden Providerfehler mit HTTP 503 und Retry-Hinweis, bei Inkonsistenz mit HTTP 502. Scheitert der Fach-Commit nach einem Upload, wird das neue unreferenzierte Objekt gezielt zurueckgerollt.",
+    };
+  }
+
+  if (/\b(?:losch|gelo|storno|aufbewahr|retention|audit|archiv)\w*\b/.test(normalized)) {
+    return {
+      type: "answer",
+      topicId: "storage.lifecycle",
+      message:
+        "Fachliches Loeschen und physisches Objektloeschen sind getrennt. Ein `deletedAt` kann den normalen Abruf sperren, ohne Auditdaten unkontrolliert zu vernichten. Bereits versendete oder fakturierte Angebote und Rechnungen werden nicht wegen einer Korrektur entfernt: Ein Storno oder eine Gutschrift erzeugt einen eigenen Gegenbeleg, waehrend Original und Gegenbeleg nachvollziehbar erhalten bleiben. Sofort physisch geloescht wird nur ein neu hochgeladenes Objekt, dessen zugehoerige Fachdatenbank-Transaktion noch nicht erfolgreich abgeschlossen wurde. Jede spaetere Retention braucht eine ausdrueckliche, revisionssichere Regel und getrennte Backups.",
+    };
+  }
+
+  if (/\b(?:altdatei|migration|migrier|mirror|switch|bestand)\w*\b/.test(normalized)) {
+    return {
+      type: "answer",
+      topicId: "storage.migration",
+      message:
+        "Historische Dateien werden nicht blind in einem Schritt verschoben. `scripts/migrate-object-storage.mjs` arbeitet kontrolliert: zuerst Dry-run und Inventur, dann Mirror in den privaten Speicher, danach Verifikation und erst anschliessend der Switch der Fachreferenz. Alte Base64-/ByteA-Nutzlasten bleiben waehrend der Karenz lesbar und duerfen erst nach Restore-Test und bestaetigter Vollstaendigkeit entfernt werden. Dadurch bleiben alte PWA- und WorkPilot-Pfade waehrend der Umstellung kompatibel und rueckrollbar.",
+    };
+  }
+
+  return {
+    type: "answer",
+    topicId: "storage.overview",
+    message:
+      "Einfach gesagt trennt WorkPilot360 die Akte vom Aktenschrank: PostgreSQL behaelt alle Fachinformationen, Rechte, Zuordnungen, Status, Auswertungen und Auditspuren; der private STRATO-HiDrive-Objektspeicher traegt nach erfolgreicher Verifikation nur die schweren Bytes neuer geeigneter Bilder, PDFs und E-Rechnungen. Der Nutzer arbeitet weiter ausschliesslich in WorkPilot. Jede Datei bleibt an Organisation und fachlichen Besitzer gebunden, wird vor Freigabe anhand Inhalt, Groesse und SHA-256 geprueft und nur ueber geschuetzte WorkPilot-Routen geladen. PWA, Browser und Mailversand kennen weder Bucket noch Zugangsdaten. Historische Altdateien bleiben kompatibel, bis sie kontrolliert migriert sind.",
+  };
+}
+
 export function resolveJarvisOperationalGuidance(
   question: string
 ): JarvisHelpResult | undefined {
@@ -72,6 +193,8 @@ export function resolveJarvisOperationalGuidance(
     .replace(/[?!.,;:()/_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  const storageGuidance = resolveJarvisStorageGuidance(question);
+  if (storageGuidance) return storageGuidance;
   const asks =
     /^(?:wie|wo|was|wer|warum|wann|kann|konnen|wird|welche|ist|gibt|erfind|bewert|entscheid)\w*\b/.test(
       value
@@ -1580,6 +1703,8 @@ export function resolveJarvisSystemHelp(
       message: getJarvisRefusalMessage(authorization, cleaned),
     };
   }
+  const storageGuidance = resolveJarvisStorageGuidance(cleaned);
+  if (storageGuidance) return storageGuidance;
   const matchedTopicId = findJarvisExactHelpTopicId(cleaned, context);
   if (matchedTopicId) {
     return resolveJarvisSystemHelpTopic(

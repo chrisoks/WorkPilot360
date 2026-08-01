@@ -56,7 +56,7 @@ describe("JARVIS system map", () => {
   });
 
   it("keeps every entry traceable and useful", () => {
-    expect(JARVIS_SYSTEM_AREAS).toHaveLength(89);
+    expect(JARVIS_SYSTEM_AREAS).toHaveLength(90);
     expect(new Set(JARVIS_SYSTEM_AREAS.map((item) => item.id)).size).toBe(JARVIS_SYSTEM_AREAS.length);
     JARVIS_SYSTEM_AREAS.forEach((item) => {
       expect(item.purpose.length).toBeGreaterThan(12);
@@ -70,6 +70,17 @@ describe("JARVIS system map", () => {
   it("finds natural navigation terms", () => {
     const result = findJarvisSystemAreas("Wo finde ich die Zeiterfassung?", management);
     expect(result[0]?.area.id).toBe("employees.timeTracking");
+  });
+
+  it("maps the verified private object-storage service without pretending it is a public route", () => {
+    const result = findJarvisSystemAreas("Wie funktioniert der HiDrive Objektspeicher?", management);
+    expect(result[0]?.area).toMatchObject({
+      id: "system.objectStorage",
+      kind: "system_service",
+      verification: { status: "verified", checkedAt: "2026-08-01" },
+    });
+    expect(result[0]?.area.target).toBeUndefined();
+    expect(result[0]?.area.verification.sourceRefs).toContain("docs/STORAGE_ARCHITEKTUR.md");
   });
 
   it("maps the protected online-request inbox only for sales roles", () => {

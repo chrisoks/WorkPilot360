@@ -1,6 +1,6 @@
 # JARVIS Systemlandkarte
 
-Stand: 31.07.2026
+Stand: 01.08.2026
 
 ## Zweck
 
@@ -13,9 +13,9 @@ ersetzt nicht die Registry.
 
 ## Aktuelle Abdeckung
 
-Die Registry enthält 88 Einträge:
+Die Registry enthält 90 Einträge:
 
-- 17 aktive Hauptbereiche,
+- 18 aktive Hauptbereiche,
 - 3 Aufgabenansichten,
 - 2 Zielansichten,
 - 4 Mitarbeiteransichten,
@@ -26,7 +26,9 @@ Die Registry enthält 88 Einträge:
 - 10 Bereiche der Firmeneinstellungen,
 - 4 Kalkulationsbereiche,
 - 17 Reiter der Projektakte,
-- 11 Reiter der Kundenakte.
+- 11 Reiter der Kundenakte,
+- 1 nicht navigierbaren, aber verifizierten Systemdienst für den privaten
+  Datei- und Objektspeicher.
 
 Jeder Eintrag enthält:
 
@@ -90,7 +92,10 @@ und in den Abdeckungstests ergänzt beziehungsweise freigegeben werden.
 
 - JARVIS den aktuellen Bereich konkret erklärt,
 - eine bekannte Navigationsfrage ein sicheres Ziel liefert,
-- eine gesperrte Rolle kein Navigationsziel erhält.
+- eine gesperrte Rolle kein Navigationsziel erhält,
+- JARVIS Speicherarchitektur, Dateiumfang, PWA/API, Codefluss, Versand,
+  Auswertungen, Performance, Ausfall, Lebenszyklus und Migration getrennt und
+  ohne Preisgabe von Secrets erklärt.
 
 ## Pflegepflicht
 
@@ -263,3 +268,48 @@ Verifizierte Quellen sind
 `src/app/api/online-requests/[requestId]/convert/route.ts` und
 `src/lib/online-requests/conversion.ts`. Der JARVIS-Liveadapter liegt in
 `src/lib/jarvis/online-request-analysis.ts`.
+
+## Privater Datei- und Objektspeicher
+
+Der Systemdienst `system.objectStorage` ist kein eigener sichtbarer Reiter und
+liefert deshalb bewusst kein Navigationsziel. Er ist die verifizierte
+Zusammenhangsschicht für alle angebundenen Dateiwege. JARVIS kennt und erklärt
+dabei verbindlich:
+
+- PostgreSQL bleibt die fachliche Quelle für Organisation, Rollen,
+  Zuordnungen, Belegstatus, Auswertungen, Audit und `StoredFile`-Metadaten;
+  der private S3-kompatible STRATO-HiDrive-Speicher trägt die verifizierten
+  schweren Datei-Bytes.
+- Der Schreibweg prüft Fachrecht, Dateigröße, Magic Bytes, MIME-Typ, SHA-256,
+  Upload und anschließende Provider-Metadaten. Erst danach wird die
+  Fachreferenz gespeichert. Ein fehlgeschlagener Fach-Commit entfernt nur das
+  in diesem Versuch neu erzeugte, noch nicht bestätigte Objekt.
+- Projekt- und Anfrageanhänge werden organisations- und besitzergebunden über
+  `/api/files/[fileId]` gestreamt. Angebote und Rechnungen verwenden ihre
+  bestehenden Fachrouten und lösen `stored-file:<id>` serverseitig auf.
+  Mitarbeiterdokumente bleiben in ihrer eigenen strengeren Personalroute.
+- PWA und Browser sprechen weiterhin ausschließlich mit WorkPilot. Sie kennen
+  weder Bucket noch Objektschlüssel oder Zugangsdaten.
+- Mailversand lädt die echten Bytes serverseitig. Microsoft 365 erhält die
+  Anlage, keinen S3-Link. XRechnung und ZUGFeRD behalten ihre fachlichen
+  Validierungen und werden als exakte unveränderliche Artefakte archiviert.
+- Auswertungen verwenden strukturierte Fachfelder und verlieren deshalb durch
+  den physischen Speicherwechsel keine Angebote, Rechnungen, Summen, Status,
+  Storno- oder Gutschriftwirkungen.
+- ETag, privater Kurzzeit-Cache, bedarfsgerechtes Laden und sichtbare
+  Lademasken schützen die Bedienperformance. Ein gezielter Objektabruf wird
+  nicht linear mit der Gesamtzahl der Bucket-Objekte langsamer.
+- Providerfehler, Inkonsistenz und fehlende Berechtigung werden getrennt und
+  kontrolliert behandelt. Geeignete neue Fachwege behalten die bisherige
+  Datenbankablage als Fallback, solange keine verifizierte Speicherreferenz
+  geschrieben wurde.
+- Fachliches Löschen, Storno, Aufbewahrung und physisches Objektlöschen sind
+  getrennt. Bereits versendete oder fakturierte Belege und ihre Gegenbelege
+  bleiben revisionsfähig nachvollziehbar.
+- Historische Altdateien können noch in Base64-/ByteA-Feldern liegen. Ihre
+  Migration erfolgt ausschließlich über Dry-run, Mirror, Verifikation,
+  Switch, Restore-Test und Karenz.
+
+Die vollständige verbindliche Beschreibung und Code-Landkarte steht in
+`docs/STORAGE_ARCHITEKTUR.md`. Secrets sind aus JARVIS-Wissen, Systemlandkarte,
+Prompts, Antworten und Telemetrie ausgeschlossen.

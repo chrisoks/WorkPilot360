@@ -1,5 +1,21 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Wissen privater Datei- und Objektspeicher 2026-08-01: Die bisherige
+  Pilotnotiz wurde durch die verbindliche Gesamtarchitektur in
+  `docs/STORAGE_ARCHITEKTUR.md` ersetzt. JARVIS kennt den nicht navigierbaren,
+  verifizierten Systemdienst `system.objectStorage` und beantwortet getrennt
+  Normalnutzer-Erklärung, aktuelle Dateifamilien, Codefluss, PWA/API,
+  Microsoft-365-/XRechnung-/ZUGFeRD-Versand, Auswertungen, Performance,
+  Providerfehler/Fallback, Lebenszyklus/Aufbewahrung und Altdateimigration.
+  Verbindlich sind PostgreSQL als Fachquelle, `StoredFile` als Metadatenbrücke,
+  privater S3-kompatibler STRATO-HiDrive-Speicher für verifizierte Bytes,
+  Magic-Byte-/Größen-/SHA-256-Prüfung, organisations- und besitzergebundener
+  Abruf, transaktionaler Upload-Rollback sowie die Trennung von Fachstatus und
+  physischem Objekt. PWA und Browser bleiben ausschließlich an die WorkPilot-
+  API angebunden; Auswertungen verwenden weiterhin strukturierte Fachdaten.
+  Zugangsschlüssel, Tokens, Passwörter, Bucket-Schlüssel und andere Secrets
+  bleiben ausdrücklich aus JARVIS-Wissen, Antworten und Telemetrie ausgeschlossen.
+
 - JARVIS kontrolliertes Löschen/Wiederherstellen von Rechnungsentwürfen
   2026-08-01: JARVIS und die normale Rechnungsmaske verwenden jetzt denselben
   organisationsgebundenen Soft-Delete-Fachservice. Nur ein unverarbeiteter
