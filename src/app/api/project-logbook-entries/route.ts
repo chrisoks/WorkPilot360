@@ -14,6 +14,12 @@ import {
   createProjectLogbookEntry,
   ProjectLogbookServiceError,
 } from "@/lib/services/project-logbook-service";
+import {
+  cleanupPreparedStorageUploads,
+  persistPreparedStoredFiles,
+  prepareStorageAttachments,
+  StorageAttachmentValidationError,
+} from "@/lib/storage/file-pilot";
 
 type LogbookAttachment = {
   name: string;
@@ -21,6 +27,7 @@ type LogbookAttachment = {
   mimeType?: string;
   size?: number;
   dataUrl?: string;
+  storageFileId?: string;
 };
 
 type ProjectLogbookEntryRow = {
@@ -181,6 +188,7 @@ function cleanAttachments(value: unknown): LogbookAttachment[] {
         mimeType: cleanString(candidate.mimeType),
         size: Number.isFinite(Number(candidate.size)) ? Number(candidate.size) : 0,
         dataUrl: cleanString(candidate.dataUrl),
+        storageFileId: cleanString(candidate.storageFileId),
       });
 
       return attachments;
@@ -412,9 +420,31 @@ export async function POST(req: Request) {
   const createdAt = requestedCreatedAt ? new Date(requestedCreatedAt) : new Date();
   const createdAtValue = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
 
+  let preparedStorage;
   try {
-    const result = await prisma.$transaction((tx) =>
-      createProjectLogbookEntry(tx, {
+    preparedStorage = await prepareStorageAttachments({
+      organizationId: organization.id,
+      ownerType: "project",
+      ownerId: projectId,
+      sourceType: "project-logbook-attachment",
+      category: "logbook-images",
+      createdByUserId: actor.id,
+      attachments: attachments.map((attachment, index) => ({
+        ...attachment,
+        sourceEntityId: `${id}:${index}`,
+      })),
+    });
+  } catch (error) {
+    if (error instanceof StorageAttachmentValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await persistPreparedStoredFiles(tx, preparedStorage);
+      return createProjectLogbookEntry(tx, {
         id,
         organizationId: organization.id,
         projectId,
@@ -424,14 +454,20 @@ export async function POST(req: Request) {
         body: text,
         colleague,
         visibleFor,
-        attachments: JSON.parse(JSON.stringify(attachments)),
+        attachments: JSON.parse(JSON.stringify(preparedStorage.attachments)),
         projectMonth,
         createdAt: createdAtValue,
         source: "manual",
-      })
-    );
-    return NextResponse.json(formatEntry(result.entry), { status: 201 });
+      });
+    });
+    return NextResponse.json(formatEntry(result.entry), {
+      status: 201,
+      headers: preparedStorage.fallbackCount
+        ? { "X-WorkPilot-Storage-Fallback": String(preparedStorage.fallbackCount) }
+        : undefined,
+    });
   } catch (error) {
+    await cleanupPreparedStorageUploads(preparedStorage);
     if (error instanceof ProjectLogbookServiceError) {
       const status =
         error.code === "project_not_found"

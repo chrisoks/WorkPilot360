@@ -58,7 +58,8 @@ Upload, Download, Loeschschutz und Wiederherstellung separat abgenommen sind.
 
 1. Provideradapter und isolierter Verbindungstest.
 2. Additives Dateimetadatenmodell mit Status, Pruefsumme und Auditbezug.
-3. Online-Anfragebilder als erster Dual-Write-/Fallback-Pilot.
+3. Online-Anfragebilder und neue manuelle Projektbilder als erster
+   Dual-Write-/Fallback-Pilot.
 4. Projektbilder und allgemeine Projektdokumente.
 5. Angebote, Rechnungen und Taetigkeitsberichte mit unveraenderlichen Versionen.
 6. Mitarbeiterdokumente mit zusaetzlicher Zugriffskontrolle.
@@ -72,3 +73,19 @@ oder Downloadrouten. Sie leitet keine produktive Datei um und benoetigt noch
 keinen echten STRATO-Schluessel. Der S3-Adapter ist implementiert, bleibt aber
 bei `WORKPILOT_STORAGE_PROVIDER=disabled` inaktiv. Metadatenmodell und
 Online-Anfrage-Pilot folgen erst nach separater Abnahme des echten Buckets.
+
+## Pilotstufe ab August 2026
+
+Die additive Pilotstufe fuehrt `StoredFile` als organisationsgebundenes
+Metadatenmodell ein. Neue Bildanhaenge aus manuellen Projektlogbuch-Eintraegen
+und aus der bewussten Umwandlung einer Online-Anfrage werden bei aktivem
+Provider vor der Datenbankreferenz in den privaten Bucket geschrieben und per
+Groesse sowie SHA-256-Metadaten geprueft. Der bestehende Base64-/ByteA-Weg
+bleibt bei einem Providerfehler unveraendert als Fallback erhalten.
+
+Die Anwendung speichert in neuen Logbuchanhaengen nur eine nicht erratbare
+Datei-ID und die Route `/api/files/<id>`. Diese Route verlangt eine aktuelle
+WorkPilot-Sitzung, bindet die Datei an Organisation und fachlichen Besitzer
+und streamt sie mit privatem Browser-Cache, ETag und `nosniff`. Der Bucket
+bleibt privat; S3-Schluessel und Zugangsdaten werden nie an Browser oder PWA
+ausgegeben. Bestehende Dateien werden in dieser Stufe nicht migriert.

@@ -82,10 +82,30 @@ const files = {
   onlineRequestSubmitRoute: read("src/app/api/public/online-requests/submit/route.ts"),
   onlineRequestConversionRoute: read("src/app/api/online-requests/[requestId]/convert/route.ts"),
   onlineRequestWorkspace: read("src/components/online-requests/online-requests-workspace.tsx"),
+  storedFileRoute: read("src/app/api/files/[fileId]/route.ts"),
+  storagePilot: read("src/lib/storage/file-pilot.ts"),
   packageJson: read("package.json"),
 };
 
 const required = [
+  {
+    label: "Objektspeicher-Dateien bleiben ueber eine geschuetzte WorkPilot-Route mandantengebunden",
+    file: "storedFileRoute",
+    needle: 'organizationId: organization.id',
+    min: 1,
+  },
+  {
+    label: "Objektspeicher-Auslieferung bleibt privat gecacht und wird nicht oeffentlich",
+    file: "storedFileRoute",
+    needle: 'Cache-Control": "private',
+    min: 2,
+  },
+  {
+    label: "Projektbild-Pilot behaelt den Datenbank-Fallback bei Speicherfehlern",
+    file: "storagePilot",
+    needle: "database fallback retained",
+    min: 1,
+  },
   {
     label: "Sidebar/Ansichten verwenden Zusatzverkäufe statt Potenziale",
     file: "page",
@@ -791,6 +811,21 @@ const requiredPrismaFields = [
     model: "OnlineRequestPhoto",
     field: "data",
     reason: "Sicher normalisierte Anfragebilder werden organisationsgebunden gespeichert.",
+  },
+  {
+    model: "StoredFile",
+    field: "objectKey",
+    reason: "Private Objektdateien brauchen einen eindeutigen technischen Speicherschluessel.",
+  },
+  {
+    model: "StoredFile",
+    field: "sha256",
+    reason: "Objektspeicherdateien muessen dauerhaft per SHA-256 verifizierbar bleiben.",
+  },
+  {
+    model: "StoredFile",
+    field: "sourceEntityId",
+    reason: "Dual-Write-Wiederholungen brauchen einen eindeutigen idempotenten Quellenbezug.",
   },
   {
     model: "OnlineRequestPublicSession",

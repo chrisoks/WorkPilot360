@@ -24,6 +24,12 @@ import { ensureOnlineRequestStorage } from "@/lib/online-requests/ensure";
 import { normalizePhoneNumber } from "@/lib/phone/normalize";
 import { canConvertOnlineRequests } from "@/lib/permissions";
 import { ensureStatusTrackingTables } from "@/lib/status-tracking";
+import {
+  cleanupPreparedStorageUploads,
+  persistPreparedStoredFiles,
+  prepareStorageAttachments,
+  type PreparedStorageAttachments,
+} from "@/lib/storage/file-pilot";
 
 export const dynamic = "force-dynamic";
 
@@ -217,16 +223,52 @@ function buildImageAttachments(
   }));
 }
 
+async function prepareOnlineRequestPhotoStorage(
+  organizationId: string,
+  requestId: string,
+  actorUserId: string
+) {
+  const photos = await prisma.onlineRequestPhoto.findMany({
+    where: { organizationId, onlineRequestId: requestId },
+    orderBy: { sortOrder: "asc" },
+    select: {
+      id: true,
+      fileName: true,
+      mimeType: true,
+      byteSize: true,
+      data: true,
+    },
+  });
+  return prepareStorageAttachments({
+    organizationId,
+    ownerType: "online-request",
+    ownerId: requestId,
+    sourceType: "online-request-photo",
+    category: "request-images",
+    createdByUserId: actorUserId,
+    attachments: photos.map((photo) => ({
+      name: photo.fileName,
+      type: "Bild" as const,
+      mimeType: photo.mimeType,
+      size: photo.byteSize,
+      dataUrl: `data:${photo.mimeType};base64,${Buffer.from(photo.data).toString("base64")}`,
+      sourceEntityId: photo.id,
+    })),
+  });
+}
+
 async function performConversion({
   organizationId,
   requestId,
   actor,
   users,
+  preparedPhotoStorage,
 }: {
   organizationId: string;
   requestId: string;
   actor: User;
   users: User[];
+  preparedPhotoStorage: PreparedStorageAttachments;
 }) {
   const now = new Date();
   return prisma.$transaction(
@@ -525,6 +567,7 @@ async function performConversion({
       });
 
       if (onlineRequest.photos.length) {
+        await persistPreparedStoredFiles(tx, preparedPhotoStorage);
         await tx.projectLogbookEntry.create({
           data: {
             id: randomUUID(),
@@ -535,7 +578,10 @@ async function performConversion({
             author: actorName(actor),
             authorUserId: actor.id,
             visibleFor,
-            attachments: buildImageAttachments(onlineRequest.photos),
+            attachments:
+              preparedPhotoStorage.attachments.length === onlineRequest.photos.length
+                ? preparedPhotoStorage.attachments
+                : buildImageAttachments(onlineRequest.photos),
             projectMonth: onlineRequest.createdAt
               .toISOString()
               .slice(0, 7),
@@ -739,6 +785,11 @@ export async function POST(
   }
 
   try {
+    const preparedPhotoStorage = await prepareOnlineRequestPhotoStorage(
+      organization.id,
+      requestId,
+      actorResult.actor.id
+    );
     for (let attempt = 1; attempt <= MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
       try {
         const result = await performConversion({
@@ -746,7 +797,11 @@ export async function POST(
           requestId,
           actor: actorResult.actor,
           users,
+          preparedPhotoStorage,
         });
+        if (result.duplicate) {
+          await cleanupPreparedStorageUploads(preparedPhotoStorage);
+        }
         return NextResponse.json(result, {
           status: result.duplicate ? 200 : 201,
         });
@@ -757,9 +812,11 @@ export async function POST(
         ) {
           continue;
         }
+        await cleanupPreparedStorageUploads(preparedPhotoStorage);
         throw error;
       }
     }
+    await cleanupPreparedStorageUploads(preparedPhotoStorage);
     throw new Error("Conversion retry loop ended unexpectedly.");
   } catch (error) {
     return conversionErrorResponse(error);

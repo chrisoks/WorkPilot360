@@ -32,6 +32,7 @@ model Organization {
   onlineRequestPublicSessions   OnlineRequestPublicSession[]
   onlineRequestRateLimitBuckets OnlineRequestRateLimitBucket[]
   onlineRequests                OnlineRequest[]
+  storedFiles                   StoredFile[]
   catalogItems                  CatalogItem[]
   catalogItemHistory            CatalogItemHistory[]
   catalogInventoryMovements     CatalogInventoryMovement[]
@@ -1655,71 +1656,71 @@ model ObjectAddress {
 }
 
 model OnlineRequestPortal {
-  id                      String                         @id @default(cuid())
-  organizationId          String
-  slug                    String                         @unique
-  displayName             String
-  isActive                Boolean                        @default(true)
-  allowedTradeIds         Json                           @default("[]")
-  notificationUserIds     Json                           @default("[]")
-  trustedHostnames        Json                           @default("[]")
-  turnstileSiteKey        String?
-  createdAt               DateTime                       @default(now())
-  updatedAt               DateTime                       @updatedAt
-  organization            Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  requests                OnlineRequest[]
-  publicSessions          OnlineRequestPublicSession[]
-  rateLimitBuckets        OnlineRequestRateLimitBucket[]
+  id                  String                         @id @default(cuid())
+  organizationId      String
+  slug                String                         @unique
+  displayName         String
+  isActive            Boolean                        @default(true)
+  allowedTradeIds     Json                           @default("[]")
+  notificationUserIds Json                           @default("[]")
+  trustedHostnames    Json                           @default("[]")
+  turnstileSiteKey    String?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  organization        Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requests            OnlineRequest[]
+  publicSessions      OnlineRequestPublicSession[]
+  rateLimitBuckets    OnlineRequestRateLimitBucket[]
 
   @@index([organizationId, isActive])
 }
 
 model OnlineRequest {
-  id                      String                    @id @default(cuid())
-  organizationId          String
-  portalId                String
-  referenceNumber         String
-  clientSubmissionId      String
-  payloadHash             String
-  status                  String                    @default("new")
-  requestType             String
-  tradeId                 String?
-  tradeName               String
-  recommendationTradeIds  Json                      @default("[]")
-  recommendationNames     Json                      @default("[]")
-  desiredDate             String?
-  desiredTimeWindow       String?
-  callbackTimeWindow      String?
-  urgency                 String?
-  street                  String
-  postalCode              String
-  city                    String
-  objectHint              String?
-  description             String                    @db.Text
-  customerKind            String
-  company                 String?
-  firstName               String
-  lastName                String
-  email                   String?
-  phone                   String?
-  preferredContact        String
-  consentAt               DateTime
-  submissionIpHash        String
-  userAgentHash           String?
-  securityScore           Int                       @default(0)
-  securitySignals         Json                      @default("[]")
-  assignedUserId          String?
-  matchedContactId        String?
-  customerDecision        String                    @default("unreviewed")
-  convertedProjectId      String?
-  handledAt               DateTime?
-  convertedAt             DateTime?
-  createdAt               DateTime                  @default(now())
-  updatedAt               DateTime                  @updatedAt
-  organization            Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  portal                  OnlineRequestPortal       @relation(fields: [portalId], references: [id], onDelete: Restrict)
-  photos                  OnlineRequestPhoto[]
-  auditEvents             OnlineRequestAuditEvent[]
+  id                     String                    @id @default(cuid())
+  organizationId         String
+  portalId               String
+  referenceNumber        String
+  clientSubmissionId     String
+  payloadHash            String
+  status                 String                    @default("new")
+  requestType            String
+  tradeId                String?
+  tradeName              String
+  recommendationTradeIds Json                      @default("[]")
+  recommendationNames    Json                      @default("[]")
+  desiredDate            String?
+  desiredTimeWindow      String?
+  callbackTimeWindow     String?
+  urgency                String?
+  street                 String
+  postalCode             String
+  city                   String
+  objectHint             String?
+  description            String                    @db.Text
+  customerKind           String
+  company                String?
+  firstName              String
+  lastName               String
+  email                  String?
+  phone                  String?
+  preferredContact       String
+  consentAt              DateTime
+  submissionIpHash       String
+  userAgentHash          String?
+  securityScore          Int                       @default(0)
+  securitySignals        Json                      @default("[]")
+  assignedUserId         String?
+  matchedContactId       String?
+  customerDecision       String                    @default("unreviewed")
+  convertedProjectId     String?
+  handledAt              DateTime?
+  convertedAt            DateTime?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  organization           Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  portal                 OnlineRequestPortal       @relation(fields: [portalId], references: [id], onDelete: Restrict)
+  photos                 OnlineRequestPhoto[]
+  auditEvents            OnlineRequestAuditEvent[]
 
   @@unique([organizationId, referenceNumber])
   @@unique([portalId, clientSubmissionId])
@@ -1729,42 +1730,72 @@ model OnlineRequest {
 }
 
 model OnlineRequestPhoto {
-  id                String        @id @default(cuid())
-  organizationId    String
-  onlineRequestId   String
-  fileName          String
-  mimeType          String
-  byteSize          Int
-  sha256            String
-  width             Int
-  height            Int
-  sortOrder         Int
-  data              Bytes         @db.ByteA
-  createdAt         DateTime      @default(now())
-  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  onlineRequest     OnlineRequest @relation(fields: [onlineRequestId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  organizationId  String
+  onlineRequestId String
+  fileName        String
+  mimeType        String
+  byteSize        Int
+  sha256          String
+  width           Int
+  height          Int
+  sortOrder       Int
+  data            Bytes         @db.ByteA
+  createdAt       DateTime      @default(now())
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  onlineRequest   OnlineRequest @relation(fields: [onlineRequestId], references: [id], onDelete: Cascade)
 
   @@unique([onlineRequestId, sortOrder])
   @@index([organizationId, onlineRequestId])
 }
 
+model StoredFile {
+  id              String       @id
+  organizationId  String
+  storageProvider String       @default("s3")
+  storageBucket   String
+  objectKey       String       @unique
+  ownerType       String
+  ownerId         String
+  sourceType      String
+  sourceEntityId  String
+  category        String
+  originalName    String
+  contentType     String
+  sizeBytes       Int
+  sha256          String
+  status          String       @default("pending")
+  etag            String?
+  lastError       String?
+  createdByUserId String?
+  availableAt     DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, sourceType, sourceEntityId])
+  @@index([organizationId, ownerType, ownerId, status])
+  @@index([organizationId, status, createdAt])
+}
+
 model OnlineRequestAuditEvent {
-  id                String        @id @default(cuid())
-  organizationId    String
-  onlineRequestId   String
-  eventType         String
-  actorUserId       String?
-  actorName         String
-  payload           Json          @default("{}")
-  createdAt         DateTime      @default(now())
-  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  onlineRequest     OnlineRequest @relation(fields: [onlineRequestId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  organizationId  String
+  onlineRequestId String
+  eventType       String
+  actorUserId     String?
+  actorName       String
+  payload         Json          @default("{}")
+  createdAt       DateTime      @default(now())
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  onlineRequest   OnlineRequest @relation(fields: [onlineRequestId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, onlineRequestId, createdAt])
 }
 
 model OnlineRequestPublicSession {
-  idHash          String              @id
+  idHash         String              @id
   organizationId String
   portalId       String
   ipHash         String
