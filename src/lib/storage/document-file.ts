@@ -31,7 +31,7 @@ type PrepareStorageBackedPayloadInput = {
   sourceType: string;
   category: string;
   originalName: string;
-  contentType: "application/pdf" | "image/jpeg" | "image/png";
+  contentType: "application/pdf" | "application/xml" | "image/jpeg" | "image/png";
   bytes: Uint8Array;
   createdByUserId?: string | null;
 };
@@ -42,6 +42,7 @@ function attachmentType(contentType: string) {
 
 function extensionMatches(name: string, contentType: string) {
   if (contentType === "application/pdf") return name.toLowerCase().endsWith(".pdf");
+  if (contentType === "application/xml") return name.toLowerCase().endsWith(".xml");
   return true;
 }
 

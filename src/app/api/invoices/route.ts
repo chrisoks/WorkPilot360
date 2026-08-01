@@ -62,6 +62,7 @@ import {
   externalizePdfPayload,
   resolveStorageBackedBytes,
 } from "@/lib/storage/document-file";
+import { archiveAndResolveInvoiceArtifact } from "@/lib/invoices/invoice-artifact-storage";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -1952,7 +1953,20 @@ export async function GET(req: Request) {
         );
       }
 
-      return new Response(new Uint8Array(zugferd.pdfBytes), {
+      let archivedZugferd = Buffer.from(zugferd.pdfBytes);
+      try {
+        archivedZugferd = await archiveAndResolveInvoiceArtifact({
+          organizationId: organization.id,
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          kind: "zugferd",
+          bytes: zugferd.pdfBytes,
+          createdByUserId: actorResult.actor.id,
+        });
+      } catch (error) {
+        console.error("ZUGFeRD archive deferred; delivering generated artifact", error);
+      }
+      return new Response(new Uint8Array(archivedZugferd), {
         headers: {
           "Content-Type": "application/pdf",
           "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}-zugferd.pdf"`,
@@ -1960,7 +1974,20 @@ export async function GET(req: Request) {
       });
     }
 
-    return new Response(xml, {
+    let archivedXRechnung = Buffer.from(xml, "utf8");
+    try {
+      archivedXRechnung = await archiveAndResolveInvoiceArtifact({
+        organizationId: organization.id,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        kind: "xrechnung",
+        bytes: archivedXRechnung,
+        createdByUserId: actorResult.actor.id,
+      });
+    } catch (error) {
+      console.error("XRechnung archive deferred; delivering generated artifact", error);
+    }
+    return new Response(new Uint8Array(archivedXRechnung), {
       headers: {
         "Content-Type": "application/xml; charset=utf-8",
         "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}-xrechnung.xml"`,

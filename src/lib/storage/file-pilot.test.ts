@@ -31,6 +31,7 @@ vi.mock("./factory", () => ({
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x01]);
 const PDF = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF", "ascii");
+const XML = Buffer.from('<?xml version="1.0" encoding="UTF-8"?><Invoice><ID>RE-1</ID></Invoice>', "utf8");
 
 describe("storage file pilot", () => {
   beforeEach(() => {
@@ -160,6 +161,73 @@ describe("storage file pilot", () => {
             type: "Dokument",
             mimeType: "application/pdf",
             dataUrl: `data:application/pdf;base64,${Buffer.from("not-a-pdf").toString("base64")}`,
+          },
+        ],
+      })
+    ).rejects.toBeInstanceOf(StorageAttachmentValidationError);
+  });
+
+  it("stores a verified XRechnung XML as an immutable document", async () => {
+    const checksum = calculateStorageChecksum(XML);
+    put.mockResolvedValueOnce({
+      key: "organizations/org/invoice/invoice/e-invoices/2026/08/file.xml",
+      contentType: "application/xml",
+      sizeBytes: XML.length,
+      checksum,
+      etag: "xml-etag",
+    });
+    stat.mockResolvedValueOnce({
+      key: "organizations/org/invoice/invoice/e-invoices/2026/08/file.xml",
+      contentType: "application/xml",
+      sizeBytes: XML.length,
+      checksum,
+      etag: "xml-etag",
+    });
+
+    const { prepareStorageAttachments } = await import("./file-pilot");
+    const prepared = await prepareStorageAttachments({
+      organizationId: "org",
+      ownerType: "invoice",
+      ownerId: "invoice",
+      sourceType: "invoice-xrechnung-xml",
+      category: "e-invoices",
+      attachments: [
+        {
+          name: "RE-1-xrechnung.xml",
+          type: "Dokument",
+          mimeType: "application/xml",
+          dataUrl: `data:application/xml;base64,${XML.toString("base64")}`,
+        },
+      ],
+    });
+
+    expect(prepared.fallbackCount).toBe(0);
+    expect(prepared.attachments[0]).toMatchObject({
+      dataUrl: expect.stringMatching(/^\/api\/files\//),
+      mimeType: "application/xml",
+    });
+    expect(prepared.files[0].record).toMatchObject({
+      category: "e-invoices",
+      contentType: "application/xml",
+      status: "available",
+    });
+  });
+
+  it("rejects malformed content declared as XRechnung XML", async () => {
+    const { prepareStorageAttachments } = await import("./file-pilot");
+    await expect(
+      prepareStorageAttachments({
+        organizationId: "org",
+        ownerType: "invoice",
+        ownerId: "invoice",
+        sourceType: "invoice-xrechnung-xml",
+        category: "e-invoices",
+        attachments: [
+          {
+            name: "fake.xml",
+            type: "Dokument",
+            mimeType: "application/xml",
+            dataUrl: `data:application/xml;base64,${Buffer.from("not-xml").toString("base64")}`,
           },
         ],
       })

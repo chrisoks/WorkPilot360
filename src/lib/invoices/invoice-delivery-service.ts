@@ -24,6 +24,7 @@ import {
   type MicrosoftGraphMailAttachment,
 } from "@/lib/mail/microsoft";
 import { resolveStorageBackedBytes } from "@/lib/storage/document-file";
+import { archiveInvoiceArtifact } from "@/lib/invoices/invoice-artifact-storage";
 
 type InvoiceDeliveryDb = Prisma.TransactionClient | typeof prisma;
 
@@ -326,6 +327,46 @@ function attachmentMetadata(attachment: MicrosoftGraphMailAttachment) {
     size: bytes.length,
     sha256: hashBytes(bytes),
   };
+}
+
+async function archiveElectronicInvoiceAttachments(input: {
+  organizationId: string;
+  actorUserId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  attachments: MicrosoftGraphMailAttachment[];
+}) {
+  const artifacts = input.attachments.flatMap((attachment) => {
+    const lowerName = attachment.name.toLowerCase();
+    const kind = lowerName.endsWith("-xrechnung.xml")
+      ? ("xrechnung" as const)
+      : lowerName.endsWith("-zugferd.pdf")
+        ? ("zugferd" as const)
+        : null;
+    return kind
+      ? [{ kind, bytes: Buffer.from(attachment.contentBytes, "base64") }]
+      : [];
+  });
+  const results = await Promise.allSettled(
+    artifacts.map((artifact) =>
+      archiveInvoiceArtifact({
+        organizationId: input.organizationId,
+        invoiceId: input.invoiceId,
+        invoiceNumber: input.invoiceNumber,
+        kind: artifact.kind,
+        bytes: artifact.bytes,
+        createdByUserId: input.actorUserId,
+      })
+    )
+  );
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.error("Electronic invoice artifact archival deferred", {
+        invoiceId: input.invoiceId,
+        error: result.reason instanceof Error ? result.reason.name : "unknown",
+      });
+    }
+  }
 }
 
 async function buildInvoiceDeliveryPackage(input: {
@@ -890,6 +931,13 @@ export async function sendInvoiceDelivery(input: {
       return tx.documentMailDispatch.findUniqueOrThrow({
         where: { id: input.dispatchId },
       });
+    });
+    await archiveElectronicInvoiceAttachments({
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      invoiceId: evaluation.invoice.id,
+      invoiceNumber: evaluation.invoice.invoiceNumber,
+      attachments: packageResult.attachments,
     });
     return { dispatch, evaluation, replay: false };
   } catch (error) {

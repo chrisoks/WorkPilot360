@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   executeRaw: vi.fn(),
   sendMail: vi.fn(),
   refreshToken: vi.fn(),
+  archiveInvoiceArtifact: vi.fn(),
+  validateKosit: vi.fn(),
 }));
 
 const transactionClient = {
@@ -54,6 +56,14 @@ vi.mock("@/lib/mail/microsoft", async () => {
     sendMicrosoftGraphMail: mocks.sendMail,
   };
 });
+
+vi.mock("@/lib/invoices/invoice-artifact-storage", () => ({
+  archiveInvoiceArtifact: mocks.archiveInvoiceArtifact,
+}));
+
+vi.mock("@/lib/e-invoice/kosit-validator", () => ({
+  validateXRechnungWithKosit: mocks.validateKosit,
+}));
 
 import {
   evaluateInvoiceDelivery,
@@ -144,6 +154,14 @@ describe("invoice delivery service", () => {
     });
     mocks.historyCreate.mockResolvedValue({});
     mocks.sendMail.mockResolvedValue(undefined);
+    mocks.archiveInvoiceArtifact.mockResolvedValue({ id: "stored-xrechnung-1" });
+    mocks.validateKosit.mockResolvedValue({
+      available: true,
+      valid: true,
+      status: "valid",
+      message: "KoSIT-Validierung bestanden.",
+      issues: [],
+    });
   });
 
   it("requires the exact invoice-and-recipient-bound phrase", () => {
@@ -266,5 +284,38 @@ describe("invoice delivery service", () => {
 
     expect(result.replay).toBe(true);
     expect(mocks.sendMail).not.toHaveBeenCalled();
+  });
+
+  it("archives the exact XRechnung attachment after Microsoft 365 accepted delivery", async () => {
+    const evaluation = await evaluateInvoiceDelivery({
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      invoiceId: "invoice-1",
+      payload: { format: "pdf-xrechnung" },
+    });
+    await sendInvoiceDelivery({
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      actorName: "Christian Eid",
+      dispatchId: "dispatch-1",
+      invoiceId: "invoice-1",
+      payload: evaluation.payload,
+      expectedFingerprint: evaluation.fingerprint,
+      source: "ui",
+    });
+
+    expect(mocks.archiveInvoiceArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        invoiceId: "invoice-1",
+        invoiceNumber: "RE-10124",
+        kind: "xrechnung",
+        createdByUserId: "user-1",
+        bytes: expect.any(Buffer),
+      })
+    );
+    expect(mocks.archiveInvoiceArtifact.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.sendMail.mock.invocationCallOrder[0]
+    );
   });
 });

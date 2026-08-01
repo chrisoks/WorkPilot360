@@ -79,6 +79,19 @@ function isPdfAttachment(attachment: StoragePilotAttachment, declaredContentType
   );
 }
 
+function isXmlAttachment(attachment: StoragePilotAttachment, declaredContentType: string) {
+  return (
+    attachment.type === "Dokument" &&
+    attachment.name.toLowerCase().endsWith(".xml") &&
+    ["application/xml", "text/xml", "application/octet-stream"].includes(declaredContentType)
+  );
+}
+
+function isXml(body: Uint8Array) {
+  const text = Buffer.from(body).toString("utf8").replace(/^\uFEFF/, "").trimStart();
+  return text.startsWith("<?xml") || /^<[a-zA-Z_][\w:.-]*(?:\s|>)/.test(text);
+}
+
 function detectImageContentType(body: Uint8Array): string | null {
   if (body.length >= 3 && body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff) {
     return "image/jpeg";
@@ -122,6 +135,8 @@ function extensionForContentType(contentType: string) {
       return "gif";
     case "application/pdf":
       return "pdf";
+    case "application/xml":
+      return "xml";
     default:
       return undefined;
   }
@@ -181,7 +196,11 @@ export async function prepareStorageAttachments(
       provider: null,
       fallbackCount: input.attachments.filter((attachment) => {
         if (!attachment.dataUrl?.startsWith("data:")) return false;
-        return attachment.type === "Bild" || attachment.name.toLowerCase().endsWith(".pdf");
+        return (
+          attachment.type === "Bild" ||
+          attachment.name.toLowerCase().endsWith(".pdf") ||
+          attachment.name.toLowerCase().endsWith(".xml")
+        );
       }).length,
     };
   }
@@ -208,9 +227,13 @@ export async function prepareStorageAttachments(
     const { body, declaredContentType } = decodeDataUrl(attachment.dataUrl);
     const detectedImageContentType = attachment.type === "Bild" ? detectImageContentType(body) : null;
     const pdfAttachment = isPdfAttachment(attachment, declaredContentType);
-    const detectedContentType = detectedImageContentType || (pdfAttachment && isPdf(body) ? "application/pdf" : null);
+    const xmlAttachment = isXmlAttachment(attachment, declaredContentType);
+    const detectedContentType =
+      detectedImageContentType ||
+      (pdfAttachment && isPdf(body) ? "application/pdf" : null) ||
+      (xmlAttachment && isXml(body) ? "application/xml" : null);
 
-    if (attachment.type === "Dokument" && !pdfAttachment) {
+    if (attachment.type === "Dokument" && !pdfAttachment && !xmlAttachment) {
       attachments.push(attachment);
       continue;
     }
@@ -225,7 +248,7 @@ export async function prepareStorageAttachments(
     }
 
     const storageCategory =
-      detectedContentType === "application/pdf"
+      detectedContentType === "application/pdf" || detectedContentType === "application/xml"
         ? input.documentCategory || input.category
         : input.category;
 
