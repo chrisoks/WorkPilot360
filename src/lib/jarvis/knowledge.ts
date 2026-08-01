@@ -66,6 +66,13 @@ export function resolveJarvisStorageGuidance(
   question: string
 ): JarvisHelpResult | undefined {
   const normalized = normalizeJarvisIntentText(question);
+  const rawNormalized = question
+    .toLocaleLowerCase("de-DE")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[?!.,;:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const hasStorageSignal =
     /\b(?:objektspeicher\w*|object storage|hidrive|s3|dateispeicher\w*|dokumentenspeicher\w*|stored file|stored-file|auslager\w*|ausgelager\w*|bucket)\b/.test(
       normalized
@@ -121,7 +128,11 @@ export function resolveJarvisStorageGuidance(
     };
   }
 
-  if (/\b(?:mail|e mail|email|versand|anhang|microsoft 365|xrechnung|zugferd)\b/.test(normalized)) {
+  if (
+    /\b(?:mail|e mail|email|versand|anhang|microsoft 365|x rechnung|zugferd)\b/.test(
+      normalized
+    ) || /\bxrechnung\b/.test(rawNormalized)
+  ) {
     return {
       type: "answer",
       topicId: "storage.delivery",

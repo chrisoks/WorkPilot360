@@ -103,6 +103,7 @@ describe("JARVIS system help", () => {
     ["Wie hängt der Objektspeicher im Code zusammen?", "storage.code-flow"],
     ["Was muss die PWA wegen HiDrive wissen?", "storage.pwa-api"],
     ["Wie werden Rechnungen aus dem Objektspeicher per E-Mail versendet?", "storage.delivery"],
+    ["Wie versendet WorkPilot eine XRechnung aus dem Objektspeicher?", "storage.delivery"],
     ["Erkennen Auswertungen ausgelagerte Rechnungen noch?", "storage.analytics"],
     ["Wird WorkPilot mit vielen Dateien im Bucket langsam?", "storage.performance"],
     ["Was passiert beim Ausfall des Objektspeichers?", "storage.failure-safety"],
