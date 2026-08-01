@@ -15895,6 +15895,120 @@
   font-weight: 600;
 }
 
+.attachmentPreviewModal {
+  background: #f4f8f8;
+  border: 1px solid rgba(15, 83, 88, 0.18);
+  border-radius: 22px;
+  box-shadow: 0 28px 80px rgba(3, 31, 38, 0.28);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: min(88vh, 920px);
+  max-width: 1280px;
+  overflow: hidden;
+  width: min(94vw, 1280px);
+}
+
+.attachmentPreviewModal > header {
+  align-items: center;
+  background: linear-gradient(118deg, #0b3440, #155d60);
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 22px;
+}
+
+.attachmentPreviewModal > header span {
+  color: #4ee0d0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.attachmentPreviewModal > header h2 {
+  font-size: clamp(1rem, 2vw, 1.35rem);
+  margin: 4px 0 0;
+}
+
+.attachmentPreviewModal > header button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 12px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 1.45rem;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.attachmentPreviewBody {
+  min-height: 0;
+  position: relative;
+}
+
+.attachmentPreviewBody iframe,
+.attachmentPreviewBody > img {
+  border: 0;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.attachmentPreviewStatus {
+  align-items: center;
+  color: #0f3540;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  inset: 0;
+  justify-content: center;
+  padding: 28px;
+  position: absolute;
+  text-align: center;
+}
+
+.attachmentPreviewStatus i {
+  animation: remoteFileSpin 0.8s linear infinite;
+  border: 4px solid #c8dddd;
+  border-radius: 999px;
+  border-top-color: #117b7d;
+  height: 44px;
+  width: 44px;
+}
+
+.attachmentPreviewStatus span {
+  color: #527079;
+  font-size: 0.9rem;
+}
+
+.attachmentPreviewStatus button {
+  background: #117b7d;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 11px 16px;
+}
+
+.attachmentPreviewStatus[data-state="error"] strong {
+  color: #a22222;
+}
+
+@media (max-width: 720px) {
+  .attachmentPreviewModal {
+    border-radius: 16px;
+    height: 92vh;
+    width: 96vw;
+  }
+
+  .attachmentPreviewModal > header {
+    padding: 14px 16px;
+  }
+}
+
 .checklistModule {
   display: grid;
   gap: 18px;

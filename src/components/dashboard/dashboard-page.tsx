@@ -14537,6 +14537,13 @@ export function DashboardPage() {
   const [logbookTarget, setLogbookTarget] = useState<"customer" | "project">("customer");
   const [logbookError, setLogbookError] = useState("");
   const [isLogbookModalOpen, setIsLogbookModalOpen] = useState(false);
+  const [attachmentPreview, setAttachmentPreview] = useState<{
+    fileName: string;
+    sourceUrl: string;
+    objectUrl?: string;
+    status: "loading" | "ready" | "error";
+  } | null>(null);
+  const attachmentPreviewRequestRef = useRef(0);
   const [logbookMessage, setLogbookMessage] = useState("");
   const [logbookColleague, setLogbookColleague] = useState("");
   const [logbookVisibleFor, setLogbookVisibleFor] = useState<string[]>([
@@ -28072,90 +28079,37 @@ export function DashboardPage() {
   }
   async function openAttachmentDataUrl(dataUrl?: string, fileName = "Dokument") {
     if (!dataUrl) return;
-
-    const escapePreviewHtml = (value: string) =>
-      value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    const openedWindow = window.open("", "workpilot-document-viewer", "width=1200,height=900");
-
-    if (!openedWindow) {
-      setLogbookError("Dokument konnte nicht geöffnet werden. Bitte Popups für WorkPilot360 erlauben.");
-      return;
-    }
-
-    const safeTitle = escapePreviewHtml(fileName);
-    const safeSourceUrl = escapePreviewHtml(dataUrl);
-    openedWindow.document.title = `${fileName} wird geladen`;
-    openedWindow.document.body.style.margin = "0";
-    openedWindow.document.body.innerHTML = `
-      <style>
-        @keyframes workpilotDocumentSpin { to { transform: rotate(360deg); } }
-        body { background:#eef4f5; color:#0f3540; font-family:Arial,sans-serif; }
-        main { align-items:center; display:flex; flex-direction:column; gap:16px; justify-content:center; min-height:100vh; padding:24px; text-align:center; }
-        i { animation:workpilotDocumentSpin .8s linear infinite; border:4px solid #c8dddd; border-radius:50%; border-top-color:#117b7d; height:42px; width:42px; }
-        strong { font-size:18px; }
-        span { color:#527079; font-size:14px; }
-        @media (prefers-reduced-motion: reduce) { i { animation-duration:1.8s; } }
-      </style>
-      <main aria-live="polite" aria-busy="true">
-        <i aria-hidden="true"></i>
-        <strong>${safeTitle} wird sicher geladen</strong>
-        <span>Die Projektakte bleibt währenddessen weiter nutzbar.</span>
-      </main>
-    `;
-
-    const renderAttachmentPreview = (openedWindow: Window, sourceUrl: string) => {
-      const isImage =
-        dataUrl.startsWith("data:image/") || /\.(?:gif|jpe?g|png|webp)$/i.test(fileName);
-      openedWindow.document.title = fileName;
-      openedWindow.document.body.style.margin = "0";
-      openedWindow.document.body.style.background = isImage ? "#0f172a" : "";
-      openedWindow.document.body.innerHTML = isImage
-        ? `
-          <img
-            src="${sourceUrl}"
-            alt="${safeTitle}"
-            style="display:block;max-width:100vw;max-height:100vh;margin:auto;object-fit:contain"
-          />
-        `
-        : `
-          <iframe
-            src="${sourceUrl}"
-            title="${safeTitle}"
-            style="border:0;height:100vh;width:100vw"
-          ></iframe>
-        `;
-    };
+    const requestId = ++attachmentPreviewRequestRef.current;
+    setAttachmentPreview((current) => {
+      if (current?.objectUrl) URL.revokeObjectURL(current.objectUrl);
+      return { fileName, sourceUrl: dataUrl, status: "loading" };
+    });
+    setLogbookError("");
 
     try {
       const response = await fetch(dataUrl);
       if (!response.ok) throw new Error(`attachment_fetch_${response.status}`);
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
-      renderAttachmentPreview(openedWindow, objectUrl);
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+
+      if (attachmentPreviewRequestRef.current !== requestId) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+      setAttachmentPreview({ fileName, sourceUrl: dataUrl, objectUrl, status: "ready" });
     } catch {
-      openedWindow.document.title = `${fileName} konnte nicht geladen werden`;
-      openedWindow.document.body.innerHTML = `
-        <style>
-          body { background:#eef4f5; color:#0f3540; font-family:Arial,sans-serif; margin:0; }
-          main { align-items:center; display:flex; flex-direction:column; gap:14px; justify-content:center; min-height:100vh; padding:24px; text-align:center; }
-          strong { font-size:18px; }
-          span { color:#527079; font-size:14px; max-width:520px; }
-          a { background:#117b7d; border-radius:10px; color:white; font-weight:700; padding:11px 16px; text-decoration:none; }
-        </style>
-        <main role="alert">
-          <strong>${safeTitle} konnte nicht geladen werden</strong>
-          <span>Bitte prüfe die Verbindung und versuche es erneut. Die Projektakte wurde nicht verändert.</span>
-          <a href="${safeSourceUrl}">Erneut versuchen</a>
-        </main>
-      `;
+      if (attachmentPreviewRequestRef.current !== requestId) return;
+      setAttachmentPreview({ fileName, sourceUrl: dataUrl, status: "error" });
       setLogbookError(`Dokument "${fileName}" konnte nicht geladen werden. Bitte erneut versuchen.`);
     }
+  }
+
+  function closeAttachmentPreview() {
+    attachmentPreviewRequestRef.current += 1;
+    setAttachmentPreview((current) => {
+      if (current?.objectUrl) URL.revokeObjectURL(current.objectUrl);
+      return null;
+    });
   }
 
   async function uploadProjectDocumentCategory(category: CustomerDocumentType, files: FileList | null) {
@@ -71958,6 +71912,50 @@ await addProjectLogbookEntry(
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {attachmentPreview && (
+        <div className={styles.overlay} onClick={closeAttachmentPreview}>
+          <section
+            className={styles.attachmentPreviewModal}
+            onClick={(event) => event.stopPropagation()}
+            aria-label={`Dokumentvorschau ${attachmentPreview.fileName}`}
+          >
+            <header>
+              <div>
+                <span>PROJEKTDOKUMENT</span>
+                <h2>{attachmentPreview.fileName}</h2>
+              </div>
+              <button type="button" onClick={closeAttachmentPreview} aria-label="Dokumentvorschau schließen">
+                ×
+              </button>
+            </header>
+            <div className={styles.attachmentPreviewBody}>
+              {attachmentPreview.status === "loading" ? (
+                <div className={styles.attachmentPreviewStatus} aria-live="polite" aria-busy="true">
+                  <i aria-hidden="true" />
+                  <strong>Dokument wird sicher geladen</strong>
+                  <span>Die Projektakte bleibt währenddessen unverändert.</span>
+                </div>
+              ) : attachmentPreview.status === "error" ? (
+                <div className={styles.attachmentPreviewStatus} role="alert" data-state="error">
+                  <strong>Dokument konnte nicht geladen werden</strong>
+                  <span>Bitte prüfe die Verbindung und versuche es erneut.</span>
+                  <button
+                    type="button"
+                    onClick={() => void openAttachmentDataUrl(attachmentPreview.sourceUrl, attachmentPreview.fileName)}
+                  >
+                    Erneut versuchen
+                  </button>
+                </div>
+              ) : /\.(?:gif|jpe?g|png|webp)$/i.test(attachmentPreview.fileName) ? (
+                <img src={attachmentPreview.objectUrl} alt={attachmentPreview.fileName} />
+              ) : (
+                <iframe src={attachmentPreview.objectUrl} title={attachmentPreview.fileName} />
+              )}
+            </div>
+          </section>
         </div>
       )}
 
