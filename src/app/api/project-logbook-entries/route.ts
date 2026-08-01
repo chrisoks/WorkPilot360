@@ -428,6 +428,7 @@ export async function POST(req: Request) {
       ownerId: projectId,
       sourceType: "project-logbook-attachment",
       category: "logbook-images",
+      documentCategory: "logbook-documents",
       createdByUserId: actor.id,
       attachments: attachments.map((attachment, index) => ({
         ...attachment,

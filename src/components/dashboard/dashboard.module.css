@@ -14458,6 +14458,7 @@
 }
 
 .customerLogAttachments a,
+.customerLogAttachments button,
 .customerLogAttachments span {
   background: #eef6ff;
   border: 1px solid #cfe1ff;
@@ -14469,7 +14470,13 @@
   padding: 4px 8px;
 }
 
-.customerLogAttachments a:hover {
+.customerLogAttachments button {
+  cursor: pointer;
+  font: inherit;
+}
+
+.customerLogAttachments a:hover,
+.customerLogAttachments button:hover {
   background: #dbeafe;
   border-color: #93c5fd;
 }

@@ -38,6 +38,7 @@ type PrepareStorageAttachmentsInput = {
   ownerId: string;
   sourceType: string;
   category: string;
+  documentCategory?: string;
   createdByUserId?: string | null;
   attachments: Array<StoragePilotAttachment & { sourceEntityId?: string }>;
 };
@@ -55,15 +56,27 @@ function decodeDataUrl(dataUrl: string) {
   const match = dataUrl.match(BASE64_DATA_URL);
   if (!match) {
     throw new StorageAttachmentValidationError(
-      "Der Bildinhalt ist nicht als gueltige Base64-Datei codiert."
+      "Der Dateiinhalt ist nicht als gueltige Base64-Datei codiert."
     );
   }
   const declaredContentType = match[1].toLowerCase();
   const body = Buffer.from(match[2].replace(/\s/g, ""), "base64");
   if (!body.length) {
-    throw new StorageAttachmentValidationError("Die Bilddatei ist leer.");
+    throw new StorageAttachmentValidationError("Die Datei ist leer.");
   }
   return { body, declaredContentType };
+}
+
+function isPdf(body: Uint8Array) {
+  return body.length >= 5 && Buffer.from(body.subarray(0, 5)).toString("ascii") === "%PDF-";
+}
+
+function isPdfAttachment(attachment: StoragePilotAttachment, declaredContentType: string) {
+  return (
+    attachment.type === "Dokument" &&
+    attachment.name.toLowerCase().endsWith(".pdf") &&
+    ["application/pdf", "application/octet-stream"].includes(declaredContentType)
+  );
 }
 
 function detectImageContentType(body: Uint8Array): string | null {
@@ -107,6 +120,8 @@ function extensionForContentType(contentType: string) {
       return "webp";
     case "image/gif":
       return "gif";
+    case "application/pdf":
+      return "pdf";
     default:
       return undefined;
   }
@@ -164,9 +179,10 @@ export async function prepareStorageAttachments(
       attachments: input.attachments,
       files: [],
       provider: null,
-      fallbackCount: input.attachments.filter(
-        (attachment) => attachment.type === "Bild" && attachment.dataUrl?.startsWith("data:")
-      ).length,
+      fallbackCount: input.attachments.filter((attachment) => {
+        if (!attachment.dataUrl?.startsWith("data:")) return false;
+        return attachment.type === "Bild" || attachment.name.toLowerCase().endsWith(".pdf");
+      }).length,
     };
   }
 
@@ -184,18 +200,34 @@ export async function prepareStorageAttachments(
   let fallbackCount = 0;
 
   for (const [index, attachment] of input.attachments.entries()) {
-    if (attachment.type !== "Bild" || !attachment.dataUrl?.startsWith("data:")) {
+    if (!attachment.dataUrl?.startsWith("data:")) {
       attachments.push(attachment);
       continue;
     }
 
     const { body, declaredContentType } = decodeDataUrl(attachment.dataUrl);
-    const detectedContentType = detectImageContentType(body);
-    if (!detectedContentType || detectedContentType !== declaredContentType) {
+    const detectedImageContentType = attachment.type === "Bild" ? detectImageContentType(body) : null;
+    const pdfAttachment = isPdfAttachment(attachment, declaredContentType);
+    const detectedContentType = detectedImageContentType || (pdfAttachment && isPdf(body) ? "application/pdf" : null);
+
+    if (attachment.type === "Dokument" && !pdfAttachment) {
+      attachments.push(attachment);
+      continue;
+    }
+
+    if (
+      !detectedContentType ||
+      (detectedImageContentType && detectedImageContentType !== declaredContentType)
+    ) {
       throw new StorageAttachmentValidationError(
-        `Bild "${attachment.name}" stimmt nicht mit seinem angegebenen Dateityp ueberein.`
+        `Datei "${attachment.name}" stimmt nicht mit ihrem angegebenen Dateityp ueberein.`
       );
     }
+
+    const storageCategory =
+      detectedContentType === "application/pdf"
+        ? input.documentCategory || input.category
+        : input.category;
 
     const checksum = calculateStorageChecksum(body);
     const checksumHex = checksum.slice("sha256:".length);
@@ -209,7 +241,7 @@ export async function prepareStorageAttachments(
         organizationId: input.organizationId,
         ownerType: input.ownerType,
         ownerId: input.ownerId,
-        category: input.category,
+        category: storageCategory,
         extension: extensionForContentType(detectedContentType),
         objectId: fileId,
       });
@@ -241,7 +273,7 @@ export async function prepareStorageAttachments(
       ownerId: input.ownerId,
       sourceType: input.sourceType,
       sourceEntityId,
-      category: input.category,
+      category: storageCategory,
       originalName: attachment.name,
       contentType: detectedContentType,
       sizeBytes: body.byteLength,
@@ -260,7 +292,7 @@ export async function prepareStorageAttachments(
           organizationId: input.organizationId,
           ownerType: input.ownerType,
           ownerId: input.ownerId,
-          category: input.category,
+          category: storageCategory,
           originalName: attachment.name,
           contentType: detectedContentType,
           sizeBytes: body.byteLength,
