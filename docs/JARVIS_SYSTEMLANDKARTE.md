@@ -1076,3 +1076,34 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   isolierte QA, echter Zwei-Termine-Klicktest, produktiv 110/110 Fragen, null
   Rückstände und leerer Prisma-Diff. WorkPilot PID `788731`,
   KlinikNavigator unverändert PID `398228`.
+
+## Vollständige offene Terminwunschserien freigeben oder ablehnen
+
+- `planning.request.manage` unterstützt `approve_series` und `reject_series`.
+  Ziel ist immer die vollständige aktive Serie hinter der `recurrenceId` eines
+  eindeutig sichtbaren Serieneintrags; alle IDs, Anzahl und Zeitraum werden
+  angezeigt und fingerprintgebunden.
+- Entscheiden dürfen ausschließlich Führungskraft, Geschäftsführung oder
+  Admin. Freigabe verlangt exakt `TERMINWUNSCH-SERIE FREIGEBEN <ID>`;
+  Ablehnung zusätzlich einen nachvollziehbaren Grund und exakt
+  `TERMINWUNSCH-SERIE ABLEHNEN <ID>`.
+- Gemischte Freigabestatus, fehlende oder inaktive Mitarbeitende sowie
+  fehlende oder archivierte Projekte sperren die komplette Serie. Für eine
+  Freigabe werden Abwesenheiten und Überschneidungen für jede Folge geprüft;
+  auch ein Konflikt in einem späteren Termin verhindert jede Teilfreigabe.
+- Normale Planungsoberfläche und JARVIS verwenden ausschließlich
+  `src/lib/planning/planning-request-decision-service.ts`. Die Ausführung läuft
+  serialisierbar unter serienbezogenem Advisory-Lock und Zeilensperren.
+  Freigabe beziehungsweise Soft-Delete, Historien, Projektlogbuch,
+  Mitarbeiterhinweise und Replay-Marker entstehen atomar und exactly-once.
+- Einzelentscheidungen sowie Serienabsage und eigener Serienrückzug bleiben
+  getrennte ausdrücklich gewählte Aktionen. Keine unbestimmte Formulierung
+  verändert still eine Serie.
+- Produktivabnahme Runtime `cb2bfc6a98f88afb53d674c24f5f5da99b6e927e`,
+  Backup
+  `/var/backups/workpilot360/20260802T170422Z-before-jarvis-planning-request-series-decision`,
+  187/187 Testdateien, 1.860/1.860 Tests, 90-Seiten-Build, lokale und
+  produktive isolierte QA, echter produktiver Zwei-Termine-Klicktest,
+  produktiv 110/110 Fragen, null Rückstände und leerer Prisma-Diff.
+  Dashboard/Formular HTTP 200; WorkPilot PID `791271`, KlinikNavigator
+  unverändert PID `398228`.

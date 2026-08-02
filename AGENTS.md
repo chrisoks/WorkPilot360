@@ -1,5 +1,33 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS vollständige Terminwunschserienentscheidung 2026-08-02:
+  `planning.request.manage` unterstützt jetzt zusätzlich `approve_series` und
+  `reject_series`. Führungskraft, Geschäftsführung oder Admin können die über
+  einen sichtbaren Serieneintrag eindeutig bestimmte vollständige offene
+  Terminwunschserie freigeben oder mit Pflichtgrund ablehnen. Exakte Phrasen
+  sind `TERMINWUNSCH-SERIE FREIGEBEN <ID>` und
+  `TERMINWUNSCH-SERIE ABLEHNEN <ID>`. Vorschau und Fingerprint binden alle
+  aktiven IDs, Anzahl und Zeitraum; gemischte Status sperren fail-closed. Vor
+  einer Freigabe werden für jeden Serientermin aktive Mitarbeitende,
+  nichtarchivierte Projekte, Abwesenheiten und Überschneidungen erneut
+  geprüft. Ein Konflikt auch in einer späteren Folge blockiert die ganze
+  Serie. Normale Planungsoberfläche und JARVIS verwenden denselben
+  `src/lib/planning/planning-request-decision-service.ts`. Serienbezogener
+  Advisory-Lock, Zeilensperren, atomare Status-/Soft-Delete-Schreibung,
+  Historie, Projektlogbuch, Benachrichtigungen und Replay-Marker sichern
+  Exactly-once. Runtime-Commit `cb2bfc6a98f88afb53d674c24f5f5da99b6e927e`;
+  verifiziertes Backup
+  `/var/backups/workpilot360/20260802T170422Z-before-jarvis-planning-request-series-decision`.
+  Lokal 187/187 Testdateien mit 1.860/1.860 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Diff und 90-Seiten-Build.
+  Lokale und produktive isolierte QA, produktiver Zwei-Termine-Klicktest mit
+  falscher/exakter Phrase und produktiv 110/110 Fragen mit 33 nur
+  vorbereiteten, null ausgeführten Korpusaktionen bestanden; alle Rückstände
+  sind null. Dashboard/Formular HTTP 200. WorkPilot PID `791271`,
+  KlinikNavigator unverändert PID `398228`. Keine Prisma-Schemaänderung;
+  `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+  unverändert.
+
 - JARVIS eigener Terminwunsch-Rückzug 2026-08-02: Der Aktionsweg
   `planning.request.manage` unterstützt jetzt zusätzlich `withdraw`. Ein
   Mitarbeiter darf ausschließlich einen eigenen offenen Terminwunsch mit

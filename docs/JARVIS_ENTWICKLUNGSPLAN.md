@@ -3601,6 +3601,59 @@ HTTP 200. WorkPilot PID `769535`, KlinikNavigator unverändert PID `398228`.
 Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
 Online-Anfragen-Invarianten blieben erhalten.
 
+## 48. Vollständige offene Terminwunschserien kontrolliert entscheiden
+
+JARVIS kann die vollständige aktive Terminwunschserie hinter der
+`recurrenceId` eines über seine vollständige sichtbare ID eindeutig benannten
+Serieneintrags freigeben oder begründet ablehnen. Entscheiden dürfen nur
+Führungskraft, Geschäftsführung oder Admin. Die exakten Phrasen lauten
+`TERMINWUNSCH-SERIE FREIGEBEN <ID>` und
+`TERMINWUNSCH-SERIE ABLEHNEN <ID>`; die Ablehnung benötigt zusätzlich einen
+nachvollziehbaren Grund.
+
+Die Vorschau zeigt den vollständigen Serienumfang, Anzahl, Zeitraum und den
+repräsentativen Wunsch. Alle aktiven Eintrag-IDs und jeder fachlich relevante
+Serienstand sind fingerprintgebunden. Gemischte Freigabestatus, fehlende oder
+inaktive Mitarbeitende sowie fehlende oder archivierte Projekte sperren
+fail-closed. Vor einer Freigabe werden für jede einzelne Folge genehmigte
+Abwesenheiten und Überschneidungen erneut geprüft. Ein Konflikt auch nur in
+einem späteren Termin blockiert die gesamte Freigabe, sodass niemals eine
+unbemerkte Teilserie entsteht.
+
+Normale Planungsoberfläche und JARVIS verwenden denselben Fachservice
+`src/lib/planning/planning-request-decision-service.ts`. Die serialisierbare
+Ausführung sperrt die Serie per PostgreSQL-Advisory-Lock und jeden betroffenen
+Eintrag per Zeilensperre. Freigabestatus beziehungsweise Soft-Delete,
+Planungshistorie, Projektlogbuch, deterministische Mitarbeiterhinweise und der
+Exactly-once-Replay-Marker entstehen atomar für alle Serieneinträge. Ein
+zwischenzeitlich veränderter Umfang oder Fachstand endet mit `stale_context`.
+Einzelentscheidungen, Serienabsage und eigener Serienrückzug bleiben getrennte
+ausdrücklich gewählte Aktionen.
+
+Lokal bestanden 187/187 Testdateien mit 1.860/1.860 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Die isolierte QA bestätigte Rollen- und Mandantengrenzen,
+Freigabe und Ablehnung vollständiger Serien, gemischte Status, einen Konflikt
+in einer späteren Folge, denselben Fachservice der normalen API, gesperrte
+Altwege, exakt einmal geschriebene Historien sowie null Rückstände. Der feste
+Korpus bestand lokal 110/110 mit 32 nur vorbereiteten und null ausgeführten
+Aktionen. Der echte Klicktest zeigte zwei Termine, den vollständigen Zeitraum,
+eine bei falscher Phrase gesperrte und bei exakter Phrase freigegebene
+Ausführung sowie das korrekte Gesamtergebnis; die Daten wurden entfernt.
+
+Produktiv abgenommen auf Runtime-Commit
+`cb2bfc6a98f88afb53d674c24f5f5da99b6e927e`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T170422Z-before-jarvis-planning-request-series-decision`.
+Produktiv bestanden die erweiterte Serien-, Rollen-, Mandanten-, Konflikt-,
+Shared-Service-, Bypass- und Exactly-once-QA mit 19 Fachhistorien sowie der
+echte Zwei-Termine-JARVIS-Klicktest. Der permanente Korpus bestand 110/110 mit
+33 nur vorbereiteten, null ausgeführten Aktionen. Testdatenrückstände und
+Live-Prisma-Diff sind leer; Dashboard und öffentliches Formular antworten mit
+HTTP 200. WorkPilot PID `791271`, KlinikNavigator unverändert PID `398228`.
+Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
+Online-Anfragen-Invarianten blieben erhalten.
+
 ## 47. Vollständige Terminserien kontrolliert absagen oder zurückziehen
 
 JARVIS und die normale Planungsoberfläche können jetzt ausdrücklich eine
