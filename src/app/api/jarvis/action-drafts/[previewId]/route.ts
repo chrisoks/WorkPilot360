@@ -20,6 +20,7 @@ import {
   cancelJarvisTaskDraft,
   cancelJarvisTaskLifecycleDraft,
   cancelJarvisTimeManagementDraft,
+  cancelJarvisPlanningMoveDraft,
   cancelJarvisProjectMasterDataDraft,
   cancelJarvisProjectStatusDraft,
   cancelJarvisProjectLifecycleDraft,
@@ -67,6 +68,7 @@ import {
   confirmJarvisTaskDraft,
   confirmJarvisTaskLifecycleDraft,
   confirmJarvisTimeManagementDraft,
+  confirmJarvisPlanningMoveDraft,
   confirmJarvisProjectMasterDataDraft,
   confirmJarvisProjectStatusDraft,
   confirmJarvisProjectLifecycleDraft,
@@ -220,6 +222,7 @@ export async function PATCH(
     const isPlanning = body.actionId === "planning.prepare";
     const isTaskLifecycle = body.actionId === "task.delete";
     const isTimeManagement = body.actionId === "time.manage";
+    const isPlanningMove = body.actionId === "planning.move";
     const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
@@ -253,7 +256,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isTaskLifecycle || isTimeManagement || isProjectMasterData || isProjectStatus || isProjectLifecycle || isOnlineRequestConversion || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isAutomationManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization || isStampSessionTransition
+    const actionDraft = isTaskLifecycle || isTimeManagement || isPlanningMove || isProjectMasterData || isProjectStatus || isProjectLifecycle || isOnlineRequestConversion || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isAutomationManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization || isStampSessionTransition
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -514,6 +517,7 @@ export async function POST(
     const isPlanning = body.actionId === "planning.prepare";
     const isTaskLifecycle = body.actionId === "task.delete";
     const isTimeManagement = body.actionId === "time.manage";
+    const isPlanningMove = body.actionId === "planning.move";
     const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
@@ -568,6 +572,12 @@ export async function POST(
           )
         : isTimeManagement
         ? await cancelJarvisTimeManagementDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isPlanningMove
+        ? await cancelJarvisPlanningMoveDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -849,6 +859,13 @@ export async function POST(
           body.revision,
           typeof body.confirmationText === "string" ? body.confirmationText : ""
         )
+      : isPlanningMove
+      ? await confirmJarvisPlanningMoveDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
       : isProjectMasterData
       ? await confirmJarvisProjectMasterDataDraft(
           previewId,
@@ -1090,6 +1107,8 @@ export async function POST(
             ? "Die Aufgabe wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten."
             : isTimeManagement
             ? "Der Zeiteintrag wurde nach deiner exakten Bestätigung genau einmal korrigiert oder logisch gelöscht. Historie, Kostensatz und Abrechnungsgrenzen wurden kontrolliert erhalten."
+            : isPlanningMove
+            ? "Der einzelne Termin wurde nach deiner exakten Bestätigung genau einmal verschoben. Projekt, Mitarbeiter, Terminart, Abrechnungsbezug und übrige Serie blieben unverändert; Historie und Projektlogbuch wurden gemeinsam geschrieben."
             : isProjectMasterData
             ? "Die angezeigten Projektstammdaten wurden nach deiner exakten Bestätigung genau einmal geändert. Logbuch, Audit und gegebenenfalls die Aufhebung der fachlichen Freigabe wurden gemeinsam geschrieben."
             : isContactManagement
@@ -1157,6 +1176,8 @@ export async function POST(
             ? "Die Aufgabe wurde nicht archiviert oder wiederhergestellt."
             : isTimeManagement
             ? "Der Zeiteintrag wurde nicht verändert."
+            : isPlanningMove
+            ? "Der Termin wurde nicht verschoben."
             : isProjectMasterData
             ? "Die Projektdaten wurden nicht geändert."
             : isContactManagement

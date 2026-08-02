@@ -184,6 +184,25 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     })).toMatchObject({ ok: false });
   });
 
+  it("creates a critical bounded appointment-move preview", () => {
+    expect(createJarvisActionPreview({
+      previewId: "preview-planning-move",
+      actionId: "planning.move",
+      payload: { entryId: "planning-123456", date: "2026-08-04", startTime: "09:00", endTime: "11:00", reason: "Kunde kann erst später" },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-02T14:00:00.000Z",
+    })).toMatchObject({ ok: true, value: { actionId: "planning.move", execution: { enabled: false, reason: "preview_only" } } });
+  });
+
+  it("rejects appointment moves for employees and invalid windows", () => {
+    expect(createJarvisActionPreview({
+      previewId: "preview-planning-move-employee", actionId: "planning.move",
+      payload: { entryId: "planning-123456", date: "2026-08-04", startTime: "11:00", endTime: "09:00", reason: "Kunde später" },
+      organizationId: "org-1", profile: employeeProfile, createdAt: "2026-08-02T14:00:00.000Z",
+    })).toMatchObject({ ok: false });
+  });
+
   it("creates a critical project-status preview with only the intended fields", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-project-status",

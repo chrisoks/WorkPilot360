@@ -102,6 +102,7 @@ import {
   createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisTaskLifecycleDraft,
   createPersistedJarvisTimeManagementDraft,
+  createPersistedJarvisPlanningMoveDraft,
   createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft,
@@ -173,6 +174,10 @@ import {
   extractTimeEntryManagement,
   looksLikeTimeEntryManagementRequest,
 } from "@/lib/jarvis/time-entry-management-intake";
+import {
+  extractPlanningMoveRequest,
+  looksLikePlanningMoveRequest,
+} from "@/lib/jarvis/planning-move-intake";
 import {
   extractProjectMasterDataChangeRequest,
   looksLikeProjectMasterDataChangeRequest,
@@ -1039,6 +1044,33 @@ async function buildJarvisTimeManagementDraft(input: {
       topicId: "action.time-management.unavailable",
       message: `${error instanceof JarvisActionDraftError ? error.message : "Die Zeiteintragsänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
     };
+  }
+}
+
+async function buildJarvisPlanningMoveDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.planning-move.session-required", message: "Für eine Terminverschiebung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert." };
+  const details = extractPlanningMoveRequest(input.question);
+  if (details.seriesRequested) return { type: "clarification" as const, topicId: "action.planning-move.series-scope", message: "Soll nur ein einzelner Serientermin oder die gesamte Terminserie verschoben werden? Der sichere aktuelle Weg verschiebt ausschließlich einen eindeutig benannten Einzeltermin; es wurde noch nichts verändert." };
+  if (!details.entryId) return { type: "clarification" as const, topicId: "action.planning-move.entry-required", message: "Welcher Termin soll verschoben werden? Nenne bitte die vollständige Termin-ID aus der Terminübersicht. Es wurde noch nichts verändert." };
+  if (!details.date || !details.startTime || !details.endTime) return { type: "clarification" as const, topicId: "action.planning-move.target-required", message: "Auf welches Datum und welchen Zeitraum soll der Termin verschoben werden? Beispiel: „auf 04.08.2026 von 09:00 bis 11:00“. Es wurde noch nichts verändert." };
+  if (!details.reason || details.reason.length < 3) return { type: "clarification" as const, topicId: "action.planning-move.reason-required", message: "Für die Terminverschiebung brauche ich einen nachvollziehbaren Grund mit mindestens drei Zeichen. Es wurde noch nichts verändert." };
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(), actionId: "planning.move",
+    payload: { entryId: details.entryId, date: details.date, startTime: details.startTime, endTime: details.endTime, reason: details.reason, ...(details.overbookingReason ? { overbookingReason: details.overbookingReason } : {}) },
+    organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.planning-move.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  try {
+    const actionDraft = await createPersistedJarvisPlanningMoveDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return { type: "answer" as const, topicId: "action.planning-move", message: "Ich habe die Terminverschiebung serverseitig geprüft. Kontrolliere Terminart, Projekt, Mitarbeiter, bisherigen und neuen Zeitraum, Grund, Abwesenheiten, Überschneidungen und Kontingent. Projekt, Mitarbeiter und Serienzuordnung bleiben unverändert; erst die exakte Bestätigungsphrase verschiebt den einzelnen Termin genau einmal.", actionDraft };
+  } catch (error) {
+    const message = error instanceof JarvisActionDraftError ? error.message : "Die Terminverschiebung konnte nicht sicher vorbereitet werden.";
+    return { type: message.includes("Überplanung:") ? "clarification" as const : "refusal" as const, topicId: "action.planning-move.unavailable", message: `${message} Es wurde nichts verändert.` };
   }
 }
 
@@ -3676,6 +3708,17 @@ export async function POST(req: Request) {
   if (looksLikeTimeEntryManagementRequest(message)) {
     return respond(
       await buildJarvisTimeManagementDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "management"
+    );
+  }
+  if (looksLikePlanningMoveRequest(message)) {
+    return respond(
+      await buildJarvisPlanningMoveDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,

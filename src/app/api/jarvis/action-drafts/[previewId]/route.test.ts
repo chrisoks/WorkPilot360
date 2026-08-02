@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisTaskDraft: vi.fn(),
   cancelJarvisTimeManagementDraft: vi.fn(),
   confirmJarvisTimeManagementDraft: vi.fn(),
+  cancelJarvisPlanningMoveDraft: vi.fn(),
+  confirmJarvisPlanningMoveDraft: vi.fn(),
   cancelJarvisProjectMasterDataDraft: vi.fn(),
   confirmJarvisProjectMasterDataDraft: vi.fn(),
   cancelJarvisProjectStatusDraft: vi.fn(),
@@ -95,6 +97,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisTaskDraft: mocks.confirmJarvisTaskDraft,
   cancelJarvisTimeManagementDraft: mocks.cancelJarvisTimeManagementDraft,
   confirmJarvisTimeManagementDraft: mocks.confirmJarvisTimeManagementDraft,
+  cancelJarvisPlanningMoveDraft: mocks.cancelJarvisPlanningMoveDraft,
+  confirmJarvisPlanningMoveDraft: mocks.confirmJarvisPlanningMoveDraft,
   cancelJarvisProjectMasterDataDraft: mocks.cancelJarvisProjectMasterDataDraft,
   confirmJarvisProjectMasterDataDraft: mocks.confirmJarvisProjectMasterDataDraft,
   cancelJarvisProjectStatusDraft: mocks.cancelJarvisProjectStatusDraft,
@@ -270,6 +274,13 @@ describe("JARVIS action-draft API", () => {
       actionId: "time.manage",
       state: "executed",
       result: { entityType: "projectTimeEntry", entityId: "entry-1", label: "Zeiteintrag öffnen" },
+    });
+    mocks.cancelJarvisPlanningMoveDraft.mockResolvedValue({
+      ...draft, actionId: "planning.move", state: "cancelled",
+    });
+    mocks.confirmJarvisPlanningMoveDraft.mockResolvedValue({
+      ...draft, actionId: "planning.move", state: "executed",
+      result: { entityType: "planning", entityId: "planning-1", label: "Termin öffnen" },
     });
     mocks.confirmJarvisPlanningDraft.mockImplementation(
       async (
@@ -1309,6 +1320,19 @@ describe("JARVIS action-draft API", () => {
       "preview-1", expect.anything(), 6, "ZEITEINTRAG KORRIGIEREN entry-1"
     );
     expect(mocks.confirmJarvisTimeDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact appointment-move phrase to the bound planning draft", async () => {
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "planning.move", command: "confirm", revision: 6,
+      confirmationText: "TERMIN VERSCHIEBEN planning-1",
+      targetDate: "2099-01-01", targetStartTime: "00:00", targetEndTime: "00:01",
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisPlanningMoveDraft).toHaveBeenCalledWith(
+      "preview-1", expect.anything(), 6, "TERMIN VERSCHIEBEN planning-1"
+    );
+    expect(mocks.confirmJarvisPlanningDraft).not.toHaveBeenCalled();
   });
 
   it("passes only the exact contact phrase to the bound contact draft", async () => {

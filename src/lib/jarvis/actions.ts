@@ -280,6 +280,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: isActiveInternalUser,
   },
   {
+    id: "planning.move",
+    title: "Termin kontrolliert verschieben",
+    category: "planning",
+    risk: "critical",
+    confirmation: "critical",
+    dataClasses: ["internal"],
+    implementation: "available",
+    canUse: canManagePlanningEntries,
+  },
+  {
     id: "project-logbook.prepare",
     title: "Projektlogbuch-Eintrag vorbereiten",
     category: "project",

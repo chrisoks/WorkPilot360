@@ -1,0 +1,46 @@
+import { randomUUID } from "node:crypto";
+import { PrismaClient } from "@prisma/client";
+
+process.loadEnvFile?.(".env");
+const prisma = new PrismaClient();
+const cleanupToken = process.argv.find((item) => item.startsWith("--cleanup="))?.slice("--cleanup=".length);
+
+async function cleanup(token) {
+  const source = `qa-jarvis-planning-move-browser:${token}`;
+  const projects = await prisma.workPilotProject.findMany({ where: { source }, select: { id: true } });
+  const projectIds = projects.map((item) => item.id);
+  const entries = await prisma.planningEntry.findMany({ where: { projectId: { in: projectIds } }, select: { id: true } });
+  const entryIds = entries.map((item) => item.id);
+  const drafts = entryIds.length ? await prisma.$queryRaw`SELECT "id" FROM "JarvisActionDraft" WHERE "actionId"='planning.move' AND "payload"->>'entryId'=ANY(${entryIds})` : [];
+  const draftIds = drafts.map((item) => item.id);
+  await prisma.notification.deleteMany({ where: { linkTarget: "planning-entry", linkTargetId: { in: entryIds } } });
+  await prisma.projectLogbookEntry.deleteMany({ where: { projectId: { in: projectIds }, source: "planning-entry-move" } });
+  await prisma.planningEntryHistory.deleteMany({ where: { planningEntryId: { in: entryIds } } });
+  await prisma.jarvisActionDraft.deleteMany({ where: { id: { in: draftIds } } });
+  await prisma.planningEntry.deleteMany({ where: { id: { in: entryIds } } });
+  await prisma.workPilotProject.deleteMany({ where: { id: { in: projectIds } } });
+  console.log(JSON.stringify({ cleaned: true, token, draftIds, entryIds, projectIds }));
+}
+
+async function seed() {
+  const actor = await prisma.user.findFirst({ where: { firstName: "Christian", isActive: true }, orderBy: { createdAt: "asc" }, select: { id: true, organizationId: true, firstName: true, lastName: true, email: true } });
+  if (!actor) throw new Error("Der angemeldete Browser-Testnutzer Christian wurde nicht gefunden.");
+  const employee = await prisma.user.findFirst({ where: { organizationId: actor.organizationId, isActive: true }, orderBy: [{ role: "desc" }, { createdAt: "asc" }], select: { id: true, firstName: true, lastName: true } });
+  if (!employee) throw new Error("Keine aktive Testperson gefunden.");
+  const token = Date.now().toString(36); const projectId = randomUUID(); const entryId = randomUUID();
+  const projectNumber = `QPB-${Date.now().toString().slice(-7)}`; const source = `qa-jarvis-planning-move-browser:${token}`;
+  await prisma.workPilotProject.create({ data: {
+    id: projectId, organizationId: actor.organizationId, projectNumber, title: "QA JARVIS Klicktest Terminverschiebung", customer: "QA intern",
+    status: "Umsetzung", projectType: "Hausmeisterservice", projectKind: "Dauerprojekt", recurringBillingMode: "hourly",
+    trade: "Hausmeisterservice", branch: "OK immocare", responsibleName: `${actor.firstName} ${actor.lastName}`.trim(), source,
+  } });
+  await prisma.planningEntry.create({ data: {
+    id: entryId, organizationId: actor.organizationId, source: "manual", board: "OK immocare", groupName: "QA",
+    userId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}`.trim(), date: "2026-08-23", startTime: "08:00", endTime: "09:00", durationMinutes: 60,
+    title: "QA JARVIS Klicktest", description: "Wird nach dem Klicktest bereinigt", projectId, projectLabel: `${projectNumber} | QA JARVIS Klicktest Terminverschiebung`,
+    planningTrade: "Hausmeisterservice", approvalStatus: "confirmed", approvedByUserId: actor.id, approvedAt: new Date(),
+  } });
+  console.log(JSON.stringify({ token, entryId, projectId, targetDate: "2026-08-24", targetStartTime: "10:00", targetEndTime: "11:15" }));
+}
+
+(cleanupToken ? cleanup(cleanupToken) : seed()).catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

@@ -7,6 +7,12 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { canManagePlanningEntries } from "@/lib/permissions";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import { sendPushToUserSafely } from "@/lib/push/web-push";
+import {
+  deliverPlanningEntryMoveNotifications,
+  evaluatePlanningEntryMove,
+  executePlanningEntryMove,
+  isPlanningEntryMoveError,
+} from "@/lib/planning/planning-entry-move-service";
 
 type DemoUser = {
   id: string;
@@ -934,6 +940,27 @@ export async function POST(req: Request) {
   const recurrenceRule = cleanString(body.recurrenceRule);
   const approvalStatus = cleanApprovalStatus(body.approvalStatus);
 
+  const existingRows = await prisma.$queryRaw<PlanningEntryRow[]>`
+    SELECT *
+    FROM "PlanningEntry"
+    WHERE "id" = ${id}
+      AND "organizationId" = ${organization.id}
+    LIMIT 1
+  `;
+  const existingEntry = existingRows[0] ?? null;
+
+  if (existingEntry && didPlanningTimeChange(existingEntry, {
+    ...existingEntry,
+    date,
+    startTime,
+    endTime,
+  })) {
+    return NextResponse.json(
+      { error: "Datum und Uhrzeit bestehender Termine dürfen nur über die kontrollierte Terminverschiebung geändert werden." },
+      { status: 409 }
+    );
+  }
+
   if (!board || !groupName || !date || !isValidTime(startTime) || !isValidTime(endTime)) {
     return NextResponse.json({ error: "Planungsboard, Gruppe, Datum und Uhrzeit sind Pflicht." }, { status: 400 });
   }
@@ -1080,15 +1107,6 @@ export async function POST(req: Request) {
   }
 
   const employeeName = getUserName(plannedUser);
-
-  const existingRows = await prisma.$queryRaw<PlanningEntryRow[]>`
-    SELECT *
-    FROM "PlanningEntry"
-    WHERE "id" = ${id}
-      AND "organizationId" = ${organization.id}
-    LIMIT 1
-  `;
-  const existingEntry = existingRows[0] ?? null;
 
   if (!actorCanManagePlanning) {
     const ownsExistingEntry =
@@ -1338,6 +1356,63 @@ export async function POST(req: Request) {
   `;
 
   return NextResponse.json(formatEntry(savedEntry, history), { status: 201 });
+}
+
+export async function PATCH(req: Request) {
+  const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body) return NextResponse.json({ error: "Die Verschiebungsdaten fehlen." }, { status: 400 });
+  const { organization, users } = await getDemoContext();
+  await ensurePlanningEntryTable();
+  const actorResult = await getSessionBoundActor(req, users, body.actorUserId);
+  if (!actorResult.ok) return sessionBoundActorResponse(actorResult);
+  const actor = actorResult.actor;
+  const common = {
+    organizationId: organization.id,
+    actor,
+    entryId: cleanString(body.entryId),
+    date: cleanString(body.date),
+    startTime: cleanString(body.startTime),
+    endTime: cleanString(body.endTime),
+    reason: cleanString(body.reason),
+    requireManagement: false,
+  };
+  try {
+    if (cleanString(body.command) === "preflight") {
+      return NextResponse.json({ evaluation: await evaluatePlanningEntryMove(common) });
+    }
+    if (cleanString(body.command) !== "execute") {
+      return NextResponse.json({ error: "Bitte die Terminverschiebung zuerst prüfen." }, { status: 400 });
+    }
+    const requestId = cleanString(body.requestId);
+    const result = await executePlanningEntryMove({
+      ...common,
+      requestId,
+      expectedFingerprint: cleanString(body.expectedFingerprint),
+      ...(body.overbookingApproval && typeof body.overbookingApproval === "object"
+        ? { overbookingApproval: {
+            fingerprint: cleanString((body.overbookingApproval as Record<string, unknown>).fingerprint),
+            reason: cleanString((body.overbookingApproval as Record<string, unknown>).reason),
+          } }
+        : {}),
+    });
+    const rows = await prisma.$queryRaw<PlanningEntryRow[]>`SELECT * FROM "PlanningEntry" WHERE "organizationId"=${organization.id} AND "id"=${result.entry.id} LIMIT 1`;
+    const savedEntry = rows[0];
+    if (!savedEntry) return NextResponse.json({ error: "Der verschobene Termin wurde nicht wiedergefunden." }, { status: 500 });
+    if (!result.replayed) {
+      await deliverPlanningEntryMoveNotifications({ organizationId: organization.id, requestId, entryId: savedEntry.id, actorUserId: actor.id }).catch(
+        (error) => console.error("Planning move notification delivery failed", error),
+      );
+      await notifyPlanningOverlap(savedEntry, organization.id, actor.id);
+      await syncPlanningCapacityAlert({ ...savedEntry, date: result.previous.date }, organization.id, actor.id);
+      await syncPlanningCapacityAlert(savedEntry, organization.id, actor.id);
+    }
+    const history = await prisma.$queryRaw<PlanningEntryHistoryRow[]>`SELECT * FROM "PlanningEntryHistory" WHERE "organizationId"=${organization.id} AND "planningEntryId"=${savedEntry.id} ORDER BY "createdAt" ASC`;
+    return NextResponse.json({ entry: formatEntry(savedEntry, history), replayed: result.replayed });
+  } catch (error) {
+    if (isPlanningEntryMoveError(error)) return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status });
+    console.error("Planning entry move failed", error);
+    return NextResponse.json({ error: "Der Termin konnte nicht sicher verschoben werden." }, { status: 500 });
+  }
 }
 
 export async function DELETE(req: Request) {

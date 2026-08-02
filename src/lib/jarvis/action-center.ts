@@ -21,6 +21,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "bulk.update",
   "automation.manage",
   "planning.prepare",
+  "planning.move",
   "time.prepare",
   "time.manage",
   "time.session.manage",
@@ -122,6 +123,18 @@ const planningPreviewPayloadSchema = z
       path: ["endAt"],
     }
   );
+
+const planningMovePreviewPayloadSchema = z.object({
+  entryId: boundedId,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  reason: boundedText(500),
+  overbookingReason: optionalText(1000),
+  overbookingApproval: z.object({ fingerprint: boundedText(180), reason: boundedText(1000) }).strict().optional(),
+}).strict().refine((payload) => payload.endTime > payload.startTime, {
+  message: "Das Terminende muss nach dem Beginn liegen.", path: ["endTime"],
+});
 
 const timePreviewPayloadSchema = z
   .object({
@@ -564,6 +577,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "bulk.update": bulkUpdatePreviewPayloadSchema,
   "automation.manage": automationManagementPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
+  "planning.move": planningMovePreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "time.manage": timeManagementPreviewPayloadSchema,
   "time.session.manage": stampSessionTransitionPreviewPayloadSchema,
@@ -601,6 +615,7 @@ export type JarvisActionPreviewPayloadMap = {
   "bulk.update": z.infer<typeof bulkUpdatePreviewPayloadSchema>;
   "automation.manage": z.infer<typeof automationManagementPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
+  "planning.move": z.infer<typeof planningMovePreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "time.manage": z.infer<typeof timeManagementPreviewPayloadSchema>;
   "time.session.manage": z.infer<
@@ -955,6 +970,30 @@ export type JarvisTimeManagementDraftView = {
     entityId: string;
     label: string;
   };
+};
+
+export type JarvisPlanningMoveDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "planning.move";
+  title: "Termin kontrolliert verschieben";
+  badge: "Prüfung" | "Bereit" | "Wird geändert" | "Abgebrochen" | "Abgelaufen" | "Ausgeführt";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  entryId: string;
+  projectId: string;
+  fields: Array<{ label: string; value: string }>;
+  checks: Array<{ key: string; label: string; status: "ok" | "warning" | "blocked"; detail: string }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason: "ready" | "blocked" | "not_permitted" | "expired" | "cancelled" | "executing" | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: { entityType: "planning"; entityId: string; label: string };
 };
 
 export type JarvisWinterCalculationInputView = {

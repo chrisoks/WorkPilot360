@@ -51,6 +51,7 @@ import {
   type JarvisTimeActionDraftCheck,
   type JarvisTimeActionDraftView,
   type JarvisTimeManagementDraftView,
+  type JarvisPlanningMoveDraftView,
   type JarvisVehicleTripCalculationDraftView,
   type JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
@@ -107,6 +108,14 @@ import {
   sharedPlanningRequestSchema,
   type SharedPlanningRequest,
 } from "@/lib/planning/shared-planning";
+import {
+  deliverPlanningEntryMoveNotifications,
+  evaluatePlanningEntryMove,
+  executePlanningEntryMoveInTransaction,
+  getPlanningEntryMoveConfirmationText,
+  matchesPlanningEntryMoveConfirmation,
+  PlanningEntryMoveError,
+} from "@/lib/planning/planning-entry-move-service";
 import {
   createJarvisConfirmedTask,
 } from "@/lib/services/task-service";
@@ -1157,6 +1166,25 @@ const timeManagementContextSchema = z.object({
     overtimeApprovalStatus: z.enum(["not_required", "pending", "approved"]),
     deletedAt: z.string(), createdAt: z.string(),
   }).passthrough(),
+}).strict();
+
+const planningMovePayloadSchema = z.object({
+  entryId: z.string().trim().min(1).max(120),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  reason: z.string().trim().min(3).max(500),
+  overbookingReason: z.string().trim().min(10).max(1000).optional(),
+  overbookingApproval: z.object({ fingerprint: z.string().min(16).max(180), reason: z.string().min(10).max(1000) }).strict().optional(),
+}).strict();
+
+const planningMoveContextSchema = z.object({
+  entry: z.object({ id: z.string(), title: z.string(), projectId: z.string(), projectLabel: z.string(), employee: z.string(), approvalStatus: z.enum(["confirmed", "requested"]), recurrenceRule: z.string() }).strict(),
+  from: z.object({ date: z.string(), startTime: z.string(), endTime: z.string(), durationMinutes: z.number().int() }).strict(),
+  to: z.object({ date: z.string(), startTime: z.string(), endTime: z.string(), durationMinutes: z.number().int() }).strict(),
+  reason: z.string(), warnings: z.array(z.object({ code: z.string(), message: z.string() }).strict()),
+  overbooking: z.object({ required: z.boolean(), kind: z.enum(["offer", "monthly"]).nullable(), label: z.string(), availableMinutes: z.number().int(), requestedMinutes: z.number().int(), exceededMinutes: z.number().int(), fingerprint: z.string().nullable() }).strict(),
+  fingerprint: z.string().length(64),
 }).strict();
 
 const projectStatusPayloadSchema = z.object({
@@ -5604,6 +5632,9 @@ export async function getJarvisActionDraft(
   });
   if (draft?.actionId === "planning.prepare") {
     return getJarvisPlanningDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "planning.move") {
+    return getJarvisPlanningMoveDraft(previewId, binding, now);
   }
   if (draft?.actionId === "time.prepare") {
     return getJarvisTimeDraft(previewId, binding, now);
@@ -11471,6 +11502,162 @@ export async function confirmJarvisTimeManagementDraft(
       throw new JarvisActionDraftError(error.code === "conflict" ? "stale_context" : "invalid_input", error.message, error.status);
     }
     throw new JarvisActionDraftError("execution_failed", "Der Zeiteintrag wurde nicht geändert und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayMovePlanningEntry(binding: JarvisTaskDraftBinding) {
+  return canManagePlanningEntries(binding.profile.sessionActor) &&
+    canManagePlanningEntries(binding.profile.effectiveActor);
+}
+
+function validatePlanningMoveBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) throw new JarvisActionDraftError("scope_mismatch", "Diese Terminverschiebung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) {
+    throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Terminprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  }
+  if (!integrityMatches(draft)) throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Terminverschiebung ist ungültig.", 409);
+  const payload = planningMovePayloadSchema.safeParse(draft.payload);
+  const context = planningMoveContextSchema.safeParse(draft.context);
+  if (draft.actionId !== "planning.move" || !payload.success || !context.success || hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash) {
+    throw new JarvisActionDraftError("integrity_failed", "Terminverschiebung oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundPlanningMoveDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Terminverschiebung wurde nicht gefunden.", 404);
+  validatePlanningMoveBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validatePlanningMoveBinding(current, binding) };
+}
+
+function toJarvisPlanningMoveDraftView(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding): JarvisPlanningMoveDraftView {
+  const { payload, context } = validatePlanningMoveBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayMovePlanningEntry(binding);
+  const overbookingReady = !context.overbooking.required || (
+    payload.overbookingApproval?.fingerprint === context.overbooking.fingerprint &&
+    (payload.overbookingApproval?.reason.length ?? 0) >= 10
+  );
+  const ready = state === "awaiting_confirmation" && permitted && overbookingReady;
+  const reason: JarvisPlanningMoveDraftView["confirmation"]["reason"] =
+    state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" :
+      state === "executing" ? "executing" : !permitted ? "not_permitted" : !overbookingReady ? "blocked" : "ready";
+  return {
+    version: 2, previewId: draft.id, actionId: "planning.move", title: "Termin kontrolliert verschieben",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), entryId: context.entry.id, projectId: context.entry.projectId,
+    fields: [
+      { label: "Termin-ID", value: context.entry.id },
+      { label: "Terminart", value: context.entry.approvalStatus === "requested" ? "Terminwunsch" : "Bestätigter Termin" },
+      { label: "Titel", value: context.entry.title }, { label: "Projekt", value: context.entry.projectLabel || "Ohne Projekt" },
+      { label: "Mitarbeitend", value: context.entry.employee },
+      { label: "Bisher", value: `${context.from.date} · ${context.from.startTime}–${context.from.endTime}` },
+      { label: "Neu", value: `${context.to.date} · ${context.to.startTime}–${context.to.endTime}` },
+      { label: "Grund", value: context.reason },
+      ...(context.overbooking.required ? [{ label: "Überplanung", value: `${context.overbooking.label}: ${context.overbooking.exceededMinutes} Minuten über Kontingent · ${payload.overbookingApproval?.reason ?? "Begründung fehlt"}` }] : []),
+    ],
+    checks: [
+      { key: "scope", label: "Organisation, Sitzung und Rolle", status: permitted ? "ok" : "blocked", detail: permitted ? "Die Verschiebung ist an die aktuelle Planungsverantwortung gebunden." : "Diese Rollenkombination darf Termine nicht verschieben." },
+      { key: "freshness", label: "Aktueller Terminstand", status: "ok", detail: "Termin, Zielzeitraum, Abwesenheit, Projekt- und Kontingentstand sind per SHA-256 gebunden." },
+      { key: "quota", label: "Kontingent", status: context.overbooking.required ? (overbookingReady ? "warning" : "blocked") : "ok", detail: context.overbooking.required ? `${context.overbooking.availableMinutes} Minuten frei, ${context.overbooking.requestedMinutes} Minuten benötigt.` : context.overbooking.label },
+    ],
+    warnings: [
+      "Projekt, Mitarbeiter, Terminart, Abrechnungsbezug und Serienzuordnung bleiben unverändert.",
+      ...context.warnings.map((warning) => warning.message),
+    ],
+    blockingIssues: [
+      ...(!permitted ? ["Diese Rollenkombination darf Termine nicht verschieben."] : []),
+      ...(!overbookingReady ? ["Die bewusste Überplanung benötigt eine nachvollziehbare Begründung."] : []),
+    ],
+    confirmation: { enabled: ready, reason, requiredText: getPlanningEntryMoveConfirmationText(context.entry.id) },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "planning" as const, entityId: draft.resultEntityId, label: "Verschobenen Termin öffnen" } } : {}),
+  };
+}
+
+export async function createPersistedJarvisPlanningMoveDraft(input: {
+  preview: JarvisActionPreview<"planning.move">; organizationId: string; sessionId: string; profile: JarvisAccessProfile; now?: Date;
+}) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Terminverschiebung ist eine aktuelle Sitzung erforderlich.", 401);
+  if (!mayMovePlanningEntry(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Termine nicht verschieben.", 403);
+  const actorId = getActorIds(input.profile).effectiveActorId;
+  const actor = await prisma.user.findFirst({ where: { id: actorId, organizationId: input.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, organizationId: true } });
+  if (!actor) throw new JarvisActionDraftError("role_changed", "Der wirksame Akteur ist nicht mehr aktiv.", 409);
+  const proposed = planningMovePayloadSchema.parse(input.preview.payload);
+  let evaluation;
+  try {
+    evaluation = await evaluatePlanningEntryMove({ organizationId: input.organizationId, actor, entryId: proposed.entryId, date: proposed.date, startTime: proposed.startTime, endTime: proposed.endTime, reason: proposed.reason, requireManagement: true });
+  } catch (error) {
+    if (error instanceof PlanningEntryMoveError) throw new JarvisActionDraftError("invalid_input", error.message, error.status === 403 ? 403 : error.status === 404 ? 404 : error.status === 400 ? 400 : 409);
+    throw error;
+  }
+  if (evaluation.overbooking.required && !proposed.overbookingReason && !proposed.overbookingApproval) {
+    throw new JarvisActionDraftError("invalid_input", `${evaluation.overbooking.label} würde um ${evaluation.overbooking.exceededMinutes} Minuten überschritten. Nenne zusätzlich „Überplanung: <Begründung>“ mit mindestens 10 Zeichen.`, 409);
+  }
+  const payload = planningMovePayloadSchema.parse({
+    ...proposed,
+    ...(evaluation.overbooking.required ? { overbookingApproval: { fingerprint: evaluation.fingerprint, reason: proposed.overbookingApproval?.reason ?? proposed.overbookingReason } } : {}),
+  });
+  const context = planningMoveContextSchema.parse(evaluation);
+  const now = input.now ?? new Date(); const actorIds = getActorIds(input.profile);
+  const draftData: DraftIntegrityData = { id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId, sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role, effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role, impersonating: input.profile.isImpersonating, actionId: "planning.move", state: "awaiting_confirmation", revision: 1, payloadHash: hashJson(payload), contextHash: hashJson(context), expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null, executedAt: null, resultEntityType: null, resultEntityId: null, lastErrorCode: null };
+  const created = await prisma.$transaction(async (tx) => { const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } }); await appendAuditEvent(tx, { draft, eventType: "draft_created_ready" }); return draft; });
+  return toJarvisPlanningMoveDraftView(created, input);
+}
+
+export async function getJarvisPlanningMoveDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const { draft } = await loadBoundPlanningMoveDraft(previewId, binding, now); return toJarvisPlanningMoveDraftView(draft, binding);
+}
+
+export async function cancelJarvisPlanningMoveDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundPlanningMoveDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisPlanningMoveDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Terminverschiebung kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Terminverschiebung wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => { const changed = await tx.jarvisActionDraft.updateMany({ where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag }, data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) } }); if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Terminverschiebung wurde bereits verändert.", 409); const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } }); await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" }); return current; });
+  return toJarvisPlanningMoveDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisPlanningMoveDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundPlanningMoveDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisPlanningMoveDraftView(loaded.draft, binding);
+  const requiredText = getPlanningEntryMoveConfirmationText(loaded.context.entry.id);
+  if (!matchesPlanningEntryMoveConfirmation(loaded.context.entry.id, confirmationText)) throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Terminverschiebung darf bestätigt werden.", 409);
+  if (!mayMovePlanningEntry(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Termine nicht verschieben.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } }); if (!current) throw new JarvisActionDraftError("not_found", "Die Terminverschiebung wurde nicht gefunden.", 404);
+      const parsed = validatePlanningMoveBinding(current, binding); if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Terminverschiebung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, organizationId: true } });
+      if (!actor || !canManagePlanningEntries(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Planungsberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
+      const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
+      if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Der Termin wird bereits verschoben.", 409);
+      const result = await executePlanningEntryMoveInTransaction({ tx, organizationId: binding.organizationId, actor, entryId: parsed.payload.entryId, date: parsed.payload.date, startTime: parsed.payload.startTime, endTime: parsed.payload.endTime, reason: parsed.payload.reason, expectedFingerprint: parsed.context.fingerprint, requestId: current.id, requireManagement: true, overbookingApproval: parsed.payload.overbookingApproval });
+      const executedAt = new Date(); const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "planning", resultEntityId: result.entry.id };
+      const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "planning", resultEntityId: result.entry.id, integrityTag: createIntegrityTag(executedData) } });
+      await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: result.entry.id, entityType: "planning" } }); return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (executed.resultEntityId) {
+      await deliverPlanningEntryMoveNotifications({ organizationId: binding.organizationId, requestId: executed.id, entryId: executed.resultEntityId, actorUserId: executed.effectiveActorId })
+        .catch((error) => console.error("Planning move notification delivery failed", error));
+    }
+    return toJarvisPlanningMoveDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") { const latest = await loadBoundPlanningMoveDraft(previewId, binding, now); if (latest.draft.state === "executed") return toJarvisPlanningMoveDraftView(latest.draft, binding); }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof PlanningEntryMoveError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, error.status === 403 ? 403 : error.status === 404 ? 404 : error.status === 400 ? 400 : 409);
+    throw new JarvisActionDraftError("execution_failed", "Der Termin wurde nicht verschoben und die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

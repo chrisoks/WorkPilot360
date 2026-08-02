@@ -59,6 +59,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisInvoiceLifecycleDraft: vi.fn(),
   createPersistedJarvisTaskLifecycleDraft: vi.fn(),
   createPersistedJarvisTimeManagementDraft: vi.fn(),
+  createPersistedJarvisPlanningMoveDraft: vi.fn(),
   createPersistedJarvisProjectMasterDataDraft: vi.fn(),
   createPersistedJarvisProjectStatusDraft: vi.fn(),
   createPersistedJarvisProjectLifecycleDraft: vi.fn(),
@@ -158,6 +159,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisTaskLifecycleDraft,
   createPersistedJarvisTimeManagementDraft:
     mocks.createPersistedJarvisTimeManagementDraft,
+  createPersistedJarvisPlanningMoveDraft:
+    mocks.createPersistedJarvisPlanningMoveDraft,
   createPersistedJarvisProjectMasterDataDraft:
     mocks.createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft:
@@ -5037,5 +5040,32 @@ describe("POST /api/jarvis/chat", () => {
         payload: expect.objectContaining({ entryId: "entry-123456", action: "update", changes: { startTime: "08:15", endTime: "10:00" } }),
       }),
     }));
+  });
+
+  it("asks for the visible appointment id before preparing a move", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Verschiebe den Termin auf 04.08.2026 von 09:00 bis 11:00. Grund: Kunde kann später" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "clarification", topicId: "action.planning-move.entry-required" });
+    expect(mocks.createPersistedJarvisPlanningMoveDraft).not.toHaveBeenCalled();
+  });
+
+  it("prepares an appointment move without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisPlanningMoveDraft.mockImplementationOnce(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "planning.move", title: "Termin kontrolliert verschieben", badge: "Bereit", state: "awaiting_confirmation", revision: 1,
+      expiresAt: "2026-08-02T17:00:00.000Z", entryId: preview.payload.entryId, projectId: "project-1", fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: `TERMIN VERSCHIEBEN ${preview.payload.entryId}` }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Verschiebe Termin plan-entry-123456 auf 04.08.2026 von 09:00 bis 11:00. Grund: Kunde kann später" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.planning-move", actionDraft: { actionId: "planning.move", entryId: "plan-entry-123456" } });
+    expect(mocks.createPersistedJarvisPlanningMoveDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "planning.move", payload: expect.objectContaining({ date: "2026-08-04", startTime: "09:00", endTime: "11:00" }) }) }));
   });
 });
