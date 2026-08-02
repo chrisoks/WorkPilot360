@@ -696,3 +696,40 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   172/172 Testdateien, 1.727/1.727 Tests, echter isolierter UI-Klicktest,
   lokal/produktiv 110/110 Fragen, null Ausführungen/Rückstände und leerer
   Live-Prisma-Diff. WorkPilot PID `746049`, KlinikNavigator PID `398228`.
+
+## Online-Anfragen: kritische JARVIS-Umwandlung
+
+- Aktions-ID `online-request.convert`; verfügbar nur bei doppelter
+  Umwandlungsberechtigung von Sitzungs- und Effektivrolle.
+- Natürlicher Einstieg verlangt einen ausdrücklichen Umwandlungsbefehl und eine
+  exakte OKI-Referenz. Bereitschafts-, Blocker-, Erklär- und Zeigefragen bleiben
+  im rein lesenden Online-Anfragen-Adapter.
+- Vorschauquelle `evaluateOnlineRequestConversion` im gemeinsamen
+  `src/lib/online-requests/conversion-service.ts`; normale Route und JARVIS
+  verwenden für das Fachschreiben `convertOnlineRequest`.
+- Kritische Phrase:
+  `ONLINE-ANFRAGE UMWANDELN <OKI-YYYYMMDD-XXXXXX>`; Groß-/Kleinschreibung und
+  Inhalt müssen exakt stimmen.
+- Fingerprint: Anfrage-Update/Status, Kundenentscheidung, Bestandskontakt samt
+  Änderungsstand, Gewerk/Präfix, Verantwortlicher, Termin-/Rückrufkontext,
+  Umwandlungsnachweis und Bild-Hashes/-Reihenfolge.
+- Persistenter Entwurf: Organisation, Sitzung, Session-/Effektividentität,
+  Rollen, Impersonation, Payload-/Kontexthashes, HMAC-Integrität,
+  Revisionsprüfung, Ablauf, `executing`-Claim und Auditfolge.
+- Exactly-once: OnlineRequest-Zeilensperre, korrelierte `executionRequestId` im
+  `converted`-Audit, Wiederanlauf aus `executing` und Replay nur auf das vom
+  selben Entwurf erzeugte Projekt.
+- Unverhandelbar: immer neues Projekt unter `OK immocare → Lead / Klärung`,
+  niemals automatische oder auswählbare Bestandsprojekt-Zuordnung. OKI bleibt
+  Quellen-/Auditreferenz; Projektnummer ist global fortlaufend mit
+  Gewerk-Präfix.
+- Permanenter QA-Lauf:
+  `scripts/qa-jarvis-online-request-conversion.mjs`; reproduzierbare echte
+  Klickfixture: `scripts/qa-jarvis-online-request-browser-fixture.mjs`.
+- Produktivabnahme: Runtime
+  `7777c77727d07c2d9fbb370b56f788f21127128f`, Backup
+  `/var/backups/workpilot360/20260802T091757Z-before-jarvis-online-conversion`,
+  174/174 Testdateien, 1.740/1.740 Tests, 90-Seiten-Build, normaler und
+  JARVIS-spezifischer Online-Anfragen-E2E-Lauf, echter UI-Klicktest, 110/110
+  Fragen, null QA-Rückstände und leerer Live-Prisma-Diff. WorkPilot PID
+  `750917`, KlinikNavigator PID `398228`.

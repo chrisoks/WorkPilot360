@@ -3375,3 +3375,57 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `746049`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und die Invariante gegen automatische
 Bestandsprojekt-Zuordnung blieben unverändert.
+
+## 38. Online-Anfragen kontrolliert mit JARVIS umwandeln
+
+JARVIS kann eine exakt genannte `OKI-YYYYMMDD-XXXXXX`-Anfrage nach einem
+ausdrücklichen Umwandlungsbefehl nun als kritische Aktion vorbereiten und nach
+bewusster Bestätigung ausführen. Die Aktionskarte zeigt Anfrage, Kundenweg,
+organisationsgebundenen Bestandskontakt oder Neuanlage, Gewerk, Verantwortung,
+Folgeaufgaben, Bilder, Zielbereich und die nächste globale Projektnummer mit
+Gewerk-Präfix. Sie erklärt sichtbar die unverhandelbare Invariante: Es entsteht
+immer genau ein neues Projekt unter `OK immocare → Lead / Klärung`; ein
+Bestandsprojekt wird niemals automatisch ausgewählt oder angeboten.
+
+Normale Oberfläche und JARVIS verwenden denselben Fachservice
+`src/lib/online-requests/conversion-service.ts`. Der Vorschau-Fingerprint bindet
+Anfragestatus, Kundenentscheidung, Kontaktstand, Gewerk, Verantwortung,
+Termin-/Rückrufkontext und Bilder. Vor der Ausführung werden Rolle und aktueller
+Fachstand erneut geprüft. Nur die exakte Phrase
+`ONLINE-ANFRAGE UMWANDELN <OKI-Referenz>` ist gültig. Der Entwurf ist zusätzlich
+an Organisation, Sitzung, Session- und Effektividentität, Rollen,
+Impersonationszustand, Payload-/Kontexthashes und Integritätstag gebunden.
+
+Die Umwandlung selbst bleibt serialisierbar und zeilengesperrt. Projekt,
+Kontakt/Objektadresse, Logbuch `Online-Anfrage`, geschützte `Anfragebilder`,
+Termin-/Rückrufaufgabe, Timeline, Umwandlungs-Audit und
+Benachrichtigungsauflösung entstehen gemeinsam. Der JARVIS-Entwurf wechselt vor
+dem Fachschreiben atomar nach `executing`; die korrelierte
+`executionRequestId` im Online-Anfragen-Audit ermöglicht nach einem Prozessabbruch
+eine sichere Wiederaufnahme. Wiederholte Bestätigungen liefern ausschließlich
+das bereits von genau diesem Entwurf erzeugte Projekt und erzeugen keine
+Duplikate. Eine zwischenzeitliche Änderung führt fail-closed zu
+`stale_context`.
+
+Lokal bestanden 174 Testdateien mit 1.740 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Prisma-Diff und der
+90-Seiten-Build. Die isolierte QA prüfte Vorschau ohne Fachschreiben, falsche
+Phrase, Abbruch, veralteten Kontext, Rollen, garantierte Mandantentrennung,
+neues Projekt, Aufgabe, Logbuch, Timeline, korreliertes Audit, Replay und null
+Rückstände. Der echte Klicktest öffnete die Karte, hielt die falsche Phrase
+gesperrt, erzeugte `DAR-449` und öffnete die reale Projektakte. Der normale
+Online-Anfragen-E2E-Lauf blieb einschließlich sicherer Fotos,
+`Anfragebilder`, Storage-Fallback, Neukunde, Rate-Limits und Replay vollständig
+grün. Der permanente Korpus blieb exakt 110 Fälle groß und enthält nun einen
+echten, ausschließlich vorbereitenden Umwandlungsfall.
+
+Produktiv abgenommen auf Runtime-Commit
+`7777c77727d07c2d9fbb370b56f788f21127128f`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T091757Z-before-jarvis-online-conversion`.
+Produktiv bestanden die isolierte Umwandlungs-QA, der vollständige normale
+Online-Anfragen-E2E-Lauf und 110/110 permanente Fragen mit 29 ausschließlich
+vorbereiteten, null ausgeführten Aktionen und null Rückständen. Live-Prisma-Diff
+leer, Dashboard und Formular HTTP 200; WorkPilot PID `750917`, KlinikNavigator
+unverändert PID `398228`. Keine Prisma-Schemaänderung; `StoredFile`, privater
+S3-Speicher und alle Online-Anfragen-Invarianten blieben erhalten.
