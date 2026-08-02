@@ -3588,3 +3588,15 @@ Der echte Oberflächenklick wechselte eine markierte unproduktive Tätigkeit,
 zeigte sofort und nach Team-Auto-Update den neuen Arbeitsbezug und erzeugte
 genau eine alte Zeitbuchung sowie eine neue aktive Sitzung; Browserfehler und
 QA-Rückstände: null.
+
+Produktiv abgenommen auf Runtime-Commit
+`e778ba291a7d17e260c13efd65d292dd267d6af9`. Das verifizierte Quellen- und
+Datenbankbackup liegt unter
+`/var/backups/workpilot360/20260802T125808Z-before-jarvis-stamp-switch`.
+Produktiv bestanden die isolierte Wechsel-QA mit drei genau einmal
+ausgeführten Fachfällen sowie 110/110 permanente Fragen mit 33 ausschließlich
+vorbereiteten und null ausgeführten Korpusaktionen. Live-Prisma-Diff und
+QA-Rückstände sind leer, Dashboard und öffentliches Formular antworten mit
+HTTP 200. WorkPilot PID `769535`, KlinikNavigator unverändert PID `398228`.
+Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
+Online-Anfragen-Invarianten blieben erhalten.

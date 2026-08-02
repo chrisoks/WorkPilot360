@@ -882,3 +882,12 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   Stundenabrechnung und verpflichtende OK-immocare-Endkontrolle. Der feste
   Korpus bleibt exakt 110 Fragen und enthält eine unblockierte
   Wechselvorschau, ohne sie auszuführen.
+- Produktivabnahme: Runtime
+  `e778ba291a7d17e260c13efd65d292dd267d6af9`, Backup
+  `/var/backups/workpilot360/20260802T125808Z-before-jarvis-stamp-switch`,
+  181/181 Testdateien, 1.791/1.791 Tests, 90-Seiten-Build, echter normaler
+  Klicktest, lokale und produktive isolierte Wechsel-QA, produktiv 110/110
+  Fragen mit 33 ausschließlich vorbereiteten und null ausgeführten Aktionen,
+  null QA-Rückstände und leerer Live-Prisma-Diff. Dashboard und öffentliches
+  Formular HTTP 200; WorkPilot PID `769535`, KlinikNavigator unverändert PID
+  `398228`.
