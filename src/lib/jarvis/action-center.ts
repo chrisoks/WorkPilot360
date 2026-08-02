@@ -22,6 +22,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "automation.manage",
   "planning.prepare",
   "planning.move",
+  "planning.request.manage",
   "time.prepare",
   "time.manage",
   "time.session.manage",
@@ -135,6 +136,12 @@ const planningMovePreviewPayloadSchema = z.object({
 }).strict().refine((payload) => payload.endTime > payload.startTime, {
   message: "Das Terminende muss nach dem Beginn liegen.", path: ["endTime"],
 });
+
+const planningRequestDecisionPreviewPayloadSchema = z.object({
+  entryId: boundedId,
+  decision: z.enum(["approve", "reject"]),
+  reason: optionalText(500),
+}).strict();
 
 const timePreviewPayloadSchema = z
   .object({
@@ -578,6 +585,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "automation.manage": automationManagementPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "planning.move": planningMovePreviewPayloadSchema,
+  "planning.request.manage": planningRequestDecisionPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "time.manage": timeManagementPreviewPayloadSchema,
   "time.session.manage": stampSessionTransitionPreviewPayloadSchema,
@@ -616,6 +624,7 @@ export type JarvisActionPreviewPayloadMap = {
   "automation.manage": z.infer<typeof automationManagementPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "planning.move": z.infer<typeof planningMovePreviewPayloadSchema>;
+  "planning.request.manage": z.infer<typeof planningRequestDecisionPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "time.manage": z.infer<typeof timeManagementPreviewPayloadSchema>;
   "time.session.manage": z.infer<
@@ -994,6 +1003,15 @@ export type JarvisPlanningMoveDraftView = {
   };
   cancellation: { enabled: boolean };
   result?: { entityType: "planning"; entityId: string; label: string };
+};
+
+export type JarvisPlanningRequestDecisionDraftView = Omit<
+  JarvisPlanningMoveDraftView,
+  "actionId" | "title"
+> & {
+  actionId: "planning.request.manage";
+  title: "Terminwunsch kontrolliert entscheiden";
+  decision: "approve" | "reject";
 };
 
 export type JarvisWinterCalculationInputView = {

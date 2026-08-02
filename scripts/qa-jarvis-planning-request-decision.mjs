@@ -1,0 +1,115 @@
+import { createHmac, randomUUID } from "node:crypto";
+import { PrismaClient, Role } from "@prisma/client";
+
+process.loadEnvFile?.(".env");
+const prisma = new PrismaClient();
+const baseUrl = (process.argv.find((item) => item.startsWith("--base-url="))?.split("=")[1] || "http://localhost:3001").replace(/\/$/, "");
+const secret = process.env.WORKPILOT_SESSION_SECRET || process.env.NEXTAUTH_SECRET;
+if (!secret) throw new Error("WORKPILOT_SESSION_SECRET oder NEXTAUTH_SECRET fehlt.");
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const token = (sessionId) => { const value = `v2.${sessionId}.1`; return `${value}.${createHmac("sha256", secret).update(value).digest("base64url")}`; };
+const sessionData = (id, userId, at) => ({ id, userId, tokenVersion: 1, createdAt: at, lastSeenAt: at, lastRotatedAt: at, idleExpiresAt: new Date(at.getTime() + 3_600_000), absoluteExpiresAt: new Date(at.getTime() + 3_600_000) });
+const requestJson = async (path, cookie, init = {}) => {
+  const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { "Content-Type": "application/json", Origin: baseUrl, Cookie: cookie, ...(init.headers || {}) } });
+  return { response, payload: await response.json().catch(() => null) };
+};
+
+async function main() {
+  const actor = await prisma.user.findFirst({
+    where: { role: { in: [Role.GESCHAEFTSFUEHRER, Role.ADMIN, Role.FUEHRUNGSKRAFT] }, isActive: true },
+    orderBy: { createdAt: "asc" }, select: { id: true, organizationId: true, firstName: true, lastName: true, email: true, role: true },
+  });
+  if (!actor) throw new Error("Kein aktiver Planungsverantwortlicher gefunden.");
+  const employee = await prisma.user.findFirst({ where: { organizationId: actor.organizationId, role: Role.MITARBEITER, isActive: true }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  if (!employee) throw new Error("Kein aktiver Mitarbeiter für die Terminwunsch-QA gefunden.");
+  const foreignExisting = await prisma.organization.findFirst({ where: { id: { not: actor.organizationId } }, select: { id: true } });
+  const foreignOrganization = foreignExisting || await prisma.organization.create({ data: { id: randomUUID(), name: "QA Fremdmandant Terminwunsch", slug: `qa-request-${randomUUID().replace(/-/g, "").slice(0, 12)}` }, select: { id: true } });
+  const ownsForeignOrganization = !foreignExisting;
+  const now = new Date(); const suffix = Date.now().toString().slice(-9);
+  const ids = {
+    project: randomUUID(), foreignProject: randomUUID(), session: randomUUID(), employeeSession: randomUUID(),
+    approve: randomUUID(), reject: randomUUID(), normal: randomUUID(), bypass: randomUUID(), foreign: randomUUID(),
+  };
+  const entryIds = [ids.approve, ids.reject, ids.normal, ids.bypass, ids.foreign];
+  const sessionIds = [ids.session, ids.employeeSession];
+  const projectIds = [ids.project, ids.foreignProject];
+  const draftIds = new Set();
+  let result;
+  const actorName = [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email;
+
+  try {
+    await prisma.authSession.createMany({ data: [sessionData(ids.session, actor.id, now), sessionData(ids.employeeSession, employee.id, now)] });
+    await prisma.workPilotProject.create({ data: { id: ids.project, organizationId: actor.organizationId, projectNumber: `QPR-${suffix}`, title: "QA Terminwunsch", customer: "QA intern", status: "Umsetzung", projectType: "Hausmeisterservice", projectKind: "Dauerprojekt", recurringBillingMode: "hourly", trade: "Hausmeisterservice", branch: "OK immocare", responsibleName: actorName, source: "qa-jarvis-planning-request-decision" } });
+    await prisma.workPilotProject.create({ data: { id: ids.foreignProject, organizationId: foreignOrganization.id, projectNumber: `QPF-${suffix}`, title: "QA fremder Terminwunsch", customer: "QA fremd", status: "Umsetzung", projectType: "Hausmeisterservice", projectKind: "Dauerprojekt", recurringBillingMode: "hourly", trade: "Hausmeisterservice", source: "qa-jarvis-planning-request-decision" } });
+    const baseEntry = { organizationId: actor.organizationId, source: "manual", board: "OK immocare", groupName: "QA", userId: employee.id, employeeName: "QA Mitarbeitend", date: "2026-08-12", startTime: "08:00", endTime: "09:00", durationMinutes: 60, title: "QA Terminwunsch", description: "QA Entscheidung", projectId: ids.project, projectLabel: `QPR-${suffix} | QA Terminwunsch`, planningTrade: "Hausmeisterservice", approvalStatus: "requested", requestedByUserId: employee.id, requestedByName: "QA Mitarbeitend" };
+    await prisma.planningEntry.createMany({ data: [
+      { ...baseEntry, id: ids.approve, title: "QA Freigabe" },
+      { ...baseEntry, id: ids.reject, title: "QA Ablehnung", startTime: "09:00", endTime: "10:00" },
+      { ...baseEntry, id: ids.normal, title: "QA Normalroute", startTime: "10:00", endTime: "11:00" },
+      { ...baseEntry, id: ids.bypass, title: "QA Altroute", startTime: "11:00", endTime: "12:00" },
+      { ...baseEntry, id: ids.foreign, organizationId: foreignOrganization.id, projectId: ids.foreignProject, projectLabel: `QPF-${suffix} | QA fremd`, userId: null, requestedByUserId: null, title: "QA Fremdmandant" },
+    ] });
+
+    const managerCookie = `workpilot_session=${token(ids.session)}`;
+    const employeeCookie = `workpilot_session=${token(ids.employeeSession)}`;
+    const employeeAttempt = await requestJson("/api/jarvis/chat", employeeCookie, { method: "POST", body: JSON.stringify({ actorId: employee.id, message: `Terminwunsch-ID ${ids.approve} freigeben` }) });
+    assert(employeeAttempt.response.status === 200 && employeeAttempt.payload?.type === "refusal", "Mitarbeiter-Rollengrenze wurde nicht eingehalten.");
+    const foreignAttempt = await requestJson("/api/jarvis/chat", managerCookie, { method: "POST", body: JSON.stringify({ actorId: actor.id, message: `Terminwunsch-ID ${ids.foreign} freigeben` }) });
+    assert(foreignAttempt.payload?.type === "refusal", "Mandantengrenze wurde nicht eingehalten.");
+
+    const prepared = await requestJson("/api/jarvis/chat", managerCookie, { method: "POST", body: JSON.stringify({ actorId: actor.id, message: `Terminwunsch-ID ${ids.approve} freigeben` }) });
+    assert(prepared.response.ok && prepared.payload?.actionDraft?.actionId === "planning.request.manage", `Freigabeentwurf wurde nicht erzeugt: ${JSON.stringify(prepared.payload)}`);
+    const approveDraft = prepared.payload.actionDraft; draftIds.add(approveDraft.previewId);
+    const wrong = await requestJson(`/api/jarvis/action-drafts/${approveDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: approveDraft.revision, confirmationText: "terminwunsch freigeben" }) });
+    assert(wrong.response.status === 400, "Ungenaue Freigabephrase wurde nicht gesperrt.");
+    const confirmed = await requestJson(`/api/jarvis/action-drafts/${approveDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: approveDraft.revision, confirmationText: approveDraft.confirmation.requiredText }) });
+    assert(confirmed.response.ok && confirmed.payload?.actionDraft?.state === "executed", "Terminwunsch wurde nicht freigegeben.");
+    const replay = await requestJson(`/api/jarvis/action-drafts/${approveDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: approveDraft.revision, confirmationText: approveDraft.confirmation.requiredText }) });
+    assert(replay.response.ok && replay.payload?.actionDraft?.state === "executed", "Exactly-once-Replay der Freigabe fehlgeschlagen.");
+
+    const rejectedPrepared = await requestJson("/api/jarvis/chat", managerCookie, { method: "POST", body: JSON.stringify({ actorId: actor.id, message: `Terminwunsch-ID ${ids.reject} ablehnen. Grund: Mitarbeiter bereits anderweitig eingeplant` }) });
+    assert(rejectedPrepared.response.ok && rejectedPrepared.payload?.actionDraft?.decision === "reject", "Ablehnungsentwurf wurde nicht erzeugt.");
+    const rejectDraft = rejectedPrepared.payload.actionDraft; draftIds.add(rejectDraft.previewId);
+    const rejected = await requestJson(`/api/jarvis/action-drafts/${rejectDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: rejectDraft.revision, confirmationText: rejectDraft.confirmation.requiredText }) });
+    assert(rejected.response.ok && rejected.payload?.actionDraft?.state === "executed", "Terminwunsch wurde nicht abgelehnt.");
+
+    const bypass = await requestJson("/api/planning-entries", managerCookie, { method: "POST", body: JSON.stringify({ actorUserId: actor.id, id: ids.bypass, approvalStatus: "confirmed" }) });
+    assert(bypass.response.status === 409, "Der alte POST-Weg konnte einen Terminwunsch bestätigen.");
+    const preflight = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: actor.id, entryId: ids.normal, decision: "approve" }) });
+    assert(preflight.response.ok && preflight.payload?.evaluation?.fingerprint, "Normalrouten-Prüfung fehlgeschlagen.");
+    const normalRequestId = randomUUID();
+    const normal = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-execute", requestId: normalRequestId, expectedFingerprint: preflight.payload.evaluation.fingerprint, actorUserId: actor.id, entryId: ids.normal, decision: "approve" }) });
+    assert(normal.response.ok && normal.payload?.result?.approvalStatus === "confirmed", "Gemeinsame Normalroute hat nicht freigegeben.");
+
+    const rows = await prisma.planningEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, approvalStatus: true, deletedAt: true } });
+    assert(rows.find((row) => row.id === ids.approve)?.approvalStatus === "confirmed", "Freigabestatus fehlt.");
+    assert(Boolean(rows.find((row) => row.id === ids.reject)?.deletedAt), "Ablehnung wurde nicht logisch markiert.");
+    assert(rows.find((row) => row.id === ids.bypass)?.approvalStatus === "requested", "Altrouten-Sperre hat den Wunsch verändert.");
+    const histories = await prisma.planningEntryHistory.findMany({ where: { planningEntryId: { in: [ids.approve, ids.reject, ids.normal] } } });
+    assert(histories.filter((item) => item.planningEntryId === ids.approve && item.eventType === "approved").length === 1, "Freigabehistorie ist nicht exactly-once.");
+    assert(histories.filter((item) => item.planningEntryId === ids.reject && item.eventType === "rejected").length === 1, "Ablehnungshistorie ist nicht exactly-once.");
+    const notificationCount = await prisma.notification.count({ where: { linkTargetId: { in: [ids.approve, ids.reject, ids.normal] }, subject: { in: ["Terminwunsch bestätigt", "Terminwunsch abgelehnt"] } } });
+    assert(notificationCount >= 3, "Mitarbeiterhinweise fehlen.");
+    result = { ok: true, baseUrl, actorRole: actor.role, roleBoundary: "verified", tenantBoundary: "verified", exactPhrase: true, exactlyOnce: true, normalApiSharedService: true, oldRouteBypassBlocked: true, employeeNotifications: notificationCount, executions: histories.length };
+  } finally {
+    await prisma.notification.deleteMany({ where: { linkTargetId: { in: entryIds } } });
+    await prisma.projectLogbookEntry.deleteMany({ where: { projectId: { in: projectIds }, source: "planning-request-decision" } });
+    await prisma.jarvisActionDraftAuditEvent.deleteMany({ where: { draftId: { in: Array.from(draftIds) } } });
+    await prisma.jarvisActionDraft.deleteMany({ where: { id: { in: Array.from(draftIds) } } });
+    await prisma.planningEntryHistory.deleteMany({ where: { planningEntryId: { in: entryIds } } });
+    await prisma.planningEntry.deleteMany({ where: { id: { in: entryIds } } });
+    await prisma.authSession.deleteMany({ where: { id: { in: sessionIds } } });
+    await prisma.workPilotProject.deleteMany({ where: { id: { in: projectIds } } });
+    if (ownsForeignOrganization) await prisma.organization.deleteMany({ where: { id: foreignOrganization.id } });
+  }
+  const residue = {
+    drafts: await prisma.jarvisActionDraft.count({ where: { id: { in: Array.from(draftIds) } } }),
+    entries: await prisma.planningEntry.count({ where: { id: { in: entryIds } } }),
+    histories: await prisma.planningEntryHistory.count({ where: { planningEntryId: { in: entryIds } } }),
+    projects: await prisma.workPilotProject.count({ where: { id: { in: projectIds } } }),
+    sessions: await prisma.authSession.count({ where: { id: { in: sessionIds } } }),
+  };
+  console.log(JSON.stringify({ ...result, residue }, null, 2));
+}
+
+main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

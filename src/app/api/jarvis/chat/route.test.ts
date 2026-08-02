@@ -60,6 +60,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisTaskLifecycleDraft: vi.fn(),
   createPersistedJarvisTimeManagementDraft: vi.fn(),
   createPersistedJarvisPlanningMoveDraft: vi.fn(),
+  createPersistedJarvisPlanningRequestDecisionDraft: vi.fn(),
   createPersistedJarvisProjectMasterDataDraft: vi.fn(),
   createPersistedJarvisProjectStatusDraft: vi.fn(),
   createPersistedJarvisProjectLifecycleDraft: vi.fn(),
@@ -161,6 +162,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisTimeManagementDraft,
   createPersistedJarvisPlanningMoveDraft:
     mocks.createPersistedJarvisPlanningMoveDraft,
+  createPersistedJarvisPlanningRequestDecisionDraft:
+    mocks.createPersistedJarvisPlanningRequestDecisionDraft,
   createPersistedJarvisProjectMasterDataDraft:
     mocks.createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft:
@@ -5067,5 +5070,31 @@ describe("POST /api/jarvis/chat", () => {
     }));
     expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.planning-move", actionDraft: { actionId: "planning.move", entryId: "plan-entry-123456" } });
     expect(mocks.createPersistedJarvisPlanningMoveDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "planning.move", payload: expect.objectContaining({ date: "2026-08-04", startTime: "09:00", endTime: "11:00" }) }) }));
+  });
+
+  it("asks for the full appointment-request id before approval", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Gib den Terminwunsch frei" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "clarification", topicId: "action.planning-request-decision.entry-required" });
+  });
+
+  it("prepares a reason-bound appointment-request rejection without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisPlanningRequestDecisionDraft.mockImplementationOnce(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "planning.request.manage", title: "Terminwunsch kontrolliert entscheiden", decision: "reject", badge: "Bereit", state: "awaiting_confirmation", revision: 1,
+      expiresAt: "2026-08-02T18:00:00.000Z", entryId: preview.payload.entryId, projectId: "project-1", fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: `TERMINWUNSCH ABLEHNEN ${preview.payload.entryId}` }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Terminwunsch-ID request-123456 ablehnen. Grund: Mitarbeiter bereits ausgelastet" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.planning-request-decision", actionDraft: { actionId: "planning.request.manage", decision: "reject" } });
+    expect(mocks.createPersistedJarvisPlanningRequestDecisionDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "planning.request.manage", payload: { entryId: "request-123456", decision: "reject", reason: "Mitarbeiter bereits ausgelastet" } }) }));
   });
 });

@@ -103,6 +103,7 @@ import {
   createPersistedJarvisTaskLifecycleDraft,
   createPersistedJarvisTimeManagementDraft,
   createPersistedJarvisPlanningMoveDraft,
+  createPersistedJarvisPlanningRequestDecisionDraft,
   createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft,
@@ -178,6 +179,10 @@ import {
   extractPlanningMoveRequest,
   looksLikePlanningMoveRequest,
 } from "@/lib/jarvis/planning-move-intake";
+import {
+  extractPlanningRequestDecision,
+  looksLikePlanningRequestDecision,
+} from "@/lib/jarvis/planning-request-decision-intake";
 import {
   extractProjectMasterDataChangeRequest,
   looksLikeProjectMasterDataChangeRequest,
@@ -1071,6 +1076,35 @@ async function buildJarvisPlanningMoveDraft(input: {
   } catch (error) {
     const message = error instanceof JarvisActionDraftError ? error.message : "Die Terminverschiebung konnte nicht sicher vorbereitet werden.";
     return { type: message.includes("Überplanung:") ? "clarification" as const : "refusal" as const, topicId: "action.planning-move.unavailable", message: `${message} Es wurde nichts verändert.` };
+  }
+}
+
+async function buildJarvisPlanningRequestDecisionDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.planning-request-decision.session-required", message: "Für eine Terminwunschentscheidung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert." };
+  const details = extractPlanningRequestDecision(input.question);
+  if (!details.entryId) return { type: "clarification" as const, topicId: "action.planning-request-decision.entry-required", message: "Welcher Terminwunsch soll entschieden werden? Nenne bitte die vollständige Terminwunsch-ID aus der Terminübersicht. Es wurde noch nichts verändert." };
+  if (!details.decision) return { type: "clarification" as const, topicId: "action.planning-request-decision.action-required", message: "Soll der Terminwunsch freigegeben oder abgelehnt werden? Es wurde noch nichts verändert." };
+  if (details.decision === "reject" && details.reason.length < 3) return { type: "clarification" as const, topicId: "action.planning-request-decision.reason-required", message: "Für die Ablehnung brauche ich einen nachvollziehbaren Grund mit mindestens drei Zeichen, zum Beispiel „Grund: Mitarbeiter ist bereits ausgelastet“. Es wurde noch nichts verändert." };
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "planning.request.manage",
+    payload: { entryId: details.entryId, decision: details.decision, ...(details.reason ? { reason: details.reason } : {}) },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.planning-request-decision.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  try {
+    const actionDraft = await createPersistedJarvisPlanningRequestDecisionDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return { type: "answer" as const, topicId: "action.planning-request-decision", message: `Ich habe die ${details.decision === "approve" ? "Freigabe" : "Ablehnung"} des Terminwunsches serverseitig geprüft. Kontrolliere Wunsch, Projekt, Mitarbeitenden, Antragsteller, Zeitraum${details.decision === "reject" ? " und Ablehnungsgrund" : ", Abwesenheit und Überschneidungen"}. Erst die exakte Bestätigungsphrase entscheidet diesen einzelnen Wunsch genau einmal.`, actionDraft };
+  } catch (error) {
+    const message = error instanceof JarvisActionDraftError ? error.message : "Die Terminwunschentscheidung konnte nicht sicher vorbereitet werden.";
+    return { type: "refusal" as const, topicId: "action.planning-request-decision.unavailable", message: `${message} Es wurde nichts verändert.` };
   }
 }
 
@@ -3708,6 +3742,17 @@ export async function POST(req: Request) {
   if (looksLikeTimeEntryManagementRequest(message)) {
     return respond(
       await buildJarvisTimeManagementDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "management"
+    );
+  }
+  if (looksLikePlanningRequestDecision(message)) {
+    return respond(
+      await buildJarvisPlanningRequestDecisionDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,

@@ -52,6 +52,7 @@ import {
   type JarvisTimeActionDraftView,
   type JarvisTimeManagementDraftView,
   type JarvisPlanningMoveDraftView,
+  type JarvisPlanningRequestDecisionDraftView,
   type JarvisVehicleTripCalculationDraftView,
   type JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
@@ -116,6 +117,14 @@ import {
   matchesPlanningEntryMoveConfirmation,
   PlanningEntryMoveError,
 } from "@/lib/planning/planning-entry-move-service";
+import {
+  deliverPlanningRequestDecisionNotifications,
+  evaluatePlanningRequestDecision,
+  executePlanningRequestDecisionInTransaction,
+  getPlanningRequestDecisionConfirmationText,
+  matchesPlanningRequestDecisionConfirmation,
+  PlanningRequestDecisionError,
+} from "@/lib/planning/planning-request-decision-service";
 import {
   createJarvisConfirmedTask,
 } from "@/lib/services/task-service";
@@ -1184,6 +1193,24 @@ const planningMoveContextSchema = z.object({
   to: z.object({ date: z.string(), startTime: z.string(), endTime: z.string(), durationMinutes: z.number().int() }).strict(),
   reason: z.string(), warnings: z.array(z.object({ code: z.string(), message: z.string() }).strict()),
   overbooking: z.object({ required: z.boolean(), kind: z.enum(["offer", "monthly"]).nullable(), label: z.string(), availableMinutes: z.number().int(), requestedMinutes: z.number().int(), exceededMinutes: z.number().int(), fingerprint: z.string().nullable() }).strict(),
+  fingerprint: z.string().length(64),
+}).strict();
+
+const planningRequestDecisionPayloadSchema = z.object({
+  entryId: z.string().trim().min(1).max(120),
+  decision: z.enum(["approve", "reject"]),
+  reason: z.string().trim().max(500).optional(),
+}).strict();
+
+const planningRequestDecisionContextSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  reason: z.string(),
+  entry: z.object({
+    id: z.string(), title: z.string(), projectId: z.string(), projectLabel: z.string(),
+    employee: z.string(), requester: z.string(), date: z.string(), startTime: z.string(),
+    endTime: z.string(), durationMinutes: z.number().int(), recurrenceRule: z.string(),
+  }).strict(),
+  warnings: z.array(z.object({ code: z.string(), message: z.string() }).strict()),
   fingerprint: z.string().length(64),
 }).strict();
 
@@ -5635,6 +5662,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "planning.move") {
     return getJarvisPlanningMoveDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "planning.request.manage") {
+    return getJarvisPlanningRequestDecisionDraft(previewId, binding, now);
   }
   if (draft?.actionId === "time.prepare") {
     return getJarvisTimeDraft(previewId, binding, now);
@@ -11658,6 +11688,170 @@ export async function confirmJarvisPlanningMoveDraft(previewId: string, binding:
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof PlanningEntryMoveError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, error.status === 403 ? 403 : error.status === 404 ? 404 : error.status === 400 ? 400 : 409);
     throw new JarvisActionDraftError("execution_failed", "Der Termin wurde nicht verschoben und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function validatePlanningRequestDecisionBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) throw new JarvisActionDraftError("scope_mismatch", "Diese Terminwunschentscheidung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) {
+    throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Terminwunschprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  }
+  if (!integrityMatches(draft)) throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Terminwunschentscheidung ist ungültig.", 409);
+  const payload = planningRequestDecisionPayloadSchema.safeParse(draft.payload);
+  const context = planningRequestDecisionContextSchema.safeParse(draft.context);
+  if (draft.actionId !== "planning.request.manage" || !payload.success || !context.success || hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash) {
+    throw new JarvisActionDraftError("integrity_failed", "Terminwunschentscheidung oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundPlanningRequestDecisionDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Terminwunschentscheidung wurde nicht gefunden.", 404);
+  validatePlanningRequestDecisionBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validatePlanningRequestDecisionBinding(current, binding) };
+}
+
+function toJarvisPlanningRequestDecisionDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding,
+): JarvisPlanningRequestDecisionDraftView {
+  const { payload, context } = validatePlanningRequestDecisionBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayMovePlanningEntry(binding);
+  const ready = state === "awaiting_confirmation" && permitted;
+  const reason: JarvisPlanningRequestDecisionDraftView["confirmation"]["reason"] =
+    state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" :
+      state === "executing" ? "executing" : !permitted ? "not_permitted" : "ready";
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "planning.request.manage",
+    title: "Terminwunsch kontrolliert entscheiden",
+    decision: payload.decision,
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    entryId: context.entry.id,
+    projectId: context.entry.projectId,
+    fields: [
+      { label: "Entscheidung", value: payload.decision === "approve" ? "Terminwunsch freigeben" : "Terminwunsch ablehnen" },
+      { label: "Terminwunsch-ID", value: context.entry.id },
+      { label: "Titel", value: context.entry.title },
+      { label: "Projekt", value: context.entry.projectLabel || "Ohne Projekt" },
+      { label: "Mitarbeitend", value: context.entry.employee },
+      { label: "Beantragt von", value: context.entry.requester },
+      { label: "Zeitraum", value: `${context.entry.date} · ${context.entry.startTime}-${context.entry.endTime}` },
+      ...(payload.decision === "reject" ? [{ label: "Ablehnungsgrund", value: context.reason }] : []),
+    ],
+    checks: [
+      { key: "scope", label: "Organisation, Sitzung und Rolle", status: permitted ? "ok" : "blocked", detail: permitted ? "Die Entscheidung ist an die aktuelle Planungsverantwortung gebunden." : "Diese Rollenkombination darf Terminwünsche nicht entscheiden." },
+      { key: "freshness", label: "Aktueller Terminwunschstand", status: "ok", detail: payload.decision === "approve" ? "Offener Wunsch, Person, Abwesenheit, Überschneidungen und Projektstand sind gebunden." : "Offener Wunsch, Person und Projektstand sind gebunden." },
+    ],
+    warnings: context.warnings.map((warning) => warning.message),
+    blockingIssues: permitted ? [] : ["Diese Rollenkombination darf Terminwünsche nicht entscheiden."],
+    confirmation: { enabled: ready, reason, requiredText: getPlanningRequestDecisionConfirmationText(context.entry.id, payload.decision) },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "planning" as const, entityId: draft.resultEntityId, label: "Planung öffnen" } } : {}),
+  };
+}
+
+export async function createPersistedJarvisPlanningRequestDecisionDraft(input: {
+  preview: JarvisActionPreview<"planning.request.manage">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Terminwunschentscheidung ist eine aktuelle Sitzung erforderlich.", 401);
+  if (!mayMovePlanningEntry(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Terminwünsche nicht entscheiden.", 403);
+  const actorId = getActorIds(input.profile).effectiveActorId;
+  const actor = await prisma.user.findFirst({ where: { id: actorId, organizationId: input.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, organizationId: true } });
+  if (!actor) throw new JarvisActionDraftError("role_changed", "Der wirksame Akteur ist nicht mehr aktiv.", 409);
+  const payload = planningRequestDecisionPayloadSchema.parse(input.preview.payload);
+  let evaluation;
+  try {
+    evaluation = await evaluatePlanningRequestDecision({ organizationId: input.organizationId, actor, entryId: payload.entryId, decision: payload.decision, reason: payload.reason });
+  } catch (error) {
+    if (error instanceof PlanningRequestDecisionError) throw new JarvisActionDraftError("invalid_input", error.message, error.status === 403 ? 403 : error.status === 404 ? 404 : error.status === 400 ? 400 : 409);
+    throw error;
+  }
+  const context = planningRequestDecisionContextSchema.parse(evaluation);
+  const now = input.now ?? new Date();
+  const actorIds = getActorIds(input.profile);
+  const draftData: DraftIntegrityData = { id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId, sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role, effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role, impersonating: input.profile.isImpersonating, actionId: "planning.request.manage", state: "awaiting_confirmation", revision: 1, payloadHash: hashJson(payload), contextHash: hashJson(context), expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null, executedAt: null, resultEntityType: null, resultEntityId: null, lastErrorCode: null };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } });
+    await appendAuditEvent(tx, { draft, eventType: "draft_created_ready" });
+    return draft;
+  });
+  return toJarvisPlanningRequestDecisionDraftView(created, input);
+}
+
+export async function getJarvisPlanningRequestDecisionDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const { draft } = await loadBoundPlanningRequestDecisionDraft(previewId, binding, now);
+  return toJarvisPlanningRequestDecisionDraftView(draft, binding);
+}
+
+export async function cancelJarvisPlanningRequestDecisionDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundPlanningRequestDecisionDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisPlanningRequestDecisionDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Terminwunschentscheidung kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Terminwunschentscheidung wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({ where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag }, data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) } });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Terminwunschentscheidung wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" });
+    return current;
+  });
+  return toJarvisPlanningRequestDecisionDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisPlanningRequestDecisionDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundPlanningRequestDecisionDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisPlanningRequestDecisionDraftView(loaded.draft, binding);
+  const requiredText = getPlanningRequestDecisionConfirmationText(loaded.context.entry.id, loaded.payload.decision);
+  if (!matchesPlanningRequestDecisionConfirmation(loaded.context.entry.id, loaded.payload.decision, confirmationText)) throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Terminwunschentscheidung darf bestätigt werden.", 409);
+  if (!mayMovePlanningEntry(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Terminwünsche nicht entscheiden.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
+      if (!current) throw new JarvisActionDraftError("not_found", "Die Terminwunschentscheidung wurde nicht gefunden.", 404);
+      const parsed = validatePlanningRequestDecisionBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Terminwunschentscheidung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, organizationId: true } });
+      if (!actor || !canManagePlanningEntries(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Planungsberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
+      const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
+      if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Der Terminwunsch wird bereits entschieden.", 409);
+      const result = await executePlanningRequestDecisionInTransaction({ tx, organizationId: binding.organizationId, actor, entryId: parsed.payload.entryId, decision: parsed.payload.decision, reason: parsed.payload.reason, expectedFingerprint: parsed.context.fingerprint, requestId: current.id });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "planning", resultEntityId: result.entryId };
+      const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "planning", resultEntityId: result.entryId, integrityTag: createIntegrityTag(executedData) } });
+      await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: result.entryId, entityType: "planning" } });
+      return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (executed.resultEntityId) await deliverPlanningRequestDecisionNotifications({ organizationId: binding.organizationId, requestId: executed.id, entryId: executed.resultEntityId, actorUserId: executed.effectiveActorId }).catch((error) => console.error("Planning request decision notification delivery failed", error));
+    return toJarvisPlanningRequestDecisionDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundPlanningRequestDecisionDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") return toJarvisPlanningRequestDecisionDraftView(latest.draft, binding);
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof PlanningRequestDecisionError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, error.status === 403 ? 403 : error.status === 404 ? 404 : error.status === 400 ? 400 : 409);
+    throw new JarvisActionDraftError("execution_failed", "Der Terminwunsch wurde nicht entschieden und die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

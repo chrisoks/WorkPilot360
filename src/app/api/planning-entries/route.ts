@@ -13,6 +13,12 @@ import {
   executePlanningEntryMove,
   isPlanningEntryMoveError,
 } from "@/lib/planning/planning-entry-move-service";
+import {
+  deliverPlanningRequestDecisionNotifications,
+  evaluatePlanningRequestDecision,
+  executePlanningRequestDecision,
+  isPlanningRequestDecisionError,
+} from "@/lib/planning/planning-request-decision-service";
 
 type DemoUser = {
   id: string;
@@ -949,6 +955,13 @@ export async function POST(req: Request) {
   `;
   const existingEntry = existingRows[0] ?? null;
 
+  if (existingEntry?.approvalStatus === "requested" && approvalStatus === "confirmed") {
+    return NextResponse.json(
+      { error: "Terminwünsche dürfen nur über die kontrollierte Freigabe bestätigt werden." },
+      { status: 409 }
+    );
+  }
+
   if (existingEntry && didPlanningTimeChange(existingEntry, {
     ...existingEntry,
     date,
@@ -1360,12 +1373,49 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   const body = await req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return NextResponse.json({ error: "Die Verschiebungsdaten fehlen." }, { status: 400 });
+  if (!body) return NextResponse.json({ error: "Die Planungsdaten fehlen." }, { status: 400 });
   const { organization, users } = await getDemoContext();
   await ensurePlanningEntryTable();
   const actorResult = await getSessionBoundActor(req, users, body.actorUserId);
   if (!actorResult.ok) return sessionBoundActorResponse(actorResult);
   const actor = actorResult.actor;
+  const command = cleanString(body.command);
+  if (command === "decision-preflight" || command === "decision-execute") {
+    const decision = cleanString(body.decision) as "approve" | "reject";
+    const decisionInput = {
+      organizationId: organization.id,
+      actor,
+      entryId: cleanString(body.entryId),
+      decision,
+      reason: cleanString(body.reason),
+    };
+    try {
+      if (command === "decision-preflight") {
+        return NextResponse.json({ evaluation: await evaluatePlanningRequestDecision(decisionInput) });
+      }
+      const requestId = cleanString(body.requestId);
+      const result = await executePlanningRequestDecision({
+        ...decisionInput,
+        requestId,
+        expectedFingerprint: cleanString(body.expectedFingerprint),
+      });
+      if (!result.replayed) {
+        await deliverPlanningRequestDecisionNotifications({
+          organizationId: organization.id,
+          requestId,
+          entryId: result.entryId,
+          actorUserId: actor.id,
+        }).catch((error) => console.error("Planning request decision notification delivery failed", error));
+      }
+      return NextResponse.json({ result });
+    } catch (error) {
+      if (isPlanningRequestDecisionError(error)) {
+        return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status });
+      }
+      console.error("Planning request decision failed", error);
+      return NextResponse.json({ error: "Der Terminwunsch konnte nicht sicher entschieden werden." }, { status: 500 });
+    }
+  }
   const common = {
     organizationId: organization.id,
     actor,
@@ -1377,10 +1427,10 @@ export async function PATCH(req: Request) {
     requireManagement: false,
   };
   try {
-    if (cleanString(body.command) === "preflight") {
+    if (command === "preflight") {
       return NextResponse.json({ evaluation: await evaluatePlanningEntryMove(common) });
     }
-    if (cleanString(body.command) !== "execute") {
+    if (command !== "execute") {
       return NextResponse.json({ error: "Bitte die Terminverschiebung zuerst prüfen." }, { status: 400 });
     }
     const requestId = cleanString(body.requestId);

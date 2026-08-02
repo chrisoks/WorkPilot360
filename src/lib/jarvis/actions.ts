@@ -290,6 +290,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: canManagePlanningEntries,
   },
   {
+    id: "planning.request.manage",
+    title: "Terminwunsch kontrolliert freigeben oder ablehnen",
+    category: "planning",
+    risk: "critical",
+    confirmation: "critical",
+    dataClasses: ["internal"],
+    implementation: "available",
+    canUse: canManagePlanningEntries,
+  },
+  {
     id: "project-logbook.prepare",
     title: "Projektlogbuch-Eintrag vorbereiten",
     category: "project",

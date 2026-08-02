@@ -79,6 +79,7 @@ import type {
   JarvisTaskLifecycleDraftView,
   JarvisTimeManagementDraftView,
   JarvisPlanningMoveDraftView,
+  JarvisPlanningRequestDecisionDraftView,
   JarvisProjectMasterDataDraftView,
   JarvisContactManagementDraftView,
   JarvisContactDeletionDraftView,
@@ -777,6 +778,7 @@ type ManagementAiChatMessage = {
     | JarvisTaskLifecycleDraftView
     | JarvisTimeManagementDraftView
     | JarvisPlanningMoveDraftView
+    | JarvisPlanningRequestDecisionDraftView
     | JarvisProjectMasterDataDraftView
     | JarvisContactManagementDraftView
     | JarvisContactDeletionDraftView
@@ -2372,6 +2374,7 @@ function parseJarvisActionDraft(
   | JarvisTaskLifecycleDraftView
   | JarvisTimeManagementDraftView
   | JarvisPlanningMoveDraftView
+  | JarvisPlanningRequestDecisionDraftView
   | JarvisProjectMasterDataDraftView
   | JarvisContactManagementDraftView
   | JarvisContactDeletionDraftView
@@ -2408,6 +2411,7 @@ function parseJarvisActionDraft(
     parseJarvisTaskLifecycleDraft(value) ??
     parseJarvisTimeManagementDraft(value) ??
     parseJarvisPlanningMoveDraft(value) ??
+    parseJarvisPlanningRequestDecisionDraft(value) ??
     parseJarvisProjectMasterDataDraft(value) ??
     parseJarvisContactManagementDraft(value) ??
     parseJarvisContactDeletionDraft(value) ??
@@ -2850,6 +2854,29 @@ function parseJarvisPlanningMoveDraft(
   const cancellation = candidate.cancellation as Record<string, unknown>;
   if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
   return candidate as unknown as JarvisPlanningMoveDraftView;
+}
+
+function parseJarvisPlanningRequestDecisionDraft(
+  value: unknown
+): JarvisPlanningRequestDecisionDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 || candidate.actionId !== "planning.request.manage" ||
+    (candidate.decision !== "approve" && candidate.decision !== "reject") ||
+    typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
+    typeof candidate.entryId !== "string" || typeof candidate.projectId !== "string" ||
+    !Array.isArray(candidate.fields) || !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) || !Array.isArray(candidate.blockingIssues) ||
+    !candidate.confirmation || typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation || typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
+  return candidate as unknown as JarvisPlanningRequestDecisionDraftView;
 }
 
 function parseJarvisProjectStatusDraft(
@@ -4069,11 +4096,11 @@ function JarvisOfferFinalizationCard({
   onChange,
   onOpenOffer,
 }: {
-  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisTimeManagementDraftView | JarvisPlanningMoveDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView;
+  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisTimeManagementDraftView | JarvisPlanningMoveDraftView | JarvisPlanningRequestDecisionDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView;
   actorId: string;
   disabled: boolean;
-  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisTimeManagementDraftView | JarvisPlanningMoveDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView, message?: string) => void;
-  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisTimeManagementDraftView | JarvisPlanningMoveDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView) => void;
+  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisTimeManagementDraftView | JarvisPlanningMoveDraftView | JarvisPlanningRequestDecisionDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisTimeManagementDraftView | JarvisPlanningMoveDraftView | JarvisPlanningRequestDecisionDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView) => void;
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -4109,6 +4136,8 @@ function JarvisOfferFinalizationCard({
           ? parseJarvisTimeManagementDraft(data?.actionDraft)
         : draft.actionId === "planning.move"
           ? parseJarvisPlanningMoveDraft(data?.actionDraft)
+        : draft.actionId === "planning.request.manage"
+          ? parseJarvisPlanningRequestDecisionDraft(data?.actionDraft)
         : draft.actionId === "project.manage"
           ? parseJarvisProjectMasterDataDraft(data?.actionDraft)
         : draft.actionId === "contact.manage"
@@ -4155,6 +4184,10 @@ function JarvisOfferFinalizationCard({
           setError(data?.error ?? "Der Termin konnte nicht sicher verschoben werden.");
           return;
         }
+        if (draft.actionId === "planning.request.manage") {
+          setError(data?.error ?? "Der Terminwunsch konnte nicht sicher entschieden werden.");
+          return;
+        }
         setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.manage" ? "Die Projektdaten konnten nicht sicher geändert werden." : draft.actionId === "contact.manage" ? "Der Kontakt konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "contact.delete" ? "Der Kontakt konnte nicht sicher endgültig gelöscht werden." : draft.actionId === "catalog.manage" ? "Die Katalogposition konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "personnel.manage" ? "Die Personalstammdaten konnten nicht sicher geändert werden." : draft.actionId === "payroll.manage" ? "Die Lohn- und Mitarbeiterkosten konnten nicht sicher geändert werden." : draft.actionId === "bulk.update" ? "Die Kontakt-Massenänderung konnte nicht sicher ausgeführt werden." : draft.actionId === "automation.manage" ? "Die Projektstatus-Automation konnte nicht sicher geändert werden." : draft.actionId === "project.archive" ? "Das Projekt konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
         return;
       }
@@ -4174,6 +4207,10 @@ function JarvisOfferFinalizationCard({
       }
       if (draft.actionId === "planning.move") {
         setError("Das Action Center ist gerade nicht erreichbar. Der Termin blieb unverändert.");
+        return;
+      }
+      if (draft.actionId === "planning.request.manage") {
+        setError("Das Action Center ist gerade nicht erreichbar. Der Terminwunsch blieb unverändert.");
         return;
       }
       setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Projektdaten blieben unverändert." : draft.actionId === "contact.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde kein Kontakt angelegt oder geändert." : draft.actionId === "contact.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Kontakt blieb erhalten." : draft.actionId === "catalog.manage" ? "Das Action Center ist gerade nicht erreichbar. Der Katalog blieb unverändert." : draft.actionId === "personnel.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Personalstammdaten blieben unverändert." : draft.actionId === "payroll.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Lohn- und Mitarbeiterkosten blieben unverändert." : draft.actionId === "bulk.update" ? "Das Action Center ist gerade nicht erreichbar. Alle Kontakte blieben unverändert." : draft.actionId === "automation.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Automation blieb unverändert." : draft.actionId === "project.archive" ? "Das Action Center ist gerade nicht erreichbar. Das Projekt blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
@@ -4462,6 +4499,36 @@ function JarvisOfferFinalizationCard({
         <div className={styles.jarvisActionDraftActions}>
           {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>Online-Anfrage jetzt umwandeln</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Umwandlung abbrechen</button> : null}
+          {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
+        </div>
+        <footer>{footer}</footer>
+      </section>
+    );
+  }
+
+  if (draft.actionId === "planning.request.manage") {
+    const approving = draft.decision === "approve";
+    const footer = draft.state === "executed"
+      ? approving
+        ? "Der einzelne Terminwunsch wurde genau einmal freigegeben. Weitere Serieneinträge und alle übrigen Planungsdaten blieben unverändert."
+        : "Der einzelne Terminwunsch wurde genau einmal mit dem gezeigten Grund abgelehnt. Weitere Serieneinträge blieben unverändert."
+      : draft.state === "cancelled"
+        ? "Die Terminwunschentscheidung wurde beendet. Der Wunsch blieb offen und unverändert."
+        : draft.state === "expired"
+          ? "Die Terminwunschprüfung ist abgelaufen und muss mit dem aktuellen Datenstand neu erstellt werden."
+          : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung und den geprüften Wunschstand gebunden.`;
+    return (
+      <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
+        <header><div><span>Action Center · Kritische Terminwunschentscheidung</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+        <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+        <div className={styles.jarvisPlanningChecks}><strong>Aktuelle Wunschprüfung</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
+        {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
+        {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Terminwunschentscheidung ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+        {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
+        {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
+        <div className={styles.jarvisActionDraftActions}>
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{approving ? "Terminwunsch jetzt freigeben" : "Terminwunsch jetzt ablehnen"}</button> : null}
+          {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Entscheidung abbrechen</button> : null}
           {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
         </div>
         <footer>{footer}</footer>
@@ -25644,6 +25711,72 @@ export function DashboardPage() {
     await deletePlanningEntryById(editingPlanningEntryId);
   }
 
+  async function decidePlanningRequest(entryId: string, decision: "approve" | "reject") {
+    const entry = planningEntries.find((item) => item.id === entryId);
+    if (!entry || entry.approvalStatus !== "requested") {
+      setPlanningEntryError("Dieser Eintrag ist kein offener Terminwunsch mehr.");
+      return;
+    }
+    if (!mayManagePlanningEntries) {
+      setPlanningEntryError("Nur die Planungsverantwortung darf Terminwünsche freigeben oder ablehnen.");
+      return;
+    }
+    const reason = decision === "reject"
+      ? window.prompt("Warum soll dieser Terminwunsch abgelehnt werden?", "")?.trim() ?? ""
+      : "";
+    if (decision === "reject" && reason.length < 3) {
+      setPlanningEntryError("Eine Ablehnung benötigt einen nachvollziehbaren Grund mit mindestens 3 Zeichen.");
+      return;
+    }
+    const preflightResponse = await fetch("/api/planning-entries", {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        command: "decision-preflight",
+        actorUserId: activeUserId,
+        entryId,
+        decision,
+        reason,
+      }),
+    });
+    const preflightData = await preflightResponse.json().catch(() => null);
+    if (!preflightResponse.ok) {
+      setPlanningEntryError(preflightData?.error ?? "Der Terminwunsch konnte nicht geprüft werden.");
+      return;
+    }
+    const evaluation = preflightData?.evaluation;
+    const confirmed = window.confirm(
+      decision === "approve"
+        ? `Terminwunsch „${entry.title}“ am ${formatDateOnly(entry.date)} von ${entry.startTime} bis ${entry.endTime} verbindlich freigeben?`
+        : `Terminwunsch „${entry.title}“ ablehnen?\n\nGrund: ${reason}`
+    );
+    if (!confirmed) return;
+    const executeResponse = await fetch("/api/planning-entries", {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        command: "decision-execute",
+        requestId: crypto.randomUUID(),
+        expectedFingerprint: evaluation?.fingerprint,
+        actorUserId: activeUserId,
+        entryId,
+        decision,
+        reason,
+      }),
+    });
+    const executeData = await executeResponse.json().catch(() => null);
+    if (!executeResponse.ok) {
+      setPlanningEntryError(executeData?.error ?? "Der Terminwunsch konnte nicht sicher entschieden werden.");
+      return;
+    }
+    setIsPlanningEntryModalOpen(false);
+    resetPlanningEntryForm();
+    await loadPlanningEntries();
+    await loadNotifications(true);
+  }
+
   async function deletePlanningEntryById(entryId: string) {
     if (!entryId) return;
     const targetEntry = planningEntries.find((entry) => entry.id === entryId);
@@ -40828,6 +40961,7 @@ await addProjectLogbookEntry(
       | JarvisTaskLifecycleDraftView
       | JarvisTimeManagementDraftView
       | JarvisPlanningMoveDraftView
+      | JarvisPlanningRequestDecisionDraftView
       | JarvisProjectMasterDataDraftView
       | JarvisContactManagementDraftView
       | JarvisContactDeletionDraftView
@@ -54990,6 +55124,24 @@ await addProjectLogbookEntry(
                                     >
                                       Zur Planung
                                     </button>
+                                  ) : null}
+                                  {mayManagePlanningEntries && entry.approvalStatus === "requested" ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className={styles.successButton}
+                                        onClick={() => void decidePlanningRequest(entry.id, "approve")}
+                                      >
+                                        Freigeben
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={styles.dangerButton}
+                                        onClick={() => void decidePlanningRequest(entry.id, "reject")}
+                                      >
+                                        Ablehnen
+                                      </button>
+                                    </>
                                   ) : null}
                                   <button
                                     type="button"
@@ -72920,18 +73072,26 @@ await addProjectLogbookEntry(
                   <button
                     type="button"
                     className={styles.dangerButton}
-                    onClick={deletePlanningEntry}
+                    onClick={() => {
+                      if (planningEntryApprovalStatus === "requested" && mayManagePlanningEntries) {
+                        void decidePlanningRequest(editingPlanningEntryId, "reject");
+                      } else {
+                        void deletePlanningEntry();
+                      }
+                    }}
                   >
-                    Löschen
+                    {planningEntryApprovalStatus === "requested" && mayManagePlanningEntries
+                      ? "Terminwunsch ablehnen"
+                      : "Löschen"}
                   </button>
                 )}
                 {editingPlanningEntryId && planningEntryApprovalStatus === "requested" && (
                   <button
                     type="button"
                     className={styles.successButton}
-                    onClick={() => void savePlanningEntry("confirmed")}
+                    onClick={() => void decidePlanningRequest(editingPlanningEntryId, "approve")}
                   >
-                    Termin bestätigen
+                    Terminwunsch freigeben
                   </button>
                 )}
                 <button
@@ -77706,6 +77866,7 @@ await addProjectLogbookEntry(
                       message.actionDraft?.actionId === "task.delete" ||
                       message.actionDraft?.actionId === "time.manage" ||
                       message.actionDraft?.actionId === "planning.move" ||
+                      message.actionDraft?.actionId === "planning.request.manage" ||
                       message.actionDraft?.actionId === "project.manage" ||
                       message.actionDraft?.actionId === "contact.manage" ||
                       message.actionDraft?.actionId === "contact.delete" ||
@@ -77793,6 +77954,15 @@ await addProjectLogbookEntry(
                             return;
                           }
                           if (offerDraft.actionId === "planning.move") {
+                            const project = heroProjects.find((candidate) => candidate.id === offerDraft.projectId);
+                            if (project) openProjectFile(project, { tab: "appointments" });
+                            else {
+                              setActiveTab("planningBoard");
+                              void loadPlanningEntries();
+                            }
+                            return;
+                          }
+                          if (offerDraft.actionId === "planning.request.manage") {
                             const project = heroProjects.find((candidate) => candidate.id === offerDraft.projectId);
                             if (project) openProjectFile(project, { tab: "appointments" });
                             else {

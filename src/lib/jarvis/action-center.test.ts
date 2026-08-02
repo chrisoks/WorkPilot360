@@ -203,6 +203,28 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     })).toMatchObject({ ok: false });
   });
 
+  it("creates a critical bounded appointment-request decision preview", () => {
+    expect(createJarvisActionPreview({
+      previewId: "preview-planning-request-decision",
+      actionId: "planning.request.manage",
+      payload: { entryId: "request-123456", decision: "reject", reason: "Mitarbeiter bereits ausgelastet" },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-02T15:00:00.000Z",
+    })).toMatchObject({ ok: true, value: { actionId: "planning.request.manage", execution: { enabled: false, reason: "preview_only" } } });
+  });
+
+  it("rejects appointment-request decisions for employees", () => {
+    expect(createJarvisActionPreview({
+      previewId: "preview-planning-request-employee",
+      actionId: "planning.request.manage",
+      payload: { entryId: "request-123456", decision: "approve" },
+      organizationId: "org-1",
+      profile: employeeProfile,
+      createdAt: "2026-08-02T15:00:00.000Z",
+    })).toMatchObject({ ok: false });
+  });
+
   it("creates a critical project-status preview with only the intended fields", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-project-status",
