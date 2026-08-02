@@ -5086,7 +5086,7 @@ describe("POST /api/jarvis/chat", () => {
     const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
     mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
     mocks.createPersistedJarvisPlanningRequestDecisionDraft.mockImplementationOnce(async ({ preview }) => ({
-      version: 2, previewId: preview.previewId, actionId: "planning.request.manage", title: "Terminwunsch kontrolliert entscheiden", decision: "reject", badge: "Bereit", state: "awaiting_confirmation", revision: 1,
+      version: 2, previewId: preview.previewId, actionId: "planning.request.manage", title: "Termin oder Terminwunsch kontrolliert entscheiden", decision: "reject", badge: "Bereit", state: "awaiting_confirmation", revision: 1,
       expiresAt: "2026-08-02T18:00:00.000Z", entryId: preview.payload.entryId, projectId: "project-1", fields: [], checks: [], warnings: [], blockingIssues: [],
       confirmation: { enabled: true, reason: "ready", requiredText: `TERMINWUNSCH ABLEHNEN ${preview.payload.entryId}` }, cancellation: { enabled: true },
     }));
@@ -5096,5 +5096,21 @@ describe("POST /api/jarvis/chat", () => {
     }));
     expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.planning-request-decision", actionDraft: { actionId: "planning.request.manage", decision: "reject" } });
     expect(mocks.createPersistedJarvisPlanningRequestDecisionDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "planning.request.manage", payload: { entryId: "request-123456", decision: "reject", reason: "Mitarbeiter bereits ausgelastet" } }) }));
+  });
+
+  it("prepares a reason-bound confirmed appointment cancellation without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisPlanningRequestDecisionDraft.mockImplementationOnce(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "planning.request.manage", title: "Termin oder Terminwunsch kontrolliert entscheiden", decision: "cancel", badge: "Bereit", state: "awaiting_confirmation", revision: 1,
+      expiresAt: "2026-08-02T18:00:00.000Z", entryId: preview.payload.entryId, projectId: "project-1", fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: `TERMIN ABSAGEN ${preview.payload.entryId}` }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Termin-ID planning-123456 absagen. Grund: Kunde hat den Einsatz abgesagt" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.planning-request-decision", actionDraft: { actionId: "planning.request.manage", decision: "cancel" } });
+    expect(mocks.createPersistedJarvisPlanningRequestDecisionDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ payload: { entryId: "planning-123456", decision: "cancel", reason: "Kunde hat den Einsatz abgesagt" } }) }));
   });
 });

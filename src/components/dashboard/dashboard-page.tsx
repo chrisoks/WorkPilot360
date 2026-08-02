@@ -2863,7 +2863,7 @@ function parseJarvisPlanningRequestDecisionDraft(
   const candidate = value as Record<string, unknown>;
   if (
     candidate.version !== 2 || candidate.actionId !== "planning.request.manage" ||
-    (candidate.decision !== "approve" && candidate.decision !== "reject") ||
+    (candidate.decision !== "approve" && candidate.decision !== "reject" && candidate.decision !== "cancel") ||
     typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
     typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
     typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
@@ -4508,27 +4508,30 @@ function JarvisOfferFinalizationCard({
 
   if (draft.actionId === "planning.request.manage") {
     const approving = draft.decision === "approve";
+    const cancelling = draft.decision === "cancel";
     const footer = draft.state === "executed"
-      ? approving
+      ? cancelling
+        ? "Der einzelne bestätigte Termin wurde genau einmal abgesagt. Weitere Serieneinträge und alle übrigen Planungsdaten blieben unverändert."
+        : approving
         ? "Der einzelne Terminwunsch wurde genau einmal freigegeben. Weitere Serieneinträge und alle übrigen Planungsdaten blieben unverändert."
         : "Der einzelne Terminwunsch wurde genau einmal mit dem gezeigten Grund abgelehnt. Weitere Serieneinträge blieben unverändert."
       : draft.state === "cancelled"
-        ? "Die Terminwunschentscheidung wurde beendet. Der Wunsch blieb offen und unverändert."
+        ? cancelling ? "Die Terminabsage wurde beendet. Der Termin blieb unverändert." : "Die Terminwunschentscheidung wurde beendet. Der Wunsch blieb offen und unverändert."
         : draft.state === "expired"
           ? "Die Terminwunschprüfung ist abgelaufen und muss mit dem aktuellen Datenstand neu erstellt werden."
-          : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung und den geprüften Wunschstand gebunden.`;
+          : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung und den geprüften ${cancelling ? "Terminstand" : "Wunschstand"} gebunden.`;
     return (
       <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
-        <header><div><span>Action Center · Kritische Terminwunschentscheidung</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+        <header><div><span>{cancelling ? "Action Center · Kritische Terminabsage" : "Action Center · Kritische Terminwunschentscheidung"}</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
         <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
-        <div className={styles.jarvisPlanningChecks}><strong>Aktuelle Wunschprüfung</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
+        <div className={styles.jarvisPlanningChecks}><strong>{cancelling ? "Aktuelle Terminprüfung" : "Aktuelle Wunschprüfung"}</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
         {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
-        {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Terminwunschentscheidung ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+        {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>{cancelling ? "Terminabsage" : "Terminwunschentscheidung"} ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
         {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
         {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
         <div className={styles.jarvisActionDraftActions}>
-          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{approving ? "Terminwunsch jetzt freigeben" : "Terminwunsch jetzt ablehnen"}</button> : null}
-          {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Entscheidung abbrechen</button> : null}
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{cancelling ? "Termin jetzt absagen" : approving ? "Terminwunsch jetzt freigeben" : "Terminwunsch jetzt ablehnen"}</button> : null}
+          {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>{cancelling ? "Terminabsage abbrechen" : "Entscheidung abbrechen"}</button> : null}
           {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
         </div>
         <footer>{footer}</footer>
@@ -25784,7 +25787,55 @@ export function DashboardPage() {
       setErrorMessage("Mitarbeiter können nur eigene offene Terminwünsche löschen.");
       return;
     }
-    const confirmed = window.confirm("Planung wirklich löschen?");
+    if (targetEntry?.approvalStatus === "confirmed") {
+      const reason = window.prompt("Warum soll dieser bestätigte Termin abgesagt werden?", "");
+      if (reason === null) return;
+      if (reason.trim().length < 3) {
+        setErrorMessage("Bitte einen nachvollziehbaren Absagegrund mit mindestens drei Zeichen angeben.");
+        return;
+      }
+      const preflightResponse = await fetch("/api/planning-entries", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ command: "decision-preflight", actorUserId: activeUserId, entryId, decision: "cancel", reason: reason.trim() }),
+      });
+      const preflightData = await preflightResponse.json().catch(() => null);
+      if (!preflightResponse.ok) {
+        setErrorMessage(preflightData?.error ?? "Die Terminabsage konnte nicht sicher geprüft werden.");
+        return;
+      }
+      const seriesHint = targetEntry.recurrenceId || targetEntry.recurrenceRule
+        ? "\n\nWichtig: Es wird nur dieser einzelne Termin abgesagt; die übrige Serie bleibt unverändert."
+        : "";
+      if (!window.confirm(`Termin wirklich absagen?\n\nGrund: ${reason.trim()}${seriesHint}`)) return;
+      const executeResponse = await fetch("/api/planning-entries", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          command: "decision-execute",
+          requestId: crypto.randomUUID(),
+          expectedFingerprint: preflightData?.evaluation?.fingerprint,
+          actorUserId: activeUserId,
+          entryId,
+          decision: "cancel",
+          reason: reason.trim(),
+        }),
+      });
+      const executeData = await executeResponse.json().catch(() => null);
+      if (!executeResponse.ok) {
+        setErrorMessage(executeData?.error ?? "Der Termin konnte nicht sicher abgesagt werden.");
+        return;
+      }
+      setIsPlanningEntryModalOpen(false);
+      resetPlanningEntryForm();
+      await loadPlanningEntries();
+      await loadNotifications(true);
+      return;
+    }
+
+    const confirmed = window.confirm("Terminwunsch wirklich zurückziehen?");
     if (!confirmed) return;
 
     const params = new URLSearchParams({

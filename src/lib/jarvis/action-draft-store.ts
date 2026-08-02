@@ -1198,17 +1198,17 @@ const planningMoveContextSchema = z.object({
 
 const planningRequestDecisionPayloadSchema = z.object({
   entryId: z.string().trim().min(1).max(120),
-  decision: z.enum(["approve", "reject"]),
+  decision: z.enum(["approve", "reject", "cancel"]),
   reason: z.string().trim().max(500).optional(),
 }).strict();
 
 const planningRequestDecisionContextSchema = z.object({
-  decision: z.enum(["approve", "reject"]),
+  decision: z.enum(["approve", "reject", "cancel"]),
   reason: z.string(),
   entry: z.object({
     id: z.string(), title: z.string(), projectId: z.string(), projectLabel: z.string(),
     employee: z.string(), requester: z.string(), date: z.string(), startTime: z.string(),
-    endTime: z.string(), durationMinutes: z.number().int(), recurrenceRule: z.string(),
+    endTime: z.string(), durationMinutes: z.number().int(), recurrenceRule: z.string(), approvalStatus: z.string(),
   }).strict(),
   warnings: z.array(z.object({ code: z.string(), message: z.string() }).strict()),
   fingerprint: z.string().length(64),
@@ -11733,7 +11733,7 @@ function toJarvisPlanningRequestDecisionDraftView(
     version: 2,
     previewId: draft.id,
     actionId: "planning.request.manage",
-    title: "Terminwunsch kontrolliert entscheiden",
+    title: "Termin oder Terminwunsch kontrolliert entscheiden",
     decision: payload.decision,
     badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
     state,
@@ -11742,21 +11742,21 @@ function toJarvisPlanningRequestDecisionDraftView(
     entryId: context.entry.id,
     projectId: context.entry.projectId,
     fields: [
-      { label: "Entscheidung", value: payload.decision === "approve" ? "Terminwunsch freigeben" : "Terminwunsch ablehnen" },
-      { label: "Terminwunsch-ID", value: context.entry.id },
+      { label: "Entscheidung", value: payload.decision === "approve" ? "Terminwunsch freigeben" : payload.decision === "reject" ? "Terminwunsch ablehnen" : "Planungstermin absagen" },
+      { label: payload.decision === "cancel" ? "Termin-ID" : "Terminwunsch-ID", value: context.entry.id },
       { label: "Titel", value: context.entry.title },
       { label: "Projekt", value: context.entry.projectLabel || "Ohne Projekt" },
       { label: "Mitarbeitend", value: context.entry.employee },
-      { label: "Beantragt von", value: context.entry.requester },
+      ...(payload.decision === "cancel" ? [] : [{ label: "Beantragt von", value: context.entry.requester }]),
       { label: "Zeitraum", value: `${context.entry.date} · ${context.entry.startTime}-${context.entry.endTime}` },
-      ...(payload.decision === "reject" ? [{ label: "Ablehnungsgrund", value: context.reason }] : []),
+      ...(payload.decision === "reject" ? [{ label: "Ablehnungsgrund", value: context.reason }] : payload.decision === "cancel" ? [{ label: "Absagegrund", value: context.reason }] : []),
     ],
     checks: [
-      { key: "scope", label: "Organisation, Sitzung und Rolle", status: permitted ? "ok" : "blocked", detail: permitted ? "Die Entscheidung ist an die aktuelle Planungsverantwortung gebunden." : "Diese Rollenkombination darf Terminwünsche nicht entscheiden." },
-      { key: "freshness", label: "Aktueller Terminwunschstand", status: "ok", detail: payload.decision === "approve" ? "Offener Wunsch, Person, Abwesenheit, Überschneidungen und Projektstand sind gebunden." : "Offener Wunsch, Person und Projektstand sind gebunden." },
+      { key: "scope", label: "Organisation, Sitzung und Rolle", status: permitted ? "ok" : "blocked", detail: permitted ? "Die Entscheidung ist an die aktuelle Planungsverantwortung gebunden." : "Diese Rollenkombination darf den Planungseintrag nicht entscheiden." },
+      { key: "freshness", label: payload.decision === "cancel" ? "Aktueller Terminstand" : "Aktueller Terminwunschstand", status: "ok", detail: payload.decision === "approve" ? "Offener Wunsch, Person, Abwesenheit, Überschneidungen und Projektstand sind gebunden." : payload.decision === "cancel" ? "Bestätigter Termin, Person, Projekt- und Serienbezug sind vollständig gebunden." : "Offener Wunsch, Person und Projektstand sind gebunden." },
     ],
     warnings: context.warnings.map((warning) => warning.message),
-    blockingIssues: permitted ? [] : ["Diese Rollenkombination darf Terminwünsche nicht entscheiden."],
+    blockingIssues: permitted ? [] : ["Diese Rollenkombination darf den Planungseintrag nicht entscheiden."],
     confirmation: { enabled: ready, reason, requiredText: getPlanningRequestDecisionConfirmationText(context.entry.id, payload.decision) },
     cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
     ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "planning" as const, entityId: draft.resultEntityId, label: "Planung öffnen" } } : {}),

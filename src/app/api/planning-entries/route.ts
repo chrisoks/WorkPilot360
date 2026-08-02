@@ -1381,7 +1381,7 @@ export async function PATCH(req: Request) {
   const actor = actorResult.actor;
   const command = cleanString(body.command);
   if (command === "decision-preflight" || command === "decision-execute") {
-    const decision = cleanString(body.decision) as "approve" | "reject";
+    const decision = cleanString(body.decision) as "approve" | "reject" | "cancel";
     const decisionInput = {
       organizationId: organization.id,
       actor,
@@ -1413,7 +1413,7 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status });
       }
       console.error("Planning request decision failed", error);
-      return NextResponse.json({ error: "Der Terminwunsch konnte nicht sicher entschieden werden." }, { status: 500 });
+      return NextResponse.json({ error: "Der Planungseintrag konnte nicht sicher entschieden werden." }, { status: 500 });
     }
   }
   const common = {
@@ -1515,6 +1515,13 @@ export async function DELETE(req: Request) {
 
   if (!entry) {
     return NextResponse.json({ ok: true });
+  }
+
+  if (entry.approvalStatus === "confirmed" && !entry.deletedAt) {
+    return NextResponse.json(
+      { error: "Bestätigte Termine dürfen nur über die kontrollierte Terminabsage gelöscht werden." },
+      { status: 409 },
+    );
   }
 
   if (

@@ -291,7 +291,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
   },
   {
     id: "planning.request.manage",
-    title: "Terminwunsch kontrolliert freigeben oder ablehnen",
+    title: "Termin oder Terminwunsch kontrolliert entscheiden",
     category: "planning",
     risk: "critical",
     confirmation: "critical",

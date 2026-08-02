@@ -67,11 +67,54 @@ function fakeDb(...results: unknown[]) {
 }
 
 describe("planning request decision service", () => {
-  it("binds approval and rejection to exact request-specific phrases", () => {
+  it("binds approval, rejection and cancellation to exact entry-specific phrases", () => {
     expect(getPlanningRequestDecisionConfirmationText(" request-1 ", "approve")).toBe("TERMINWUNSCH FREIGEBEN request-1");
     expect(getPlanningRequestDecisionConfirmationText("request-1", "reject")).toBe("TERMINWUNSCH ABLEHNEN request-1");
+    expect(getPlanningRequestDecisionConfirmationText("request-1", "cancel")).toBe("TERMIN ABSAGEN request-1");
     expect(matchesPlanningRequestDecisionConfirmation("request-1", "approve", "TERMINWUNSCH FREIGEBEN request-1")).toBe(true);
     expect(matchesPlanningRequestDecisionConfirmation("request-1", "approve", "terminwunsch freigeben request-1")).toBe(false);
+  });
+
+  it("evaluates cancellation of one confirmed recurring appointment with a bound reason", async () => {
+    const db = fakeDb(
+      [entry({ approvalStatus: "confirmed", recurrenceId: "series-1", recurrenceRule: "weekly" })],
+      [assignee],
+      [project],
+    );
+    const evaluation = await evaluatePlanningRequestDecision({
+      db: db as never,
+      organizationId: "org-1",
+      actor,
+      entryId: "request-1",
+      decision: "cancel",
+      reason: "Kundentermin wurde abgesagt",
+    });
+    expect(evaluation).toMatchObject({
+      decision: "cancel",
+      reason: "Kundentermin wurde abgesagt",
+      entry: { approvalStatus: "confirmed" },
+      warnings: [{ code: "single_occurrence" }],
+    });
+    expect(evaluation.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("requires a reason and a confirmed entry for cancellation", async () => {
+    await expect(evaluatePlanningRequestDecision({
+      db: fakeDb() as never,
+      organizationId: "org-1",
+      actor,
+      entryId: "request-1",
+      decision: "cancel",
+      reason: "",
+    })).rejects.toMatchObject({ code: "reason_required", status: 400 } satisfies Partial<PlanningRequestDecisionError>);
+    await expect(evaluatePlanningRequestDecision({
+      db: fakeDb([entry()]) as never,
+      organizationId: "org-1",
+      actor,
+      entryId: "request-1",
+      decision: "cancel",
+      reason: "Kunde hat abgesagt",
+    })).rejects.toMatchObject({ code: "not_confirmed", status: 409 } satisfies Partial<PlanningRequestDecisionError>);
   });
 
   it("evaluates an approvable recurring request without changing its series context", async () => {

@@ -1087,9 +1087,9 @@ async function buildJarvisPlanningRequestDecisionDraft(input: {
 }) {
   if (!input.sessionId) return { type: "refusal" as const, topicId: "action.planning-request-decision.session-required", message: "Für eine Terminwunschentscheidung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert." };
   const details = extractPlanningRequestDecision(input.question);
-  if (!details.entryId) return { type: "clarification" as const, topicId: "action.planning-request-decision.entry-required", message: "Welcher Terminwunsch soll entschieden werden? Nenne bitte die vollständige Terminwunsch-ID aus der Terminübersicht. Es wurde noch nichts verändert." };
-  if (!details.decision) return { type: "clarification" as const, topicId: "action.planning-request-decision.action-required", message: "Soll der Terminwunsch freigegeben oder abgelehnt werden? Es wurde noch nichts verändert." };
-  if (details.decision === "reject" && details.reason.length < 3) return { type: "clarification" as const, topicId: "action.planning-request-decision.reason-required", message: "Für die Ablehnung brauche ich einen nachvollziehbaren Grund mit mindestens drei Zeichen, zum Beispiel „Grund: Mitarbeiter ist bereits ausgelastet“. Es wurde noch nichts verändert." };
+  if (!details.entryId) return { type: "clarification" as const, topicId: "action.planning-request-decision.entry-required", message: `Welcher ${details.decision === "cancel" ? "bestätigte Termin" : "Terminwunsch"} soll ${details.decision === "cancel" ? "abgesagt" : "entschieden"} werden? Nenne bitte die vollständige ID aus der Terminübersicht. Es wurde noch nichts verändert.` };
+  if (!details.decision) return { type: "clarification" as const, topicId: "action.planning-request-decision.action-required", message: "Soll der Terminwunsch freigegeben oder abgelehnt beziehungsweise ein bestätigter Termin abgesagt werden? Es wurde noch nichts verändert." };
+  if ((details.decision === "reject" || details.decision === "cancel") && details.reason.length < 3) return { type: "clarification" as const, topicId: "action.planning-request-decision.reason-required", message: `Für die ${details.decision === "cancel" ? "Terminabsage" : "Ablehnung"} brauche ich einen nachvollziehbaren Grund mit mindestens drei Zeichen, zum Beispiel „Grund: Mitarbeiter ist bereits ausgelastet“. Es wurde noch nichts verändert.` };
   const preview = createJarvisActionPreview({
     previewId: randomUUID(),
     actionId: "planning.request.manage",
@@ -1101,7 +1101,9 @@ async function buildJarvisPlanningRequestDecisionDraft(input: {
   if (!preview.ok) return { type: "refusal" as const, topicId: "action.planning-request-decision.refused", message: `${preview.message} Es wurde nichts verändert.` };
   try {
     const actionDraft = await createPersistedJarvisPlanningRequestDecisionDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
-    return { type: "answer" as const, topicId: "action.planning-request-decision", message: `Ich habe die ${details.decision === "approve" ? "Freigabe" : "Ablehnung"} des Terminwunsches serverseitig geprüft. Kontrolliere Wunsch, Projekt, Mitarbeitenden, Antragsteller, Zeitraum${details.decision === "reject" ? " und Ablehnungsgrund" : ", Abwesenheit und Überschneidungen"}. Erst die exakte Bestätigungsphrase entscheidet diesen einzelnen Wunsch genau einmal.`, actionDraft };
+    return { type: "answer" as const, topicId: "action.planning-request-decision", message: details.decision === "cancel"
+      ? "Ich habe die Absage des bestätigten Termins serverseitig geprüft. Kontrolliere Termin, Projekt, Mitarbeitenden, Zeitraum, Serienhinweis und Absagegrund. Erst die exakte Bestätigungsphrase sagt ausschließlich diesen einzelnen Termin genau einmal ab."
+      : `Ich habe die ${details.decision === "approve" ? "Freigabe" : "Ablehnung"} des Terminwunsches serverseitig geprüft. Kontrolliere Wunsch, Projekt, Mitarbeitenden, Antragsteller, Zeitraum${details.decision === "reject" ? " und Ablehnungsgrund" : ", Abwesenheit und Überschneidungen"}. Erst die exakte Bestätigungsphrase entscheidet diesen einzelnen Wunsch genau einmal.`, actionDraft };
   } catch (error) {
     const message = error instanceof JarvisActionDraftError ? error.message : "Die Terminwunschentscheidung konnte nicht sicher vorbereitet werden.";
     return { type: "refusal" as const, topicId: "action.planning-request-decision.unavailable", message: `${message} Es wurde nichts verändert.` };

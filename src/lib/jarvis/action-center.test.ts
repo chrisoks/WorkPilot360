@@ -214,6 +214,17 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     })).toMatchObject({ ok: true, value: { actionId: "planning.request.manage", execution: { enabled: false, reason: "preview_only" } } });
   });
 
+  it("creates a critical reason-bound confirmed appointment cancellation preview", () => {
+    expect(createJarvisActionPreview({
+      previewId: "preview-planning-cancel",
+      actionId: "planning.request.manage",
+      payload: { entryId: "planning-123456", decision: "cancel", reason: "Kunde hat den Einsatz abgesagt" },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-02T15:00:00.000Z",
+    })).toMatchObject({ ok: true, value: { actionId: "planning.request.manage", payload: { decision: "cancel" }, execution: { enabled: false, reason: "preview_only" } } });
+  });
+
   it("rejects appointment-request decisions for employees", () => {
     expect(createJarvisActionPreview({
       previewId: "preview-planning-request-employee",

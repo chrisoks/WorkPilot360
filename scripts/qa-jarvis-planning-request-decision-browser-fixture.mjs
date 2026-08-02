@@ -4,6 +4,7 @@ import { PrismaClient, Role } from "@prisma/client";
 process.loadEnvFile?.(".env");
 const prisma = new PrismaClient();
 const cleanupToken = process.argv.find((item) => item.startsWith("--cleanup="))?.slice("--cleanup=".length);
+const mode = process.argv.includes("--mode=cancel") ? "cancel" : "request";
 
 async function cleanup(token) {
   const source = `qa-jarvis-planning-request-browser:${token}`;
@@ -31,17 +32,17 @@ async function seed() {
   const token = Date.now().toString(36); const projectId = randomUUID(); const entryId = randomUUID();
   const projectNumber = `QWR-${Date.now().toString().slice(-7)}`; const source = `qa-jarvis-planning-request-browser:${token}`;
   await prisma.workPilotProject.create({ data: {
-    id: projectId, organizationId: actor.organizationId, projectNumber, title: "QA JARVIS Klicktest Terminwunsch", customer: "QA intern",
+    id: projectId, organizationId: actor.organizationId, projectNumber, title: mode === "cancel" ? "QA JARVIS Klicktest Terminabsage" : "QA JARVIS Klicktest Terminwunsch", customer: "QA intern",
     status: "Umsetzung", projectType: "Hausmeisterservice", projectKind: "Dauerprojekt", recurringBillingMode: "hourly",
     trade: "Hausmeisterservice", branch: "OK immocare", responsibleName: `${actor.firstName} ${actor.lastName}`.trim(), source,
   } });
   await prisma.planningEntry.create({ data: {
     id: entryId, organizationId: actor.organizationId, source: "manual", board: "OK immocare", groupName: "QA",
     userId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}`.trim(), date: "2026-08-26", startTime: "08:00", endTime: "09:00", durationMinutes: 60,
-    title: "QA JARVIS Freigabeklick", description: "Wird nach dem Klicktest bereinigt", projectId, projectLabel: `${projectNumber} | QA JARVIS Klicktest Terminwunsch`,
-    planningTrade: "Hausmeisterservice", approvalStatus: "requested", requestedByUserId: employee.id, requestedByName: `${employee.firstName} ${employee.lastName}`.trim(),
+    title: mode === "cancel" ? "QA JARVIS Absageklick" : "QA JARVIS Freigabeklick", description: "Wird nach dem Klicktest bereinigt", projectId, projectLabel: `${projectNumber} | QA JARVIS Klicktest`,
+    planningTrade: "Hausmeisterservice", approvalStatus: mode === "cancel" ? "confirmed" : "requested", recurrenceId: mode === "cancel" ? `qa-series-${token}` : null, recurrenceRule: mode === "cancel" ? "weekly" : null, requestedByUserId: employee.id, requestedByName: `${employee.firstName} ${employee.lastName}`.trim(),
   } });
-  console.log(JSON.stringify({ token, entryId, projectId, projectNumber }));
+  console.log(JSON.stringify({ token, mode, entryId, projectId, projectNumber }));
 }
 
 (cleanupToken ? cleanup(cleanupToken) : seed()).catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
