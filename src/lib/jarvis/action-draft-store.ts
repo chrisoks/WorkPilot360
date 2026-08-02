@@ -1044,10 +1044,19 @@ const bulkUpdateContextSchema = z.object({
   warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
 }).strict();
 
-const automationManagementPayloadSchema = z.object({ enabled: z.boolean() }).strict();
+const automationManagementPayloadSchema = z.discriminatedUnion("operation", [
+  z.object({ operation: z.literal("switch"), enabled: z.boolean() }).strict(),
+  z.object({ operation: z.literal("rule"), status: z.string().min(1).max(80), enabled: z.boolean().optional(), responsibleAfterDays: z.number().int().min(1).max(180).optional(), managementAfterDays: z.number().int().min(1).max(365).optional() }).strict(),
+]);
+const automationImpactSchema = z.object({ monitoredProjects: z.number().int().min(0), responsibleNotices: z.number().int().min(0), managementNotices: z.number().int().min(0), missingResponsible: z.number().int().min(0) }).strict();
+const automationRuleValueSchema = z.object({ enabled: z.boolean(), responsibleAfterDays: z.number().int().min(1), managementAfterDays: z.number().int().min(1) }).strict();
 const automationManagementContextSchema = z.object({
+  operation: z.enum(["switch", "rule"]),
   currentEnabled: z.boolean(),
   targetEnabled: z.boolean(),
+  rule: z.object({ status: z.string(), before: automationRuleValueSchema, after: automationRuleValueSchema }).strict().optional(),
+  currentImpact: automationImpactSchema,
+  targetImpact: automationImpactSchema,
   monitoredProjects: z.number().int().min(0),
   responsibleNotices: z.number().int().min(0),
   managementNotices: z.number().int().min(0),
@@ -10707,7 +10716,7 @@ async function loadBoundAutomationManagementDraft(previewId: string, binding: Ja
 }
 
 function toJarvisAutomationManagementDraftView(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding): JarvisAutomationManagementDraftView {
-  const { context } = validateAutomationManagementBinding(draft, binding);
+  const { payload, context } = validateAutomationManagementBinding(draft, binding);
   const state = draft.state as JarvisTaskActionDraftState;
   const permitted = mayManageProjectStatusAutomation(binding);
   const ready = state === "awaiting_confirmation" && permitted && context.blockingIssues.length === 0;
@@ -10715,16 +10724,22 @@ function toJarvisAutomationManagementDraftView(draft: JarvisActionDraft, binding
   return {
     version: 2, previewId: draft.id, actionId: "automation.manage", title: "Projektstatus-Automation kontrolliert ändern",
     badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
-    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), currentEnabled: context.currentEnabled, targetEnabled: context.targetEnabled,
+    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), operation: context.operation, currentEnabled: context.currentEnabled, targetEnabled: context.targetEnabled,
+    ...(context.rule ? { rule: context.rule } : {}), currentImpact: context.currentImpact, targetImpact: context.targetImpact,
     monitoredProjects: context.monitoredProjects, responsibleNotices: context.responsibleNotices, managementNotices: context.managementNotices, missingResponsible: context.missingResponsible,
     fields: [
-      { label: "Automation", value: "Projektstatus-Frühwarnung" },
-      { label: "Aktuell", value: context.currentEnabled ? "Aktiv" : "Inaktiv" },
-      { label: "Nach Ausführung", value: context.targetEnabled ? "Aktiv" : "Inaktiv" },
+      { label: context.operation === "rule" ? "Projektstatus-Regel" : "Automation", value: context.rule?.status ?? "Projektstatus-Frühwarnung" },
+      ...(context.rule ? [
+        { label: "Aktuell", value: `${context.rule.before.enabled ? "Aktiv" : "Inaktiv"} · verantwortlich ${context.rule.before.responsibleAfterDays} T. · Geschäftsführung ${context.rule.before.managementAfterDays} T.` },
+        { label: "Nach Ausführung", value: `${context.rule.after.enabled ? "Aktiv" : "Inaktiv"} · verantwortlich ${context.rule.after.responsibleAfterDays} T. · Geschäftsführung ${context.rule.after.managementAfterDays} T.` },
+      ] : [
+        { label: "Aktuell", value: context.currentEnabled ? "Aktiv" : "Inaktiv" },
+        { label: "Nach Ausführung", value: context.targetEnabled ? "Aktiv" : "Inaktiv" },
+      ]),
     ],
     items: context.items, checks: context.checks, warnings: context.warnings,
     blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Diese Rollenkombination darf Automationen nicht konfigurieren."] : [])],
-    confirmation: { enabled: ready, reason, requiredText: getProjectStatusAutomationConfirmationText(context.targetEnabled) },
+    confirmation: { enabled: ready, reason, requiredText: getProjectStatusAutomationConfirmationText(payload as ProjectStatusAutomationManagementRequest) },
     cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
     ...(state === "executed" ? { result: { entityType: "organization-setting" as const, entityId: `${draft.organizationId}:deadlines`, label: "Status-Automation öffnen" } } : {}),
   };
@@ -10756,7 +10771,7 @@ export async function cancelJarvisAutomationManagementDraft(previewId: string, b
 export async function confirmJarvisAutomationManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
   const loaded = await loadBoundAutomationManagementDraft(previewId, binding, now);
   if (loaded.draft.state === "executed") return toJarvisAutomationManagementDraftView(loaded.draft, binding);
-  const requiredText = getProjectStatusAutomationConfirmationText(loaded.context.targetEnabled);
+  const requiredText = getProjectStatusAutomationConfirmationText(loaded.payload as ProjectStatusAutomationManagementRequest);
   if (confirmationText.trim() !== requiredText) throw new JarvisActionDraftError("invalid_input", `Gib zur Bestätigung exakt „${requiredText}“ ein.`, 400);
   if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur der aktuelle, vollständig geprüfte Automations-Dry-Run darf bestätigt werden.", 409);
   if (!mayManageProjectStatusAutomation(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Automationen nicht konfigurieren.", 403);

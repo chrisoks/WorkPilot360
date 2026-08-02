@@ -12,12 +12,34 @@ import { evaluateProjectStatusEscalations } from "@/lib/projects/status-escalati
 const SETTINGS_KEY = "deadlines";
 
 export type ProjectStatusAutomationManagementRequest = {
+  operation: "switch";
   enabled: boolean;
+} | {
+  operation: "rule";
+  status: string;
+  enabled?: boolean;
+  responsibleAfterDays?: number;
+  managementAfterDays?: number;
+};
+
+type AutomationImpact = {
+  monitoredProjects: number;
+  responsibleNotices: number;
+  managementNotices: number;
+  missingResponsible: number;
 };
 
 export type ProjectStatusAutomationManagementEvaluation = {
+  operation: "switch" | "rule";
   currentEnabled: boolean;
   targetEnabled: boolean;
+  rule?: {
+    status: string;
+    before: { enabled: boolean; responsibleAfterDays: number; managementAfterDays: number };
+    after: { enabled: boolean; responsibleAfterDays: number; managementAfterDays: number };
+  };
+  currentImpact: AutomationImpact;
+  targetImpact: AutomationImpact;
   monitoredProjects: number;
   responsibleNotices: number;
   managementNotices: number;
@@ -59,10 +81,50 @@ function hashJson(value: unknown) {
 }
 
 function proposedSettings(current: DeadlineSettings, request: ProjectStatusAutomationManagementRequest) {
+  if (request.operation === "rule") {
+    return normalizeDeadlineSettings({
+      ...current,
+      projectStatusRules: current.projectStatusRules.map((rule) => rule.status === request.status ? {
+        ...rule,
+        ...(request.enabled === undefined ? {} : { enabled: request.enabled }),
+        ...(request.responsibleAfterDays === undefined ? {} : { responsibleAfterDays: request.responsibleAfterDays }),
+        ...(request.managementAfterDays === undefined ? {} : { managementAfterDays: request.managementAfterDays }),
+      } : rule),
+    });
+  }
   return normalizeDeadlineSettings({
     ...current,
     projectStatusEscalationEnabled: request.enabled,
   });
+}
+
+function impactOf(preview: Awaited<ReturnType<typeof evaluateProjectStatusEscalations>>): AutomationImpact {
+  return {
+    monitoredProjects: preview.monitoredProjects,
+    responsibleNotices: preview.items.filter((item) => item.stage === "responsible").length,
+    managementNotices: preview.items.filter((item) => item.stage === "management").length,
+    missingResponsible: preview.items.filter((item) => !item.responsibleUserId).length,
+  };
+}
+
+function requestBlockingIssues(current: DeadlineSettings, proposed: DeadlineSettings, request: ProjectStatusAutomationManagementRequest) {
+  const issues: string[] = [];
+  if (request.operation === "rule") {
+    const currentRule = current.projectStatusRules.find((rule) => rule.status === request.status);
+    const proposedRule = proposed.projectStatusRules.find((rule) => rule.status === request.status);
+    if (!currentRule || !proposedRule) issues.push("Die benannte Projektstatus-Regel ist nicht freigegeben.");
+    const responsible = request.responsibleAfterDays ?? currentRule?.responsibleAfterDays ?? 0;
+    const management = request.managementAfterDays ?? currentRule?.managementAfterDays ?? 0;
+    if (responsible < 1 || responsible > 180) issues.push("Die Schwelle für die verantwortliche Person muss zwischen 1 und 180 Tagen liegen.");
+    if (management < 1 || management > 365) issues.push("Die Schwelle für die Geschäftsführung muss zwischen 1 und 365 Tagen liegen.");
+    if (management < responsible) issues.push("Die Geschäftsführungsschwelle darf nicht vor der Schwelle der verantwortlichen Person liegen.");
+  }
+  if (JSON.stringify(current) === JSON.stringify(proposed)) {
+    issues.push(request.operation === "switch"
+      ? `Die Projektstatus-Automation ist bereits ${proposed.projectStatusEscalationEnabled ? "aktiv" : "inaktiv"}.`
+      : "Die benannte Projektstatus-Regel besitzt bereits genau diese Werte.");
+  }
+  return issues;
 }
 
 function settingsFingerprint(input: {
@@ -92,8 +154,9 @@ async function readSettingRow(organizationId: string) {
   return rows[0] ?? null;
 }
 
-export function getProjectStatusAutomationConfirmationText(enabled: boolean) {
-  return enabled
+export function getProjectStatusAutomationConfirmationText(request: ProjectStatusAutomationManagementRequest) {
+  if (request.operation === "rule") return `PROJEKTSTATUS-REGEL ÄNDERN ${request.status.toLocaleUpperCase("de-DE")}`;
+  return request.enabled
     ? "PROJEKTSTATUS-AUTOMATION AKTIVIEREN"
     : "PROJEKTSTATUS-AUTOMATION DEAKTIVIEREN";
 }
@@ -106,25 +169,41 @@ export async function evaluateProjectStatusAutomationManagement(input: {
   const row = await readSettingRow(input.organizationId);
   const current = row ? normalizeDeadlineSettings(row.value) : await getDeadlineSettings(input.organizationId);
   const proposed = proposedSettings(current, input.request);
+  const currentPreview = await evaluateProjectStatusEscalations({
+    organizationId: input.organizationId,
+    users: input.users,
+    enabled: current.projectStatusEscalationEnabled,
+    rules: current.projectStatusRules,
+  });
   const preview = await evaluateProjectStatusEscalations({
     organizationId: input.organizationId,
     users: input.users,
     enabled: proposed.projectStatusEscalationEnabled,
     rules: proposed.projectStatusRules,
   });
-  const blockingIssues = current.projectStatusEscalationEnabled === proposed.projectStatusEscalationEnabled
-    ? [`Die Projektstatus-Automation ist bereits ${proposed.projectStatusEscalationEnabled ? "aktiv" : "inaktiv"}.`]
-    : [];
-  const responsibleNotices = preview.items.filter((item) => item.stage === "responsible").length;
-  const managementNotices = preview.items.filter((item) => item.stage === "management").length;
-  const missingResponsible = preview.items.filter((item) => !item.responsibleUserId).length;
+  const blockingIssues = requestBlockingIssues(current, proposed, input.request);
+  const currentImpact = impactOf(currentPreview);
+  const targetImpact = impactOf(preview);
+  const ruleStatus = input.request.operation === "rule" ? input.request.status : undefined;
+  const currentRule = ruleStatus ? current.projectStatusRules.find((rule) => rule.status === ruleStatus) : undefined;
+  const targetRule = ruleStatus ? proposed.projectStatusRules.find((rule) => rule.status === ruleStatus) : undefined;
   return {
+    operation: input.request.operation,
     currentEnabled: current.projectStatusEscalationEnabled,
     targetEnabled: proposed.projectStatusEscalationEnabled,
-    monitoredProjects: preview.monitoredProjects,
-    responsibleNotices,
-    managementNotices,
-    missingResponsible,
+    ...(currentRule && targetRule ? {
+      rule: {
+        status: currentRule.status,
+        before: { enabled: currentRule.enabled, responsibleAfterDays: currentRule.responsibleAfterDays, managementAfterDays: currentRule.managementAfterDays },
+        after: { enabled: targetRule.enabled, responsibleAfterDays: targetRule.responsibleAfterDays, managementAfterDays: targetRule.managementAfterDays },
+      },
+    } : {}),
+    currentImpact,
+    targetImpact,
+    monitoredProjects: targetImpact.monitoredProjects,
+    responsibleNotices: targetImpact.responsibleNotices,
+    managementNotices: targetImpact.managementNotices,
+    missingResponsible: targetImpact.missingResponsible,
     items: preview.items.slice(0, 100).map((item) => ({
       projectId: item.projectId,
       projectNumber: item.projectNumber,
@@ -140,7 +219,9 @@ export async function evaluateProjectStatusAutomationManagement(input: {
         key: "dry-run",
         label: "Aktueller Dry-Run",
         status: "ok" as const,
-        detail: `${preview.monitoredProjects} Projekt(e) überwacht; ${preview.items.length} aktuelle Schwellenüberschreitung(en).`,
+        detail: input.request.operation === "rule"
+          ? `Vorher ${currentPreview.items.length}, nachher ${preview.items.length} aktuelle Schwellenüberschreitung(en); es wird noch nichts zugestellt.`
+          : `${preview.monitoredProjects} Projekt(e) überwacht; ${preview.items.length} aktuelle Schwellenüberschreitung(en).`,
       },
       {
         key: "delivery",
@@ -151,15 +232,17 @@ export async function evaluateProjectStatusAutomationManagement(input: {
       {
         key: "responsibility",
         label: "Zuständigkeiten",
-        status: missingResponsible > 0 ? ("warning" as const) : ("ok" as const),
-        detail: missingResponsible > 0
-          ? `${missingResponsible} Treffer haben keine eindeutig auflösbare verantwortliche Person.`
+        status: targetImpact.missingResponsible > 0 ? ("warning" as const) : ("ok" as const),
+        detail: targetImpact.missingResponsible > 0
+          ? `${targetImpact.missingResponsible} Treffer haben keine eindeutig auflösbare verantwortliche Person.`
           : "Alle aktuellen Treffer besitzen eine eindeutig auflösbare verantwortliche Person.",
       },
     ],
-    warnings: input.request.enabled
-      ? ["Nach der Aktivierung dürfen ausschließlich der bestehende interne Scheduler und dessen serverseitiger Kill-Switch Zustellungen auslösen."]
-      : ["Die Deaktivierung stoppt neue automatische Projektstatus-Hinweise; bestehende Meldungen und Auditdaten bleiben erhalten."],
+    warnings: input.request.operation === "rule"
+      ? ["Die Regeländerung wirkt erst bei einem späteren, separat ausgelösten Schedulerlauf. Bestehende Meldungen und Auditdaten bleiben erhalten."]
+      : input.request.enabled
+        ? ["Nach der Aktivierung dürfen ausschließlich der bestehende interne Scheduler und dessen serverseitiger Kill-Switch Zustellungen auslösen."]
+        : ["Die Deaktivierung stoppt neue automatische Projektstatus-Hinweise; bestehende Meldungen und Auditdaten bleiben erhalten."],
     blockingIssues,
     fingerprint: settingsFingerprint({
       organizationId: input.organizationId,
@@ -191,10 +274,11 @@ export async function executeProjectStatusAutomationManagement(input: {
   const row = rows[0] ?? null;
   const current = normalizeDeadlineSettings(row?.value);
   const proposed = proposedSettings(current, input.request);
-  if (current.projectStatusEscalationEnabled === proposed.projectStatusEscalationEnabled) {
+  const blockingIssues = requestBlockingIssues(current, proposed, input.request);
+  if (blockingIssues.length) {
     throw new ProjectStatusAutomationManagementServiceError(
-      "conflict",
-      `Die Projektstatus-Automation ist bereits ${proposed.projectStatusEscalationEnabled ? "aktiv" : "inaktiv"}.`
+      blockingIssues.some((issue) => issue.includes("bereits")) ? "conflict" : "invalid_input",
+      blockingIssues[0]
     );
   }
   const fingerprint = settingsFingerprint({
@@ -222,6 +306,7 @@ export async function executeProjectStatusAutomationManagement(input: {
       "value" = EXCLUDED."value",
       "updatedAt" = CURRENT_TIMESTAMP
   `;
+  const ruleStatus = input.request.operation === "rule" ? input.request.status : undefined;
   await input.tx.auditLog.create({
     data: {
       organizationId: input.organizationId,
@@ -231,9 +316,14 @@ export async function executeProjectStatusAutomationManagement(input: {
       entityId: `${input.organizationId}:${SETTINGS_KEY}`,
       payload: {
         requestId: input.requestId,
-        before: { enabled: current.projectStatusEscalationEnabled },
-        after: { enabled: proposed.projectStatusEscalationEnabled },
-        rulesUnchanged: true,
+        operation: input.request.operation,
+        before: input.request.operation === "switch"
+          ? { enabled: current.projectStatusEscalationEnabled }
+          : current.projectStatusRules.find((rule) => rule.status === ruleStatus),
+        after: input.request.operation === "switch"
+          ? { enabled: proposed.projectStatusEscalationEnabled }
+          : proposed.projectStatusRules.find((rule) => rule.status === ruleStatus),
+        rulesUnchanged: input.request.operation === "switch",
         source: "jarvis",
       },
     },

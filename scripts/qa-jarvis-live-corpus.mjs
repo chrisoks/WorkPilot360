@@ -93,6 +93,17 @@ async function main() {
       ? automationSetting.value
       : {};
   const currentAutomationEnabled = automationSettingValue.projectStatusEscalationEnabled === true;
+  const currentAutomationRule = Array.isArray(automationSettingValue.projectStatusRules)
+    ? automationSettingValue.projectStatusRules.find((rule) => rule?.status === "Umsetzung")
+    : null;
+  const currentResponsibleAfterDays = Number.isInteger(currentAutomationRule?.responsibleAfterDays)
+    ? currentAutomationRule.responsibleAfterDays
+    : 14;
+  const currentManagementAfterDays = Number.isInteger(currentAutomationRule?.managementAfterDays)
+    ? currentAutomationRule.managementAfterDays
+    : 28;
+  const targetResponsibleAfterDays = currentResponsibleAfterDays === 10 && currentManagementAfterDays === 20 ? 11 : 10;
+  const targetManagementAfterDays = currentResponsibleAfterDays === 10 && currentManagementAfterDays === 20 ? 21 : 20;
 
   const now = new Date();
   const paymentInvoice = await prisma.invoice.findFirst({
@@ -355,6 +366,7 @@ async function main() {
   let employeeCostManagementDraftPrepared = false;
   let bulkUpdateDraftPrepared = false;
   let automationManagementDraftPrepared = false;
+  let automationRuleManagementDraftPrepared = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -383,6 +395,7 @@ async function main() {
         const isEmployeeCostManagementCase = item.question.includes("QAL-800");
         const isBulkUpdateCase = item.question.includes("QAB-900");
         const isAutomationManagementCase = item.question.includes("Projektstatus-Frühwarnung");
+        const isAutomationRuleManagementCase = item.question.includes("Projektstatus-Regel Umsetzung");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -427,6 +440,8 @@ async function main() {
               ? `Archiviere die Kontakte ${bulkContacts.map((contact) => contact.customerNumber).join(", ")} als Gruppenaktion.`
             : isAutomationManagementCase && currentAutomationEnabled
               ? "Deaktiviere die Projektstatus-Frühwarnung."
+            : isAutomationRuleManagementCase
+              ? `Ändere die Projektstatus-Regel Umsetzung: verantwortliche Person nach ${targetResponsibleAfterDays} Tagen, Geschäftsführung nach ${targetManagementAfterDays} Tagen.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -580,6 +595,27 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Automationsfrage hat keinen vollständigen, unblockierten und zustandsgebundenen Dry-Run erzeugt." });
           } else {
             automationManagementDraftPrepared = true;
+          }
+        }
+        if (isAutomationRuleManagementCase) {
+          if (payload.actionDraft?.actionId !== "automation.manage") {
+            failures.push({ id: item.id, status: response.status, error: "Die Automations-Regelfrage hat keine kontrollierte automation.manage-Vorschau erzeugt." });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length ||
+            payload.actionDraft.operation !== "rule" ||
+            payload.actionDraft.rule?.status !== "Umsetzung" ||
+            payload.actionDraft.rule?.before?.responsibleAfterDays !== currentResponsibleAfterDays ||
+            payload.actionDraft.rule?.before?.managementAfterDays !== currentManagementAfterDays ||
+            payload.actionDraft.rule?.after?.responsibleAfterDays !== targetResponsibleAfterDays ||
+            payload.actionDraft.rule?.after?.managementAfterDays !== targetManagementAfterDays ||
+            typeof payload.actionDraft.currentImpact?.monitoredProjects !== "number" ||
+            typeof payload.actionDraft.targetImpact?.monitoredProjects !== "number"
+          ) {
+            failures.push({ id: item.id, status: response.status, error: "Die Automations-Regelfrage hat keinen vollständigen, unblockierten Vorher-/Nachher-Dry-Run erzeugt." });
+          } else {
+            automationRuleManagementDraftPrepared = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -1099,6 +1135,7 @@ async function main() {
     employeeCostManagementDraftPrepared,
     bulkUpdateDraftPrepared,
     automationManagementDraftPrepared,
+    automationRuleManagementDraftPrepared,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId

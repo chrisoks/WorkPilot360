@@ -3521,7 +3521,11 @@ describe("POST /api/jarvis/chat", () => {
     mocks.createPersistedJarvisAutomationManagementDraft.mockImplementation(async ({ preview }) => ({
       version: 2, previewId: preview.previewId, actionId: "automation.manage", title: "Projektstatus-Automation kontrolliert ändern",
       badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T08:00:00.000Z",
-      currentEnabled: false, targetEnabled: true, monitoredProjects: 3, responsibleNotices: 1, managementNotices: 1, missingResponsible: 0,
+      operation: preview.payload.operation, currentEnabled: false, targetEnabled: preview.payload.operation === "switch" ? preview.payload.enabled : false,
+      ...(preview.payload.operation === "rule" ? { rule: { status: preview.payload.status, before: { enabled: true, responsibleAfterDays: 14, managementAfterDays: 28 }, after: { enabled: preview.payload.enabled ?? true, responsibleAfterDays: preview.payload.responsibleAfterDays ?? 14, managementAfterDays: preview.payload.managementAfterDays ?? 28 } } } : {}),
+      currentImpact: { monitoredProjects: 3, responsibleNotices: 1, managementNotices: 1, missingResponsible: 0 },
+      targetImpact: { monitoredProjects: 3, responsibleNotices: 1, managementNotices: 1, missingResponsible: 0 },
+      monitoredProjects: 3, responsibleNotices: 1, managementNotices: 1, missingResponsible: 0,
       fields: [], items: [], checks: [], warnings: [], blockingIssues: [], confirmation: { enabled: true, reason: "ready", requiredText: "PROJEKTSTATUS-AUTOMATION AKTIVIEREN" }, cancellation: { enabled: true },
     }));
     const response = await POST(new Request("http://localhost/api/jarvis/chat", {
@@ -3529,7 +3533,42 @@ describe("POST /api/jarvis/chat", () => {
       body: JSON.stringify({ actorId: "user-1", message: "Aktiviere die Projektstatus-Frühwarnung" }),
     }));
     expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.automation-management", actionDraft: { actionId: "automation.manage", targetEnabled: true } });
-    expect(mocks.createPersistedJarvisAutomationManagementDraft).toHaveBeenCalledWith(expect.objectContaining({ users: expect.any(Array), preview: expect.objectContaining({ actionId: "automation.manage", payload: { enabled: true } }) }));
+    expect(mocks.createPersistedJarvisAutomationManagementDraft).toHaveBeenCalledWith(expect.objectContaining({ users: expect.any(Array), preview: expect.objectContaining({ actionId: "automation.manage", payload: { operation: "switch", enabled: true } }) }));
+  });
+
+  it("prepares one named project-status rule with explicit thresholds", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisAutomationManagementDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "automation.manage", title: "Projektstatus-Automation kontrolliert ändern",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T08:00:00.000Z",
+      operation: "rule", currentEnabled: true, targetEnabled: true,
+      rule: { status: preview.payload.status, before: { enabled: true, responsibleAfterDays: 14, managementAfterDays: 28 }, after: { enabled: true, responsibleAfterDays: preview.payload.responsibleAfterDays, managementAfterDays: preview.payload.managementAfterDays } },
+      currentImpact: { monitoredProjects: 3, responsibleNotices: 1, managementNotices: 1, missingResponsible: 0 },
+      targetImpact: { monitoredProjects: 3, responsibleNotices: 2, managementNotices: 1, missingResponsible: 0 },
+      monitoredProjects: 3, responsibleNotices: 2, managementNotices: 1, missingResponsible: 0,
+      fields: [], items: [], checks: [], warnings: [], blockingIssues: [], confirmation: { enabled: true, reason: "ready", requiredText: "PROJEKTSTATUS-REGEL ÄNDERN UMSETZUNG" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Ändere die Projektstatus-Regel Umsetzung: verantwortliche Person nach 10 Tagen, Geschäftsführung nach 20 Tagen." }),
+    }));
+    expect(await response.json()).toMatchObject({
+      type: "answer",
+      topicId: "action.automation-management",
+      actionDraft: {
+        actionId: "automation.manage",
+        operation: "rule",
+        rule: { status: "Umsetzung", after: { responsibleAfterDays: 10, managementAfterDays: 20 } },
+      },
+    });
+    expect(mocks.createPersistedJarvisAutomationManagementDraft).toHaveBeenCalledWith(expect.objectContaining({
+      users: expect.any(Array),
+      preview: expect.objectContaining({
+        actionId: "automation.manage",
+        payload: { operation: "rule", status: "Umsetzung", responsibleAfterDays: 10, managementAfterDays: 20 },
+      }),
+    }));
   });
 
   it("asks for a documented reason before preparing a project-status change", async () => {

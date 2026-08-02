@@ -155,8 +155,14 @@ const fake = vi.hoisted(() => {
   }));
   const executeContactBulkCategory = vi.fn(async (input: Record<string, any>) => { bulkUpdates.push(input); return { requestId: input.requestId, sourceRequestId: input.request.mode === "rollback" ? input.request.sourceRequestId : input.requestId, count: 2 }; });
   const automationChanges: Array<Record<string, any>> = [];
-  const evaluateProjectStatusAutomationManagement = vi.fn(async ({ request }: { request: { enabled: boolean } }) => ({
-    currentEnabled: !request.enabled, targetEnabled: request.enabled, monitoredProjects: 3,
+  const evaluateProjectStatusAutomationManagement = vi.fn(async ({ request }: { request: Record<string, any> }) => ({
+    operation: request.operation,
+    currentEnabled: request.operation === "switch" ? !request.enabled : false,
+    targetEnabled: request.operation === "switch" ? request.enabled : false,
+    ...(request.operation === "rule" ? { rule: { status: request.status, before: { enabled: true, responsibleAfterDays: 14, managementAfterDays: 28 }, after: { enabled: request.enabled ?? true, responsibleAfterDays: request.responsibleAfterDays ?? 14, managementAfterDays: request.managementAfterDays ?? 28 } } } : {}),
+    currentImpact: { monitoredProjects: 3, responsibleNotices: 1, managementNotices: 1, missingResponsible: 0 },
+    targetImpact: { monitoredProjects: 3, responsibleNotices: 1, managementNotices: request.operation === "rule" ? 0 : 1, missingResponsible: 0 },
+    monitoredProjects: 3,
     responsibleNotices: 1, managementNotices: 1, missingResponsible: 0,
     items: [{ projectId: "project-1", projectNumber: "MKG-209", projectTitle: "Marketing", customer: "Musterkunde", status: "Umsetzung", elapsedDays: 18, stage: "responsible", responsibleName: "Jarvis Tester" }],
     checks: [{ key: "dry-run", label: "Aktueller Dry-Run", status: "ok", detail: "Geprüft." }],
@@ -929,7 +935,9 @@ vi.mock("@/lib/contacts/contact-bulk-category-service", () => ({
 vi.mock("@/lib/automation/project-status-automation-management-service", () => ({
   evaluateProjectStatusAutomationManagement: fake.evaluateProjectStatusAutomationManagement,
   executeProjectStatusAutomationManagement: fake.executeProjectStatusAutomationManagement,
-  getProjectStatusAutomationConfirmationText: (enabled: boolean) => enabled ? "PROJEKTSTATUS-AUTOMATION AKTIVIEREN" : "PROJEKTSTATUS-AUTOMATION DEAKTIVIEREN",
+  getProjectStatusAutomationConfirmationText: (request: Record<string, any>) => request.operation === "rule"
+    ? `PROJEKTSTATUS-REGEL ÄNDERN ${String(request.status).toUpperCase()}`
+    : request.enabled ? "PROJEKTSTATUS-AUTOMATION AKTIVIEREN" : "PROJEKTSTATUS-AUTOMATION DEAKTIVIEREN",
   ProjectStatusAutomationManagementServiceError: class ProjectStatusAutomationManagementServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
@@ -3250,7 +3258,7 @@ describe("persistent JARVIS automation-management drafts", () => {
     version: 1 as const, previewId, actionId: "automation.manage" as const,
     actionTitle: "Automation konfigurieren oder ausführen", state: "awaiting_confirmation" as const,
     organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
-    payload: { enabled }, execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+    payload: { operation: "switch" as const, enabled }, execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
   });
 
   it("changes only the reviewed switch exactly once", async () => {
@@ -3261,7 +3269,37 @@ describe("persistent JARVIS automation-management drafts", () => {
     expect(first.state).toBe("executed");
     expect(replay.result?.entityId).toBe("org-1:deadlines");
     expect(fake.automationChanges).toHaveLength(1);
-    expect(fake.executeProjectStatusAutomationManagement).toHaveBeenCalledWith(expect.objectContaining({ requestId: "automation-1", expectedFingerprint: "3".repeat(64), request: { enabled: true } }));
+    expect(fake.executeProjectStatusAutomationManagement).toHaveBeenCalledWith(expect.objectContaining({ requestId: "automation-1", expectedFingerprint: "3".repeat(64), request: { operation: "switch", enabled: true } }));
+  });
+
+  it("changes exactly one reviewed rule with before/after impact exactly once", async () => {
+    const rulePreview = {
+      ...preview("automation-rule"),
+      payload: { operation: "rule" as const, status: "Umsetzung", responsibleAfterDays: 10, managementAfterDays: 20 },
+    };
+    const created = await createPersistedJarvisAutomationManagementDraft({ ...binding(), users: fake.users, now: baseNow, preview: rulePreview });
+    expect(created).toMatchObject({
+      state: "awaiting_confirmation",
+      operation: "rule",
+      rule: {
+        status: "Umsetzung",
+        before: { enabled: true, responsibleAfterDays: 14, managementAfterDays: 28 },
+        after: { enabled: true, responsibleAfterDays: 10, managementAfterDays: 20 },
+      },
+      currentImpact: { managementNotices: 1 },
+      targetImpact: { managementNotices: 0 },
+      confirmation: { requiredText: "PROJEKTSTATUS-REGEL ÄNDERN UMSETZUNG" },
+    });
+    const first = await confirmJarvisAutomationManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisAutomationManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("org-1:deadlines");
+    expect(fake.automationChanges).toHaveLength(1);
+    expect(fake.executeProjectStatusAutomationManagement).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: "automation-rule",
+      expectedFingerprint: "3".repeat(64),
+      request: { operation: "rule", status: "Umsetzung", responsibleAfterDays: 10, managementAfterDays: 20 },
+    }));
   });
 
   it("rejects an inexact phrase and cancels without changing the switch", async () => {

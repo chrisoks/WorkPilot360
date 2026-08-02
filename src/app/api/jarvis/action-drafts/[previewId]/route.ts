@@ -1036,7 +1036,9 @@ export async function POST(
             : isBulkUpdate
             ? "Die geprüften Kontaktkategorien wurden nach deiner exakten Bestätigung vollständig und genau einmal geändert. Der Wiederherstellungsstand wurde gemeinsam protokolliert."
             : isAutomationManagement
-            ? "Der Schalter der Projektstatus-Automation wurde nach deiner exakten Bestätigung genau einmal geändert. Dieser Schritt hat keine Meldung, E-Mail, Scheduler-Ausführung oder Projektstatusänderung ausgelöst."
+            ? actionDraft.actionId === "automation.manage" && actionDraft.operation === "rule"
+              ? `Die Projektstatus-Regel „${actionDraft.rule?.status}“ wurde nach deiner exakten Bestätigung genau einmal geändert. Dieser Schritt hat keine Meldung, E-Mail, Scheduler-Ausführung oder Projektstatusänderung ausgelöst.`
+              : "Der Schalter der Projektstatus-Automation wurde nach deiner exakten Bestätigung genau einmal geändert. Dieser Schritt hat keine Meldung, E-Mail, Scheduler-Ausführung oder Projektstatusänderung ausgelöst."
             : isProjectLifecycle
             ? "Das Projekt wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Timeline, Logbuch und Audit wurden gemeinsam geschrieben; alle Verknüpfungen blieben erhalten."
             : isProjectStatus

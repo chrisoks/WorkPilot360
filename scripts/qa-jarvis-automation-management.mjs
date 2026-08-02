@@ -22,6 +22,16 @@ async function main() {
   const foreignSetting = foreignOrganization ? await prisma.organizationSetting.findUnique({ where: settingWhere(foreignOrganization.id), select: { id: true, value: true, createdAt: true, updatedAt: true } }) : null;
   const originalValue = originalSetting?.value && typeof originalSetting.value === "object" && !Array.isArray(originalSetting.value) ? originalSetting.value : {};
   const originalEnabled = originalValue.projectStatusEscalationEnabled === true;
+  const storedRule = Array.isArray(originalValue.projectStatusRules) ? originalValue.projectStatusRules.find((rule) => rule?.status === "Umsetzung") : null;
+  const originalRule = {
+    status: "Umsetzung",
+    enabled: storedRule?.enabled !== false,
+    responsibleAfterDays: Number.isInteger(storedRule?.responsibleAfterDays) ? storedRule.responsibleAfterDays : 14,
+    managementAfterDays: Number.isInteger(storedRule?.managementAfterDays) ? storedRule.managementAfterDays : 28,
+  };
+  const targetRule = originalRule.responsibleAfterDays === 10 && originalRule.managementAfterDays === 20
+    ? { ...originalRule, responsibleAfterDays: 11, managementAfterDays: 21 }
+    : { ...originalRule, responsibleAfterDays: 10, managementAfterDays: 20 };
   const now = new Date();
   const sessionIds = { actor: randomUUID(), restricted: randomUUID() };
   const draftIds = new Set();
@@ -49,6 +59,7 @@ async function main() {
   const command = (draft, commandName, confirmationText = "") => requestJson(`/api/jarvis/action-drafts/${draft.previewId}`, actorCookie, { method: "POST", headers: { "x-jarvis-action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "automation.manage", command: commandName, revision: draft.revision, confirmationText }) });
   const changeCommand = originalEnabled ? "Deaktiviere die Projektstatus-Frühwarnung." : "Aktiviere die Projektstatus-Frühwarnung.";
   const restoreCommand = originalEnabled ? "Aktiviere die Projektstatus-Frühwarnung." : "Deaktiviere die Projektstatus-Frühwarnung.";
+  const ruleCommand = `Ändere die Projektstatus-Regel Umsetzung: verantwortliche Person nach ${targetRule.responsibleAfterDays} Tagen, Geschäftsführung nach ${targetRule.managementAfterDays} Tagen.`;
 
   try {
     const denied = await createDraft(changeCommand, restrictedCookie, restrictedActor.id);
@@ -88,13 +99,53 @@ async function main() {
     assert(restoredDraft?.state === "awaiting_confirmation" && restoredDraft.targetEnabled === originalEnabled, `Wiederherstellung wurde nicht korrekt vorbereitet: ${JSON.stringify(restoredPrepared.payload)}`);
     const restored = await command(restoredDraft, "confirm", restoredDraft.confirmation.requiredText);
     assert(restored.response.ok && restored.payload?.actionDraft?.state === "executed", `Wiederherstellung fehlgeschlagen: ${JSON.stringify(restored.payload)}`);
+
+    const beforeRuleSetting = await prisma.organizationSetting.findUnique({ where: settingWhere(actor.organizationId), select: { value: true } });
+    const beforeRuleValue = beforeRuleSetting?.value && typeof beforeRuleSetting.value === "object" && !Array.isArray(beforeRuleSetting.value) ? beforeRuleSetting.value : {};
+    const beforeRuleRules = Array.isArray(beforeRuleValue.projectStatusRules) ? beforeRuleValue.projectStatusRules : [];
+    const preparedRule = await createDraft(ruleCommand); const ruleDraft = preparedRule.payload?.actionDraft;
+    assert(
+      preparedRule.response.ok &&
+      ruleDraft?.actionId === "automation.manage" &&
+      ruleDraft.state === "awaiting_confirmation" &&
+      ruleDraft.operation === "rule" &&
+      ruleDraft.rule?.status === "Umsetzung" &&
+      ruleDraft.rule?.before?.enabled === originalRule.enabled &&
+      ruleDraft.rule?.before?.responsibleAfterDays === originalRule.responsibleAfterDays &&
+      ruleDraft.rule?.before?.managementAfterDays === originalRule.managementAfterDays &&
+      ruleDraft.rule?.after?.enabled === originalRule.enabled &&
+      ruleDraft.rule?.after?.responsibleAfterDays === targetRule.responsibleAfterDays &&
+      ruleDraft.rule?.after?.managementAfterDays === targetRule.managementAfterDays &&
+      typeof ruleDraft.currentImpact?.monitoredProjects === "number" &&
+      typeof ruleDraft.targetImpact?.monitoredProjects === "number" &&
+      ruleDraft.confirmation?.requiredText === "PROJEKTSTATUS-REGEL ÄNDERN UMSETZUNG",
+      `Der Regel-Dry-Run ist unvollständig: ${JSON.stringify(preparedRule.payload)}`,
+    );
+    const changedRule = await command(ruleDraft, "confirm", ruleDraft.confirmation.requiredText);
+    assert(changedRule.response.ok && changedRule.payload?.actionDraft?.state === "executed", `Regeländerung fehlgeschlagen: ${JSON.stringify(changedRule.payload)}`);
+    assert((await command(ruleDraft, "confirm", ruleDraft.confirmation.requiredText)).payload?.actionDraft?.state === "executed", "Regel-Replay war nicht idempotent.");
+    const afterRuleSetting = await prisma.organizationSetting.findUnique({ where: settingWhere(actor.organizationId), select: { value: true } });
+    const afterRuleValue = afterRuleSetting?.value && typeof afterRuleSetting.value === "object" && !Array.isArray(afterRuleSetting.value) ? afterRuleSetting.value : {};
+    const afterRuleRules = Array.isArray(afterRuleValue.projectStatusRules) ? afterRuleValue.projectStatusRules : [];
+    const savedRule = afterRuleRules.find((rule) => rule?.status === "Umsetzung");
+    assert(savedRule?.enabled === originalRule.enabled && savedRule?.responsibleAfterDays === targetRule.responsibleAfterDays && savedRule?.managementAfterDays === targetRule.managementAfterDays, "Die geprüfte Zielregel wurde nicht exakt gespeichert.");
+    assert(
+      jsonText(beforeRuleRules.filter((rule) => rule?.status !== "Umsetzung")) === jsonText(afterRuleRules.filter((rule) => rule?.status !== "Umsetzung")),
+      "Die Regeländerung hat andere Projektstatus-Regeln verändert.",
+    );
+    assert(
+      jsonText({ ...beforeRuleValue, projectStatusRules: undefined }) === jsonText({ ...afterRuleValue, projectStatusRules: undefined }),
+      "Die Regeländerung hat Einstellungen außerhalb der Projektstatus-Regeln verändert.",
+    );
+    assert(await prisma.auditLog.count({ where: { organizationId: actor.organizationId, action: "automation.project-status.changed", entityType: "organization-setting", payload: { path: ["requestId"], equals: ruleDraft.previewId } } }) === 1, "Die Regeländerung wurde nicht exactly-once auditiert.");
+    await restoreOriginalSetting();
     assert(await prisma.notification.count({ where: { organizationId: actor.organizationId } }) === notificationsBefore, "Die Schalteränderung hat unerwartet Benachrichtigungen erzeugt.");
     assert(await prisma.statusEscalationEvent.count({ where: { organizationId: actor.organizationId } }) === eventsBefore, "Die Schalteränderung hat unerwartet einen Eskalationslauf ausgelöst.");
     if (foreignOrganization) {
       const currentForeignSetting = await prisma.organizationSetting.findUnique({ where: settingWhere(foreignOrganization.id), select: { id: true, value: true, createdAt: true, updatedAt: true } });
       assert(jsonText(currentForeignSetting) === jsonText(foreignSetting), "Eine fremde Organisationseinstellung wurde verändert.");
     }
-    result = { baseUrl, originalEnabled, roleBoundary: restrictedActor.role, tenantBoundary: foreignOrganization ? "verified" : "single-tenant", exactDryRun: true, noImmediateDelivery: true, exactPhrase: true, cancelSafe: true, staleContextBlocked: true, changedAndRestored: true, replayExactlyOnce: true, auditExactlyOnce: true };
+    result = { baseUrl, originalEnabled, roleBoundary: restrictedActor.role, tenantBoundary: foreignOrganization ? "verified" : "single-tenant", exactDryRun: true, ruleBeforeAfterDryRun: true, oneNamedRuleOnly: true, noImmediateDelivery: true, exactPhrase: true, cancelSafe: true, staleContextBlocked: true, changedAndRestored: true, replayExactlyOnce: true, auditExactlyOnce: true };
   } finally {
     await restoreOriginalSetting();
     for (const draftId of draftIds) {

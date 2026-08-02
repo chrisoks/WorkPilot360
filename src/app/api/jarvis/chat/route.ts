@@ -1153,7 +1153,7 @@ async function buildJarvisBulkUpdateDraft(input: {
 }
 
 async function buildJarvisAutomationManagementDraft(input: {
-  request: { enabled: boolean };
+  request: NonNullable<ReturnType<typeof extractProjectStatusAutomationRequest>>;
   organizationId: string;
   sessionId: string | null;
   accessProfile: ReturnType<typeof createJarvisAccessProfile>;
@@ -1164,7 +1164,14 @@ async function buildJarvisAutomationManagementDraft(input: {
   if (!preview.ok) return { type: "refusal" as const, topicId: "action.automation-management.refused", message: `${preview.message} Es wurde nichts geändert und keine Automation ausgeführt.` };
   try {
     const actionDraft = await createPersistedJarvisAutomationManagementDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile, users: input.users });
-    return { type: "answer" as const, topicId: "action.automation-management", message: "Ich habe den aktuellen Schalter und einen rein lesenden Projektstatus-Dry-Run geprüft. JARVIS ändert in diesem Schritt nur die Aktivierung der bestehenden Frühwarnung: keine Meldung, keine E-Mail, kein Schedulerlauf und keine Projektstatusänderung. Erst die exakte Bestätigungsphrase ändert den Schalter genau einmal.", actionDraft };
+    return {
+      type: "answer" as const,
+      topicId: "action.automation-management",
+      message: input.request.operation === "rule"
+        ? "Ich habe die benannte Projektstatus-Regel, ihre bisherigen und vorgeschlagenen Werte sowie den Vorher-/Nachher-Dry-Run geprüft. Dieser Schritt startet keinen Scheduler, versendet nichts und ändert keinen Projektstatus. Erst die exakte Bestätigungsphrase ändert genau diese eine Regel."
+        : "Ich habe den aktuellen Schalter und einen rein lesenden Projektstatus-Dry-Run geprüft. JARVIS ändert in diesem Schritt nur die Aktivierung der bestehenden Frühwarnung: keine Meldung, keine E-Mail, kein Schedulerlauf und keine Projektstatusänderung. Erst die exakte Bestätigungsphrase ändert den Schalter genau einmal.",
+      actionDraft,
+    };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.automation-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Automationsänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts geändert und keine Automation ausgeführt.` };
   }

@@ -2979,7 +2979,10 @@ function parseJarvisAutomationManagementDraft(value: unknown): JarvisAutomationM
     typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
     typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
     typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
+    (candidate.operation !== "switch" && candidate.operation !== "rule") ||
     typeof candidate.currentEnabled !== "boolean" || typeof candidate.targetEnabled !== "boolean" ||
+    !candidate.currentImpact || typeof candidate.currentImpact !== "object" ||
+    !candidate.targetImpact || typeof candidate.targetImpact !== "object" ||
     typeof candidate.monitoredProjects !== "number" || typeof candidate.responsibleNotices !== "number" ||
     typeof candidate.managementNotices !== "number" || typeof candidate.missingResponsible !== "number" ||
     !Array.isArray(candidate.items) || !Array.isArray(candidate.fields) ||
@@ -3997,7 +4000,9 @@ function JarvisOfferFinalizationCard({
 
   if (draft.actionId === "automation.manage") {
     const footer = draft.state === "executed"
-      ? `Die Projektstatus-Frühwarnung ist jetzt ${draft.targetEnabled ? "aktiv" : "inaktiv"}. Dieser Schritt hat keine Meldung oder E-Mail versendet und keinen Projektstatus geändert.`
+      ? draft.operation === "rule"
+        ? `Die Projektstatus-Regel „${draft.rule?.status}“ wurde genau einmal geändert. Dieser Schritt hat keinen Scheduler gestartet, nichts versendet und keinen Projektstatus geändert.`
+        : `Die Projektstatus-Frühwarnung ist jetzt ${draft.targetEnabled ? "aktiv" : "inaktiv"}. Dieser Schritt hat keine Meldung oder E-Mail versendet und keinen Projektstatus geändert.`
       : draft.state === "cancelled"
         ? "Die Automationsänderung wurde beendet. Schalter, Regeln, Projekte und Meldungen blieben unverändert."
         : draft.state === "expired"
@@ -4007,6 +4012,11 @@ function JarvisOfferFinalizationCard({
       <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
         <header><div><span>Action Center · Kritische Automationskonfiguration</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
         <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+        {draft.operation === "rule" ? <div className={styles.jarvisPlanningChecks}><strong>Vorher-/Nachher-Auswirkung</strong>
+          <div data-status="ok"><span>→</span><p><b>Überwachte Projekte</b><small>{draft.currentImpact.monitoredProjects} vorher · {draft.targetImpact.monitoredProjects} nachher</small></p></div>
+          <div data-status={draft.currentImpact.responsibleNotices === draft.targetImpact.responsibleNotices ? "ok" : "warning"}><span>→</span><p><b>Stufe verantwortliche Person</b><small>{draft.currentImpact.responsibleNotices} vorher · {draft.targetImpact.responsibleNotices} nachher</small></p></div>
+          <div data-status={draft.currentImpact.managementNotices === draft.targetImpact.managementNotices ? "ok" : "warning"}><span>→</span><p><b>Stufe Geschäftsführung</b><small>{draft.currentImpact.managementNotices} vorher · {draft.targetImpact.managementNotices} nachher</small></p></div>
+        </div> : null}
         <div className={styles.jarvisPlanningChecks}><strong>Rein lesender Auswirkungs-Dry-Run</strong>
           <div data-status="ok"><span>✓</span><p><b>Überwachte Projekte</b><small>{draft.monitoredProjects} Projekt(e) im aktuellen Regelumfang</small></p></div>
           <div data-status={draft.responsibleNotices ? "warning" : "ok"}><span>{draft.responsibleNotices ? "!" : "✓"}</span><p><b>Stufe verantwortliche Person</b><small>{draft.responsibleNotices} aktuelle Treffer</small></p></div>
@@ -4020,7 +4030,7 @@ function JarvisOfferFinalizationCard({
         {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
         {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
         <div className={styles.jarvisActionDraftActions}>
-          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>Projektstatus-Automation jetzt {draft.targetEnabled ? "aktivieren" : "deaktivieren"}</button> : null}
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.operation === "rule" ? `Projektstatus-Regel ${draft.rule?.status} jetzt ändern` : `Projektstatus-Automation jetzt ${draft.targetEnabled ? "aktivieren" : "deaktivieren"}`}</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Automationsänderung abbrechen</button> : null}
           {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
         </div>

@@ -293,9 +293,16 @@ const bulkUpdatePreviewPayloadSchema = z.discriminatedUnion("mode", [
   }).strict(),
 ]);
 
-const automationManagementPreviewPayloadSchema = z.object({
-  enabled: z.boolean(),
-}).strict();
+const automationManagementPreviewPayloadSchema = z.discriminatedUnion("operation", [
+  z.object({ operation: z.literal("switch"), enabled: z.boolean() }).strict(),
+  z.object({
+    operation: z.literal("rule"),
+    status: z.string().trim().min(1).max(80),
+    enabled: z.boolean().optional(),
+    responsibleAfterDays: z.number().int().min(1).max(180).optional(),
+    managementAfterDays: z.number().int().min(1).max(365).optional(),
+  }).strict(),
+]);
 
 const offerPreviewLineSchema = z
   .object({
@@ -1355,8 +1362,16 @@ export type JarvisAutomationManagementDraftView = Omit<
 > & {
   actionId: "automation.manage";
   title: "Projektstatus-Automation kontrolliert ändern";
+  operation: "switch" | "rule";
   currentEnabled: boolean;
   targetEnabled: boolean;
+  rule?: {
+    status: string;
+    before: { enabled: boolean; responsibleAfterDays: number; managementAfterDays: number };
+    after: { enabled: boolean; responsibleAfterDays: number; managementAfterDays: number };
+  };
+  currentImpact: { monitoredProjects: number; responsibleNotices: number; managementNotices: number; missingResponsible: number };
+  targetImpact: { monitoredProjects: number; responsibleNotices: number; managementNotices: number; missingResponsible: number };
   monitoredProjects: number;
   responsibleNotices: number;
   managementNotices: number;
