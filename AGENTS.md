@@ -1,5 +1,35 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Lohnkostenverwaltung 2026-08-02: `payroll.manage` ist für die
+  kontrollierte Änderung bestehender aktiver Mitarbeiterkosten produktiv
+  freigegeben. Änderbar sind Monatsgehalt, Vollkostenfaktor, Jahresstunden,
+  Urlaubs-, Fortbildungs- und Krankheitstage sowie Stunden pro Arbeitstag.
+  JARVIS löst das Ziel organisationsgebunden und eindeutig über die
+  dienstliche E-Mail auf, zeigt Alt-/Neuwerte, Vollkosten, Abzüge, verkaufbare
+  Stunden und Stundensatz sowie Auswirkungen auf historische und noch nicht
+  bewertete Zeiten und laufende Stempelungen. Historische Kostensnapshots
+  bleiben unverändert. Unplausible, wirkungslose oder nicht mehr tragfähige
+  Kalkulationen sowie inaktive Ziele blockieren fail-closed. Sitzung und
+  effektiver Akteur benötigen zugleich Benutzer- und Kostenverwaltungsrecht;
+  Ablehnungen geben keine vertraulichen Werte preis. Exakte Phrase:
+  `LOHNKOSTEN ÄNDERN <dienstliche E-Mail>`. Revision, TTL, HMAC, Payload-/
+  Kontexthash, SHA-256-Fachfingerprint, serialisierbare Transaktion,
+  PostgreSQL-Advisory-Lock und optimistisches `updatedAt` sichern Stale Context
+  und Exactly-once; Auditaktion `employee-cost.changed`. Gemeinsamer
+  Fachservice für JARVIS und Mitarbeiterkostenmaske:
+  `src/lib/employee-costs/employee-cost-management-service.ts`; isolierte QA:
+  `scripts/qa-jarvis-employee-cost-management.mjs`. Runtime-Commit
+  `422777f7f0f0601ea881d2e0254c7e87477e8124`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T042845Z-before-jarvis-employee-cost-management`.
+  Lokal bestanden 166/166 Testdateien mit 1.671/1.671 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und der
+  90-Seiten-Build. Lokale und produktive isolierte QA, echter UI-Klicktest bis
+  in den Lohnkosten-Reiter sowie der permanente Korpus (110/110, produktiv 25
+  nur vorbereitete Aktionen) sind grün; QA-Rückstände null. Dashboard und
+  Anfrageformular HTTP 200, Live-Prisma-Diff leer. WorkPilot PID `724824`,
+  KlinikNavigator unverändert PID `398228`. Prisma-, Storage- und
+  Online-Anfragen-Invarianten blieben unverändert.
+
 - JARVIS Personalstammdaten 2026-08-02: `personnel.manage` ist für die
   kontrollierte Änderung bestehender aktiver Mitarbeiter produktiv
   freigegeben. Zulässig sind ausschließlich Vor-/Nachname, dienstliche E-Mail,

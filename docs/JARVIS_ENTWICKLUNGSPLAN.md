@@ -2926,6 +2926,57 @@ WorkPilot PID `718512`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
 
+## 29. Lohnkosten kontrolliert ändern
+
+`payroll.manage` ändert ausschließlich einen bestehenden aktiven
+Mitarbeiterkosten-Datensatz, dessen Mitarbeiter innerhalb der aktuellen
+Organisation eindeutig über die dienstliche E-Mail aufgelöst wurde. Zulässig
+sind Monatsgehalt, Vollkostenfaktor, Jahresstunden, Urlaubs-, Fortbildungs- und
+Krankheitstage sowie Stunden pro Arbeitstag. Mitarbeiterstammdaten,
+Zeitbuchungen, Stempelungen und historische Kostensnapshots werden nicht
+umgeschrieben.
+
+Die Vorschau zeigt Alt-/Neuwerte, Jahres- und Monatsvollkosten, Abzugstage,
+verkaufbare Jahres- und Monatsstunden und den resultierenden Stundensatz. Sie
+weist zusätzlich historische Zeiten mit Snapshot, noch nicht bewertete Zeiten
+und laufende Stempelungen aus. Negative Werte, Faktor außerhalb `(0, 5]`,
+Jahresstunden außerhalb `(0, 8760]`, mehr als 24 Stunden pro Tag, mehr als 366
+Tage je Abzugskategorie, keine verbleibenden verkaufbaren Stunden,
+wirkungslose Änderungen und inaktive Ziele blockieren fail-closed. Erst
+`LOHNKOSTEN ÄNDERN <dienstliche E-Mail>` darf ausführen.
+
+Sowohl die Sitzung als auch der effektive Akteur benötigen Benutzer- und
+Mitarbeiterkosten-Verwaltungsrecht; unberechtigte Rollen werden vor der
+Zielauflösung ohne Preisgabe vertraulicher Werte abgelehnt. Der gemeinsame
+Fachservice `src/lib/employee-costs/employee-cost-management-service.ts` wird
+von JARVIS und `/api/employee-costs` verwendet. Organisation, Mitarbeiter,
+Kostenstand, Änderungen, Kennzahlen und Wirkungszähler bindet ein
+SHA-256-Fachfingerprint. Revision, TTL, HMAC, Payload-/Kontexthash,
+PostgreSQL-Advisory-Lock, serialisierbare Transaktion und optimistisches
+`updatedAt` sichern Parallelzugriff, Stale Context und Exactly-once; Audit
+`employee-cost.changed` unterscheidet JARVIS und normale Kostenmaske.
+
+Lokal bestanden 166 Testdateien mit 1.671 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Die isolierte lokale und produktive QA bestätigte UI-/
+Service-Parität, Rollen- und Mandantengrenze, unmögliche Kalkulation, Abbruch,
+falsche/exakte Phrase, Stale Context, Replay, unveränderte historische
+Snapshots und laufende Stempelung, exakt einen Audit je Schreibvorgang und
+null Rückstände. Der echte UI-Klicktest führte von der natürlichen Anfrage
+über Vorschau und exakte Bestätigung bis zum aktualisierten Lohnkosten-Reiter.
+Der permanente Korpus blieb exakt 110 Fälle groß und bestand lokal sowie
+produktiv 110/110; produktiv 25 vorbereitete, null ausgeführte Aktionen und
+null Rückstände.
+
+Produktiv abgenommen auf Runtime-Commit
+`422777f7f0f0601ea881d2e0254c7e87477e8124`. Das verifizierte Datenbank-, Git-
+und Konfigurationsbackup liegt unter
+`/var/backups/workpilot360/20260802T042845Z-before-jarvis-employee-cost-management`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `724824`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.
+
 ## 28. Personalstammdaten kontrolliert ändern
 
 `personnel.manage` bearbeitet ausschließlich bestehende aktive Mitarbeiter,

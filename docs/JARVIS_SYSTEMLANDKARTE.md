@@ -454,3 +454,27 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   163/163 Testdateien, 1.654/1.654 Tests, 110/110 Produktionsfragen, 24 nur
   vorbereitete Aktionen, null Rückstände, Live-Prisma-Diff leer. WorkPilot PID
   `721496`, KlinikNavigator PID `398228`.
+
+## Lohnkosten kontrolliert ändern
+
+- JARVIS-Aktion `payroll.manage`; Ziel ist genau ein bestehender aktiver,
+  organisationsgebunden über die dienstliche E-Mail aufgelöster Mitarbeiter
+  mit vorhandenem Mitarbeiterkosten-Datensatz.
+- Freigegeben: Monatsgehalt, Vollkostenfaktor, Jahresstunden, Urlaubs-,
+  Fortbildungs- und Krankheitstage sowie Stunden pro Arbeitstag.
+- Vorschau: Alt-/Neuwerte, Jahres-/Monatsvollkosten, Abzugstage, verkaufbare
+  Stunden, Stundensatz, historische Zeiten mit Snapshot, unbewertete Zeiten
+  und laufende Stempelungen. Historische Snapshots bleiben unverändert.
+- Fail-closed: fehlende Doppelberechtigung für Benutzer und Mitarbeiterkosten,
+  inaktives Ziel, ungültige oder wirtschaftlich unmögliche Werte, wirkungslose
+  Änderung, Stale Context und Replay. Ablehnungen leaken keine Kostendaten.
+- Exakte Phrase: `LOHNKOSTEN ÄNDERN <dienstliche E-Mail>`. Gemeinsamer
+  Fachservice für JARVIS und Kostenmaske:
+  `src/lib/employee-costs/employee-cost-management-service.ts`; isolierte QA:
+  `scripts/qa-jarvis-employee-cost-management.mjs`.
+- Produktivabnahme: Runtime
+  `422777f7f0f0601ea881d2e0254c7e87477e8124`, Backup
+  `/var/backups/workpilot360/20260802T042845Z-before-jarvis-employee-cost-management`,
+  166/166 Testdateien, 1.671/1.671 Tests, echter UI-Klicktest, 110/110
+  Produktionsfragen, 25 nur vorbereitete Aktionen, null Rückstände,
+  Live-Prisma-Diff leer. WorkPilot PID `724824`, KlinikNavigator PID `398228`.
