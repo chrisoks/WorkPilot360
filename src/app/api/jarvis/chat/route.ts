@@ -106,6 +106,7 @@ import {
   createPersistedJarvisProjectLifecycleDraft,
   createPersistedJarvisContactManagementDraft,
   createPersistedJarvisContactDeletionDraft,
+  createPersistedJarvisCatalogManagementDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -181,6 +182,10 @@ import {
   extractContactDeletionRequest,
   looksLikeContactDeletionRequest,
 } from "@/lib/jarvis/contact-deletion-intake";
+import {
+  extractCatalogManagementRequest,
+  looksLikeCatalogManagementRequest,
+} from "@/lib/jarvis/catalog-management-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -1035,6 +1040,32 @@ async function buildJarvisContactDeletionDraft(input: {
     };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.contact-deletion.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Kontaktlöschung konnte nicht sicher vorbereitet werden."} Es wurde nichts gelöscht.` };
+  }
+}
+
+async function buildJarvisCatalogManagementDraft(input: {
+  question: string; organizationId: string; sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.catalog-management.session-required", message: "Für eine Katalogaktion ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts angelegt oder geändert." };
+  const details = extractCatalogManagementRequest(input.question);
+  if (details.mode === "create" && !details.values.type) return { type: "clarification" as const, topicId: "action.catalog-management.type-required", message: "Soll ein Artikel oder eine Leistung angelegt werden? Pakete bleiben in diesem Schritt bewusst in der Paketmaske. Es wurde nichts angelegt." };
+  if (details.mode === "create" && !String(details.values.name ?? "").trim()) return { type: "clarification" as const, topicId: "action.catalog-management.name-required", message: "Wie lautet die eindeutige Bezeichnung? Nutze zum Beispiel „Bezeichnung: Glasreinigung“. Es wurde nichts angelegt." };
+  if (details.mode === "update" && !details.catalogNumber) return { type: "clarification" as const, topicId: "action.catalog-management.number-required", message: "Welche Katalogposition soll geändert werden? Nenne bitte die eindeutige Artikel- oder Leistungsnummer, zum Beispiel L1001. Es wurde nichts geändert." };
+  let catalogItemId: string | undefined;
+  if (details.mode === "update") {
+    const items = await prisma.catalogItem.findMany({ where: { organizationId: input.organizationId, number: { equals: details.catalogNumber, mode: "insensitive" } }, take: 2, select: { id: true, type: true } });
+    if (items.length !== 1) return { type: items.length ? "clarification" as const : "refusal" as const, topicId: items.length ? "action.catalog-management.ambiguous" : "action.catalog-management.not-found", message: items.length ? `Die Katalognummer ${details.catalogNumber} ist nicht eindeutig. Es wurde nichts geändert.` : `Die Katalogposition ${details.catalogNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts geändert.` };
+    if (items[0].type === "package") return { type: "refusal" as const, topicId: "action.catalog-management.package-not-supported", message: "Pakete, Komponenten und vertragliche Paket-Snapshots bleiben in diesem Schritt bewusst in der Paketmaske. Es wurde nichts geändert." };
+    catalogItemId = items[0].id;
+  }
+  const preview = createJarvisActionPreview({ previewId: randomUUID(), actionId: "catalog.manage", payload: { mode: details.mode, ...(catalogItemId ? { catalogItemId } : {}), values: details.values }, organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString() });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.catalog-management.refused", message: `${preview.message} Es wurde nichts angelegt oder geändert.` };
+  try {
+    const actionDraft = await createPersistedJarvisCatalogManagementDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return { type: "answer" as const, topicId: "action.catalog-management", message: "Ich habe die Katalogposition serverseitig geprüft. Kontrolliere Nummer, Stammdaten, Einkauf/Selbstkosten, Verkaufspreis, Rohertrag, Marge, Umsatzsteuer, Planung und bestehende Verwendungen. Verwendende Pakete behalten ihre Snapshots; JARVIS ändert sie nicht automatisch. Erst die exakte Bestätigungsphrase legt die Position genau einmal an oder ändert sie.", actionDraft };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.catalog-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Katalogaktion konnte nicht sicher vorbereitet werden."} Es wurde nichts angelegt oder geändert.` };
   }
 }
 
@@ -3058,6 +3089,12 @@ export async function POST(req: Request) {
         sessionId: actorResult.sessionId,
         accessProfile,
       }),
+      "management"
+    );
+  }
+  if (looksLikeCatalogManagementRequest(message)) {
+    return respond(
+      await buildJarvisCatalogManagementDraft({ question: message, organizationId: organization.id, sessionId: actorResult.sessionId, accessProfile }),
       "management"
     );
   }

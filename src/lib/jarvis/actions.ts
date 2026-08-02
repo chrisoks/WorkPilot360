@@ -525,7 +525,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "write",
     confirmation: "confirm",
     dataClasses: ["internal"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canManageCatalogItems,
   },
   {

@@ -96,6 +96,28 @@ const fake = vi.hoisted(() => {
     contactDeletions.push(row);
     return row;
   });
+  const catalogChanges: Array<Record<string, any>> = [];
+  const evaluateCatalogCreation = vi.fn(async ({ values }: { values: Record<string, any> }) => ({
+    mode: "create", item: { id: "", type: values.type, number: "L1001", name: values.name, reviewStatus: "unreviewed", updatedAt: "" },
+    values: { type: values.type, number: "L1001", name: values.name, category: "", trade: "", unit: "Std", description: "", purchasePrice: Number(values.purchasePrice || 0), salesPrice: Number(values.salesPrice || 0), vatRate: Number(values.vatRate || 19), laborCostRateKey: "", isLaborPosition: true, isPlanningRelevant: true, planningMinutesPerUnit: 60, defaultPlanningBoard: "", defaultPlanningGroup: "" },
+    changes: Object.entries(values).map(([field, after]) => ({ field, label: field, before: "", after: String(after) })),
+    impacts: [], calculation: { purchasePrice: Number(values.purchasePrice || 0), salesPrice: Number(values.salesPrice || 0), grossProfit: Number(values.salesPrice || 0) - Number(values.purchasePrice || 0), marginPercent: 50, vatRate: Number(values.vatRate || 19) },
+    reviewWillBeInvalidated: false,
+    checks: [{ key: "identity", label: "Katalogposition", status: "ok", detail: "Geprüft." }], warnings: [], blockingIssues: [], fingerprint: "8".repeat(64),
+  }));
+  const evaluateCatalogChange = vi.fn(async ({ catalogItemId, changes }: { catalogItemId: string; changes: Record<string, any> }) => ({
+    mode: "update", item: { id: catalogItemId, type: "service", number: "L1001", name: "Testleistung", reviewStatus: "approved", updatedAt: "2026-07-29T18:00:00.000Z" },
+    values: { type: "service", number: "L1001", name: "Testleistung", category: "", trade: "", unit: "Std", description: "", purchasePrice: 50, salesPrice: changes.salesPrice || 100, vatRate: 19, laborCostRateKey: "", isLaborPosition: true, isPlanningRelevant: true, planningMinutesPerUnit: 60, defaultPlanningBoard: "", defaultPlanningGroup: "", ...changes },
+    changes: Object.entries(changes).map(([field, after]) => ({ field, label: field, before: "100", after: String(after) })),
+    impacts: [{ key: "packages", label: "verwendende Pakete", count: 1 }], calculation: { purchasePrice: 50, salesPrice: Number(changes.salesPrice || 100), grossProfit: Number(changes.salesPrice || 100) - 50, marginPercent: 50, vatRate: 19 },
+    reviewWillBeInvalidated: true,
+    checks: [{ key: "identity", label: "Katalogposition", status: "ok", detail: "Geprüft." }], warnings: ["Paket-Snapshots bleiben unverändert."], blockingIssues: [], fingerprint: "7".repeat(64),
+  }));
+  const executeCatalogManagement = vi.fn(async (input: Record<string, any>) => {
+    const row = { id: input.catalogItemId || "catalog-created", number: "L1001", name: input.values.name || "Testleistung" };
+    catalogChanges.push(row);
+    return row;
+  });
   const projectLifecycleChanges: Array<Record<string, any>> = [];
   const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
     reason,
@@ -691,6 +713,7 @@ const fake = vi.hoisted(() => {
       projectMasterDataChanges.length = 0;
       contactChanges.length = 0;
       contactDeletions.length = 0;
+      catalogChanges.length = 0;
       projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
@@ -712,6 +735,9 @@ const fake = vi.hoisted(() => {
       executeContactChange.mockClear();
       evaluateContactDeletion.mockClear();
       executeContactDeletion.mockClear();
+      evaluateCatalogCreation.mockClear();
+      evaluateCatalogChange.mockClear();
+      executeCatalogManagement.mockClear();
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
       createProjectLogbookEntry.mockClear();
@@ -757,6 +783,10 @@ const fake = vi.hoisted(() => {
     contactDeletions,
     evaluateContactDeletion,
     executeContactDeletion,
+    catalogChanges,
+    evaluateCatalogCreation,
+    evaluateCatalogChange,
+    executeCatalogManagement,
     evaluateProjectStatusChange,
     executeProjectStatusChange,
     projectLifecycleChanges,
@@ -791,6 +821,15 @@ vi.mock("@/lib/contacts/contact-deletion-service", () => ({
   executeContactDeletion: fake.executeContactDeletion,
   getContactDeletionConfirmationText: (customerNumber: string) => `KONTAKT ENDGÜLTIG LÖSCHEN ${customerNumber}`,
   ContactDeletionServiceError: class ContactDeletionServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
+vi.mock("@/lib/catalog/catalog-management-service", () => ({
+  evaluateCatalogCreation: fake.evaluateCatalogCreation,
+  evaluateCatalogChange: fake.evaluateCatalogChange,
+  executeCatalogManagement: fake.executeCatalogManagement,
+  getCatalogManagementConfirmationText: (mode: "create" | "update", number: string) => `KATALOGPOSITION ${mode === "create" ? "ANLEGEN" : "ÄNDERN"} ${number}`,
+  CatalogManagementServiceError: class CatalogManagementServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
 }));
@@ -981,6 +1020,9 @@ import {
   cancelJarvisContactDeletionDraft,
   confirmJarvisContactDeletionDraft,
   createPersistedJarvisContactDeletionDraft,
+  cancelJarvisCatalogManagementDraft,
+  confirmJarvisCatalogManagementDraft,
+  createPersistedJarvisCatalogManagementDraft,
   cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft,
   createPersistedJarvisProjectStatusDraft,
@@ -2960,6 +3002,42 @@ describe("persistent JARVIS contact-deletion drafts", () => {
     expect(created).toMatchObject({ state: "awaiting_input", references: [{ key: "projects", count: 2 }], confirmation: { enabled: false } });
     await expect(confirmJarvisContactDeletionDraft(created.previewId, binding(), created.revision, "KONTAKT ENDGÜLTIG LÖSCHEN 7000049", baseNow)).rejects.toMatchObject({ code: "conflict" });
     expect(fake.executeContactDeletion).not.toHaveBeenCalled();
+  });
+});
+
+describe("persistent JARVIS catalog-management drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string) => ({
+    version: 1 as const, previewId, actionId: "catalog.manage" as const,
+    actionTitle: "Katalogposition anlegen oder bearbeiten", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { mode: "create" as const, values: { type: "service" as const, name: "Testleistung", purchasePrice: 50, salesPrice: 100, vatRate: 19 } },
+    execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("creates the bound catalog item exactly once after the exact phrase", async () => {
+    const created = await createPersistedJarvisCatalogManagementDraft({ ...binding(), now: baseNow, preview: preview("catalog-manage-1") });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", mode: "create", catalogNumber: "L1001", confirmation: { requiredText: "KATALOGPOSITION ANLEGEN L1001" } });
+    const first = await confirmJarvisCatalogManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisCatalogManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("catalog-created");
+    expect(fake.catalogChanges).toHaveLength(1);
+    expect(fake.executeCatalogManagement).toHaveBeenCalledWith(expect.objectContaining({ requestId: "catalog-manage-1", expectedFingerprint: "8".repeat(64), mode: "create" }));
+  });
+
+  it("rejects an inexact phrase and cancels without changing the catalog", async () => {
+    const wrong = await createPersistedJarvisCatalogManagementDraft({ ...binding(), now: baseNow, preview: preview("catalog-wrong") });
+    await expect(confirmJarvisCatalogManagementDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisCatalogManagementDraft({ ...binding(), now: baseNow, preview: preview("catalog-cancel") });
+    expect((await cancelJarvisCatalogManagementDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    expect(fake.catalogChanges).toHaveLength(0);
+  });
+
+  it("shows package impacts and invalidates an approved review on update", async () => {
+    const updatePreview = { ...preview("catalog-update"), payload: { mode: "update" as const, catalogItemId: "catalog-1", values: { salesPrice: 125 } } };
+    const created = await createPersistedJarvisCatalogManagementDraft({ ...binding(), now: baseNow, preview: updatePreview });
+    expect(created).toMatchObject({ catalogNumber: "L1001", impacts: [{ key: "packages", count: 1 }], reviewWillBeInvalidated: true, confirmation: { requiredText: "KATALOGPOSITION ÄNDERN L1001" } });
   });
 });
 

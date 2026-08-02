@@ -14,6 +14,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "project.archive",
   "contact.manage",
   "contact.delete",
+  "catalog.manage",
   "planning.prepare",
   "time.prepare",
   "project-logbook.prepare",
@@ -230,6 +231,24 @@ const contactDeletionPreviewPayloadSchema = z.object({
   reason: boundedText(1000),
 }).strict();
 
+const catalogManagementValuesSchema = z.object({
+  type: z.enum(["article", "service"]).optional(), number: z.string().trim().max(120).optional(),
+  name: z.string().trim().max(500).optional(), category: z.string().trim().max(500).optional(), trade: z.string().trim().max(500).optional(),
+  unit: z.string().trim().max(120).optional(), description: z.string().trim().max(4000).optional(),
+  purchasePrice: z.number().min(-100_000_000).max(100_000_000).optional(), salesPrice: z.number().min(-100_000_000).max(100_000_000).optional(),
+  vatRate: z.number().min(0).max(100).optional(), laborCostRateKey: z.string().trim().max(500).optional(),
+  isLaborPosition: z.boolean().optional(), isPlanningRelevant: z.boolean().optional(), planningMinutesPerUnit: z.number().int().min(0).max(525_600).optional(),
+  defaultPlanningBoard: z.string().trim().max(500).optional(), defaultPlanningGroup: z.string().trim().max(500).optional(),
+}).strict();
+
+const catalogManagementPreviewPayloadSchema = z.object({
+  mode: z.enum(["create", "update"]), catalogItemId: boundedId.optional(), values: catalogManagementValuesSchema,
+}).strict().superRefine((payload, context) => {
+  if (payload.mode === "create" && !payload.values.type) context.addIssue({ code: "custom", path: ["values", "type"], message: "Für eine Anlage ist Artikel oder Leistung erforderlich." });
+  if (payload.mode === "update" && !payload.catalogItemId) context.addIssue({ code: "custom", path: ["catalogItemId"], message: "Für eine Änderung ist die Katalogposition erforderlich." });
+  if (Object.keys(payload.values).filter((key) => key !== "type" && key !== "number").length === 0) context.addIssue({ code: "custom", path: ["values"], message: "Mindestens ein Katalogfeld ist erforderlich." });
+});
+
 const offerPreviewLineSchema = z
   .object({
     catalogItemId: boundedId.optional(),
@@ -379,6 +398,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "project.archive": projectLifecyclePreviewPayloadSchema,
   "contact.manage": contactManagementPreviewPayloadSchema,
   "contact.delete": contactDeletionPreviewPayloadSchema,
+  "catalog.manage": catalogManagementPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
@@ -406,6 +426,7 @@ export type JarvisActionPreviewPayloadMap = {
   "project.archive": z.infer<typeof projectLifecyclePreviewPayloadSchema>;
   "contact.manage": z.infer<typeof contactManagementPreviewPayloadSchema>;
   "contact.delete": z.infer<typeof contactDeletionPreviewPayloadSchema>;
+  "catalog.manage": z.infer<typeof catalogManagementPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "project-logbook.prepare": z.infer<
@@ -1212,6 +1233,22 @@ export type JarvisContactDeletionDraftView = Omit<
   customerNumber: string;
   reason: string;
   references: Array<{ key: string; label: string; count: number }>;
+};
+
+export type JarvisCatalogManagementDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus" | "projectId" | "result"
+> & {
+  actionId: "catalog.manage";
+  title: "Katalogposition kontrolliert anlegen oder bearbeiten";
+  mode: "create" | "update";
+  catalogItemId: string;
+  catalogNumber: string;
+  changes: Array<{ field: string; label: string; before: string; after: string }>;
+  impacts: Array<{ key: string; label: string; count: number }>;
+  calculation: { purchasePrice: number; salesPrice: number; grossProfit: number; marginPercent: number | null; vatRate: number };
+  reviewWillBeInvalidated: boolean;
+  result?: { entityType: "catalogItem"; entityId: string; label: string };
 };
 
 export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView, "actionId" | "title" | "targetStatus"> & {

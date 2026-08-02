@@ -31,6 +31,7 @@ import {
   type JarvisProjectLifecycleDraftView,
   type JarvisContactManagementDraftView,
   type JarvisContactDeletionDraftView,
+  type JarvisCatalogManagementDraftView,
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
@@ -59,6 +60,7 @@ import {
   canManageProjects,
   canManageContacts,
   canDeleteContacts,
+  canManageCatalogItems,
   canManageOffers,
   canDeleteOffers,
   canDeleteInvoices,
@@ -205,6 +207,14 @@ import {
   executeContactDeletion,
   getContactDeletionConfirmationText,
 } from "@/lib/contacts/contact-deletion-service";
+import {
+  CatalogManagementServiceError,
+  evaluateCatalogChange,
+  evaluateCatalogCreation,
+  executeCatalogManagement,
+  getCatalogManagementConfirmationText,
+  type CatalogManagementValues,
+} from "@/lib/catalog/catalog-management-service";
 import {
   createConfirmedInvoiceDraft,
   evaluateInvoiceDraft,
@@ -930,6 +940,27 @@ const contactDeletionContextSchema = z.object({
   fingerprint: z.string().length(64),
 }).strict();
 
+const catalogManagementValuesSchema = z.object({
+  type: z.enum(["article", "service"]).optional(), number: z.string().max(120).optional(), name: z.string().max(500).optional(),
+  category: z.string().max(500).optional(), trade: z.string().max(500).optional(), unit: z.string().max(120).optional(), description: z.string().max(4000).optional(),
+  purchasePrice: z.number().optional(), salesPrice: z.number().optional(), vatRate: z.number().optional(), laborCostRateKey: z.string().max(500).optional(),
+  isLaborPosition: z.boolean().optional(), isPlanningRelevant: z.boolean().optional(), planningMinutesPerUnit: z.number().int().min(0).optional(),
+  defaultPlanningBoard: z.string().max(500).optional(), defaultPlanningGroup: z.string().max(500).optional(),
+}).strict();
+const catalogManagementPayloadSchema = z.object({ mode: z.enum(["create", "update"]), catalogItemId: z.string().trim().min(1).max(120).optional(), values: catalogManagementValuesSchema }).strict();
+const catalogCanonicalValuesSchema = catalogManagementValuesSchema.extend({ type: z.enum(["article", "service"]), number: z.string().min(1).max(120), name: z.string(), purchasePrice: z.number(), salesPrice: z.number(), vatRate: z.number(), planningMinutesPerUnit: z.number().int() }).strict();
+const catalogManagementContextSchema = z.object({
+  mode: z.enum(["create", "update"]),
+  item: z.object({ id: z.string(), type: z.enum(["article", "service"]), number: z.string(), name: z.string(), reviewStatus: z.string(), updatedAt: z.string() }).strict(),
+  values: catalogCanonicalValuesSchema,
+  changes: z.array(z.object({ field: z.string(), label: z.string(), before: z.string(), after: z.string() }).strict()),
+  impacts: z.array(z.object({ key: z.string(), label: z.string(), count: z.number().int().min(0) }).strict()),
+  calculation: z.object({ purchasePrice: z.number(), salesPrice: z.number(), grossProfit: z.number(), marginPercent: z.number().nullable(), vatRate: z.number() }).strict(),
+  reviewWillBeInvalidated: z.boolean(),
+  checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string() }).strict()),
+  warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
+}).strict();
+
 const projectStatusContextSchema = z.object({
   reason: z.string(),
   targetStatus: z.string(),
@@ -1618,7 +1649,8 @@ async function appendAuditEvent(
         | "projectLogbookEntry"
         | "taskComment"
         | "project"
-        | "contact";
+        | "contact"
+        | "catalogItem";
     };
   }
 ) {
@@ -4159,6 +4191,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "contact.delete") {
     return getJarvisContactDeletionDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "catalog.manage") {
+    return getJarvisCatalogManagementDraft(previewId, binding, now);
   }
   if (draft?.actionId === "project.status.change") {
     return getJarvisProjectStatusDraft(previewId, binding, now);
@@ -10133,6 +10168,108 @@ export async function confirmJarvisContactDeletionDraft(previewId: string, bindi
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof ContactDeletionServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : error.code === "conflict" ? "conflict" : "invalid_input", error.message, error.code === "invalid_input" ? 400 : 409);
     throw new JarvisActionDraftError("execution_failed", "Der Kontakt wurde nicht gelöscht; die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayManageCatalog(binding: JarvisTaskDraftBinding) {
+  return canManageCatalogItems(binding.profile.sessionActor) && canManageCatalogItems(binding.profile.effectiveActor);
+}
+
+function validateCatalogManagementBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId || draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId || draft.impersonating !== binding.profile.isImpersonating) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Katalogaktion gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  }
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Katalogprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  if (!integrityMatches(draft)) throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Katalogaktion ist ungültig.", 409);
+  const payload = catalogManagementPayloadSchema.safeParse(draft.payload);
+  const context = catalogManagementContextSchema.safeParse(draft.context);
+  if (draft.actionId !== "catalog.manage" || !payload.success || !context.success || hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash) {
+    throw new JarvisActionDraftError("integrity_failed", "Katalogänderung oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundCatalogManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Katalogaktion wurde nicht gefunden.", 404);
+  validateCatalogManagementBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validateCatalogManagementBinding(current, binding) };
+}
+
+function toJarvisCatalogManagementDraftView(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding): JarvisCatalogManagementDraftView {
+  const { context } = validateCatalogManagementBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayManageCatalog(binding);
+  const ready = state === "awaiting_confirmation" && permitted && context.blockingIssues.length === 0;
+  const reason: JarvisCatalogManagementDraftView["confirmation"]["reason"] = state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" : state === "executing" ? "executing" : !permitted ? "not_permitted" : context.blockingIssues.length ? "blocked" : "ready";
+  return {
+    version: 2, previewId: draft.id, actionId: "catalog.manage", title: "Katalogposition kontrolliert anlegen oder bearbeiten",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), mode: context.mode, catalogItemId: context.item.id, catalogNumber: context.item.number,
+    fields: [
+      { label: "Aktion", value: context.mode === "create" ? "Artikel/Leistung anlegen" : "Artikel/Leistung bearbeiten" },
+      { label: "Art", value: context.item.type === "service" ? "Leistung" : "Artikel" }, { label: "Nummer", value: context.item.number },
+      { label: "Bezeichnung", value: context.values.name || "fehlt" }, { label: "Rohertrag", value: `${context.calculation.grossProfit.toFixed(2).replace(".", ",")} €` },
+      { label: "Marge", value: context.calculation.marginPercent === null ? "nicht berechenbar" : `${context.calculation.marginPercent.toFixed(2).replace(".", ",")} %` },
+    ],
+    changes: context.changes, impacts: context.impacts, calculation: context.calculation, reviewWillBeInvalidated: context.reviewWillBeInvalidated,
+    checks: context.checks, warnings: context.warnings,
+    blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Diese Rollenkombination darf Katalogstammdaten nicht verwalten."] : [])],
+    confirmation: { enabled: ready, reason, requiredText: getCatalogManagementConfirmationText(context.mode, context.item.number) }, cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "catalogItem" as const, entityId: draft.resultEntityId, label: "Katalogposition öffnen" } } : {}),
+  };
+}
+
+export async function createPersistedJarvisCatalogManagementDraft(input: { preview: JarvisActionPreview<"catalog.manage">; organizationId: string; sessionId: string; profile: JarvisAccessProfile; now?: Date }) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Katalogaktion ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayManageCatalog(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Katalogstammdaten nicht verwalten.", 403);
+  const now = input.now ?? new Date(); const payload = catalogManagementPayloadSchema.parse(input.preview.payload);
+  const evaluation = payload.mode === "create" ? await evaluateCatalogCreation({ organizationId: input.organizationId, values: payload.values as CatalogManagementValues }) : await evaluateCatalogChange({ organizationId: input.organizationId, catalogItemId: payload.catalogItemId || "", changes: payload.values as CatalogManagementValues });
+  const context = catalogManagementContextSchema.parse(evaluation); const actorIds = getActorIds(input.profile); const state = context.blockingIssues.length ? "awaiting_input" : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = { id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId, sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role, effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role, impersonating: input.profile.isImpersonating, actionId: "catalog.manage", state, revision: 1, payloadHash: hashJson(payload), contextHash: hashJson(context), expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null, executedAt: null, resultEntityType: null, resultEntityId: null, lastErrorCode: context.blockingIssues.length ? "catalog_validation" : null };
+  const created = await prisma.$transaction(async (tx) => { const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } }); await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked", reasonCode: context.blockingIssues.length ? "catalog_validation" : undefined }); return draft; });
+  return toJarvisCatalogManagementDraftView(created, input);
+}
+
+export async function getJarvisCatalogManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) { const { draft } = await loadBoundCatalogManagementDraft(previewId, binding, now); return toJarvisCatalogManagementDraftView(draft, binding); }
+
+export async function cancelJarvisCatalogManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundCatalogManagementDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisCatalogManagementDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Katalogaktion kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Katalogaktion wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => { const changed = await tx.jarvisActionDraft.updateMany({ where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag }, data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) } }); if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Katalogaktion wurde bereits verändert.", 409); const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } }); await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" }); return current; });
+  return toJarvisCatalogManagementDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisCatalogManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundCatalogManagementDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisCatalogManagementDraftView(loaded.draft, binding);
+  const requiredText = getCatalogManagementConfirmationText(loaded.context.mode, loaded.context.item.number);
+  if (confirmationText.trim() !== requiredText) throw new JarvisActionDraftError("invalid_input", `Gib zur Bestätigung exakt „${requiredText}“ ein.`, 400);
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Katalogvorschau darf bestätigt werden.", 409);
+  if (!mayManageCatalog(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Katalogstammdaten nicht verwalten.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } }); if (!current) throw new JarvisActionDraftError("not_found", "Die Katalogaktion wurde nicht gefunden.", 404);
+      const parsed = validateCatalogManagementBinding(current, binding); if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Katalogaktion ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true, firstName: true, lastName: true, email: true } });
+      if (!actor || !canManageCatalogItems(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Katalogberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null }; const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } }); if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Katalogposition wird bereits verarbeitet.", 409);
+      const actorName = [actor.firstName, actor.lastName].map((value) => String(value ?? "").trim()).filter(Boolean).join(" ") || actor.email;
+      const item = await executeCatalogManagement({ tx, organizationId: binding.organizationId, mode: parsed.payload.mode, catalogItemId: parsed.payload.catalogItemId, values: parsed.payload.values as CatalogManagementValues, actorId: actor.id, actorName, requestId: current.id, expectedFingerprint: parsed.context.fingerprint });
+      const executedAt = new Date(); const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "catalogItem", resultEntityId: item.id }; const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "catalogItem", resultEntityId: item.id, integrityTag: createIntegrityTag(executedData) } }); await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: item.id, entityType: "catalogItem" } }); return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisCatalogManagementDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") { const latest = await loadBoundCatalogManagementDraft(previewId, binding, now); if (latest.draft.state === "executed") return toJarvisCatalogManagementDraftView(latest.draft, binding); }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof CatalogManagementServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : error.code === "conflict" ? "conflict" : "invalid_input", error.message, error.code === "invalid_input" ? 400 : 409);
+    throw new JarvisActionDraftError("execution_failed", "Die Katalogposition wurde nicht angelegt oder geändert; die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

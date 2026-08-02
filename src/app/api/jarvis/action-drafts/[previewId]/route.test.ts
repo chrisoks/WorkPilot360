@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisContactManagementDraft: vi.fn(),
   cancelJarvisContactDeletionDraft: vi.fn(),
   confirmJarvisContactDeletionDraft: vi.fn(),
+  cancelJarvisCatalogManagementDraft: vi.fn(),
+  confirmJarvisCatalogManagementDraft: vi.fn(),
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
@@ -87,6 +89,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisContactManagementDraft: mocks.confirmJarvisContactManagementDraft,
   cancelJarvisContactDeletionDraft: mocks.cancelJarvisContactDeletionDraft,
   confirmJarvisContactDeletionDraft: mocks.confirmJarvisContactDeletionDraft,
+  cancelJarvisCatalogManagementDraft: mocks.cancelJarvisCatalogManagementDraft,
+  confirmJarvisCatalogManagementDraft: mocks.confirmJarvisCatalogManagementDraft,
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
@@ -1283,6 +1287,29 @@ describe("JARVIS action-draft API", () => {
     expect(response.status).toBe(200);
     expect(mocks.cancelJarvisContactDeletionDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 3);
     expect(mocks.confirmJarvisContactDeletionDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact catalog phrase to the bound catalog draft", async () => {
+    mocks.confirmJarvisCatalogManagementDraft.mockResolvedValueOnce({
+      actionId: "catalog.manage", state: "executed", result: { entityType: "catalogItem", entityId: "catalog-1", label: "Katalogposition öffnen" },
+    });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "catalog.manage", command: "confirm", revision: 8,
+      confirmationText: "KATALOGPOSITION ANLEGEN L1001", values: { salesPrice: 1 },
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisCatalogManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 8, "KATALOGPOSITION ANLEGEN L1001");
+    expect(mocks.confirmJarvisContactManagementDraft).not.toHaveBeenCalled();
+  });
+
+  it("cancels catalog management without confirming it", async () => {
+    mocks.cancelJarvisCatalogManagementDraft.mockResolvedValueOnce({ actionId: "catalog.manage", state: "cancelled" });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "catalog.manage", command: "cancel", revision: 4,
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.cancelJarvisCatalogManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 4);
+    expect(mocks.confirmJarvisCatalogManagementDraft).not.toHaveBeenCalled();
   });
 
   it("passes only the exact project-status phrase to the bound status draft", async () => {

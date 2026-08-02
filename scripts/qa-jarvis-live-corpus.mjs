@@ -306,6 +306,7 @@ async function main() {
   let projectMasterDataDraftPrepared = false;
   let contactManagementDraftPrepared = false;
   let contactDeletionDraftPrepared = false;
+  let catalogManagementDraftPrepared = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -329,6 +330,7 @@ async function main() {
         const isProjectMasterDataCase = item.question.includes("QAM-300");
         const isContactManagementCase = item.question.includes("QAC-400");
         const isContactDeletionCase = item.question.includes("QAD-500");
+        const isCatalogManagementCase = item.question.includes("QAK-600");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -363,6 +365,8 @@ async function main() {
               ? `Lege einen neuen Firmenkontakt an: Firma: QA JARVIS Kontakt ${now.getTime()}; E-Mail: jarvis-kontakt-${now.getTime()}@example.test; Telefon: +49 511 123456.`
             : isContactDeletionCase
               ? `Lösche Kontakt ${contactDeletionContact.customerNumber} endgültig. Grund: Versehentliche Doppelanlage.`
+            : isCatalogManagementCase
+              ? `Lege eine neue Leistung an: Bezeichnung: QA JARVIS Katalogleistung ${now.getTime()}; Einkaufspreis: 50; Verkaufspreis: 100; Umsatzsteuer: 19; Einheit: Std; Planungsrelevant: ja; Planminuten je Einheit: 60.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -464,6 +468,15 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Kontaktlöschfrage hat keine vollständig prüfbare, referenzfreie Bestätigungsvorschau erzeugt." });
           } else {
             contactDeletionDraftPrepared = true;
+          }
+        }
+        if (isCatalogManagementCase) {
+          if (payload.actionDraft?.actionId !== "catalog.manage") {
+            failures.push({ id: item.id, status: response.status, error: "Die Katalogfrage hat keine kontrollierte catalog.manage-Vorschau erzeugt." });
+          } else if (payload.actionDraft.state !== "awaiting_confirmation" || payload.actionDraft.confirmation?.enabled !== true || payload.actionDraft.blockingIssues?.length || payload.actionDraft.mode !== "create" || payload.actionDraft.calculation?.grossProfit !== 50) {
+            failures.push({ id: item.id, status: response.status, error: "Die Katalogfrage hat keine vollständig prüfbare, kalkulierte und unblockierte Anlagevorschau erzeugt." });
+          } else {
+            catalogManagementDraftPrepared = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -956,6 +969,7 @@ async function main() {
     projectMasterDataDraftPrepared,
     contactManagementDraftPrepared,
     contactDeletionDraftPrepared,
+    catalogManagementDraftPrepared,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId

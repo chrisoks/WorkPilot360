@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisProjectLifecycleDraft: vi.fn(),
   createPersistedJarvisContactManagementDraft: vi.fn(),
   createPersistedJarvisContactDeletionDraft: vi.fn(),
+  createPersistedJarvisCatalogManagementDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -157,6 +158,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisContactManagementDraft,
   createPersistedJarvisContactDeletionDraft:
     mocks.createPersistedJarvisContactDeletionDraft,
+  createPersistedJarvisCatalogManagementDraft:
+    mocks.createPersistedJarvisCatalogManagementDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3372,6 +3375,43 @@ describe("POST /api/jarvis/chat", () => {
     }));
     expect(await missingReason.json()).toMatchObject({ type: "clarification", topicId: "action.contact-deletion.reason-required" });
     expect(mocks.createPersistedJarvisContactDeletionDraft).not.toHaveBeenCalled();
+  });
+
+  it("prepares a calculated service creation without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisCatalogManagementDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "catalog.manage", title: "Katalogposition kontrolliert anlegen oder bearbeiten",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T06:00:00.000Z",
+      mode: "create", catalogItemId: "", catalogNumber: "L1001", fields: [], changes: [], impacts: [],
+      calculation: { purchasePrice: 50, salesPrice: 100, grossProfit: 50, marginPercent: 50, vatRate: 19 }, reviewWillBeInvalidated: false,
+      checks: [], warnings: [], blockingIssues: [], confirmation: { enabled: true, reason: "ready", requiredText: "KATALOGPOSITION ANLEGEN L1001" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Lege eine neue Leistung an: Bezeichnung: Testleistung; Einkaufspreis: 50; Verkaufspreis: 100; Umsatzsteuer: 19; Einheit: Std" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.catalog-management", actionDraft: { actionId: "catalog.manage", mode: "create" } });
+    expect(mocks.createPersistedJarvisCatalogManagementDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1", sessionId: "session-1",
+      preview: expect.objectContaining({ actionId: "catalog.manage", payload: { mode: "create", values: expect.objectContaining({ type: "service", name: "Testleistung", purchasePrice: 50, salesPrice: 100, vatRate: 19, unit: "Std" }) } }),
+    }));
+  });
+
+  it("keeps packages in the package mask and requires unique catalog data", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const missingName = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actorId: "user-1", message: "Lege eine neue Leistung an: Verkaufspreis: 100" }),
+    }));
+    expect(await missingName.json()).toMatchObject({ type: "clarification", topicId: "action.catalog-management.name-required" });
+    const lookup = vi.spyOn(prisma.catalogItem, "findMany").mockResolvedValueOnce([{ id: "package-1", type: "package" }] as never);
+    const packageResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actorId: "user-1", message: "Ändere Katalogposition L1001: Verkaufspreis: 250" }),
+    }));
+    expect(await packageResponse.json()).toMatchObject({ type: "refusal", topicId: "action.catalog-management.package-not-supported" });
+    expect(mocks.createPersistedJarvisCatalogManagementDraft).not.toHaveBeenCalled();
+    lookup.mockRestore();
   });
 
   it("asks for a documented reason before preparing a project-status change", async () => {
