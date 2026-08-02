@@ -2776,5 +2776,12 @@ zwei Timeline-/Logbuch-/Audit-Einträge, erhaltene Angebote, Rechnungen und
 Dateien sowie null QA-Rückstände. Echte Klicktests bestätigten JARVIS und die
 normale Projektmaske, deaktivierte Ausführung bei falscher Phrase, Archivieren,
 Wiederherstellen und die sichtbare Erfolgsmeldung ohne Fehler auf einem
-frischen Dashboard-Lauf. Release-Commit, Backup, Produktions-QA und Runtime
-werden nach dem seriellen Deployment ergänzt.
+frischen Dashboard-Lauf. Produktiv ist der Vertikalschnitt auf Commit
+`781899aac894025833367b56086b724088c3f8ae`; das verifizierte Code-, DB-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T003136Z-before-jarvis-project-lifecycle`.
+Die isolierte Produktions-QA und der permanente Live-Korpus bestanden erneut
+vollständig (110/110, 19 vorbereitete Entwürfe, keine Ausführung und null
+QA-Rückstände). Prisma blieb live synchron, der externe Dashboard- und
+Formularzugriff antwortete fehlerfrei. WorkPilot läuft unter PID `700433`,
+KlinikNavigator blieb unverändert unter PID `398228`.

@@ -399,3 +399,9 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
 - Permanente Abnahme: exakt 110 Fragen in
   `src/lib/jarvis/live-question-corpus.ts`; isolierte Ausführungs-QA in
   `scripts/qa-jarvis-project-lifecycle.mjs`.
+- Produktivabnahme 2026-08-02: Commit
+  `781899aac894025833367b56086b724088c3f8ae`, verifiziertes Backup
+  `/var/backups/workpilot360/20260802T003136Z-before-jarvis-project-lifecycle`,
+  isolierte Live-QA vollständig grün, permanenter Korpus 110/110 mit 19 nur
+  vorbereiteten Entwürfen und null Rückständen. WorkPilot PID `700433`,
+  KlinikNavigator unverändert PID `398228`.

@@ -1,5 +1,19 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projektarchivierung 2026-08-02: Der reversible kritische
+  `project.archive`-Vertikalschnitt ist produktiv auf Commit
+  `781899aac894025833367b56086b724088c3f8ae`. Verifiziertes Code-, DB-,
+  Konfigurations- und Runtime-Backup:
+  `/var/backups/workpilot360/20260802T003136Z-before-jarvis-project-lifecycle`.
+  Lokal sind 153 Testdateien mit 1.593 Tests, TypeScript, Prisma,
+  Mojibake-/Regressionschecks und der 90-Seiten-Build grün. Isolierte lokale
+  und produktive QA bestätigten Rollen-/Mandantengrenzen, Blocker,
+  Exact-Phrase, sicheren Abbruch, Exactly-once, exakten Vorstatus und
+  Relationserhalt. Der produktive permanente Korpus bestand 110/110 mit 19
+  nur vorbereiteten Entwürfen und null Rückständen. Echte Klicktests in
+  JARVIS und normaler Projektmaske blieben fehlerfrei. WorkPilot PID `700433`;
+  KlinikNavigator unverändert PID `398228`.
+
 - JARVIS kontrollierter Aufgaben-Lebenszyklus 2026-08-01: JARVIS und die
   normale Aufgabenoberfläche verwenden jetzt denselben organisationsgebundenen
   Fachservice zum reversiblen Archivieren und Wiederherstellen. Physisches
