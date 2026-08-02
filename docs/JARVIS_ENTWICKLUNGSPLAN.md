@@ -3774,6 +3774,22 @@ automatische Dauerlaufvorgaben und Katalogvolltextsuche bis zur geprüften
 Netto-/Bruttovorschau. Der finale Anlegeknopf wurde nicht ausgeführt; alle
 Testentwürfe wurden abgebrochen. Ein frischer Browserlauf blieb fehlerfrei.
 
+Produktiv ausgerollt und abgenommen wurde der Runtime-Commit
+`aa617f7704bd2bcc779af86df825275e4836773d`. Das verifizierte Vollbackup vor
+dem Release liegt unter
+`/var/backups/workpilot360/20260802T194900Z-before-jarvis-guided-offer`.
+Der produktive 90-Seiten-Build, Dashboard und öffentliches Anfrageformular
+(`HTTP 200`), der leere Prisma-Diff sowie der permanente Korpus mit 110/110
+Fragen, 33 ausschließlich vorbereiteten und null ausgeführten Aktionen und
+null QA-Rückständen sind grün. Der echte Produktiv-Klicktest führte von der
+natürlichen Anfrage über `Klaus Testmann` trotz gespeicherter Schreibweise
+`Klaus - Testmann`, fünf offene Projekte, HAS-1 und die Volltextsuche
+`Objektbetreuung` bis zur bestätigten Vorschau von 717,80 EUR netto und
+854,18 EUR brutto. Der Entwurf wurde anschließend abgebrochen; es entstand
+kein Angebot und die Browserkonsole blieb fehlerfrei. WorkPilot lief nach dem
+Release unter PID `805996`, KlinikNavigator blieb unverändert auf PID
+`398228`. Keine Prisma-Schemaänderung.
+
 ## 45. Bestätigte Planungstermine kontrolliert absagen
 
 JARVIS kann einen über seine vollständige sichtbare ID eindeutig bestimmten
