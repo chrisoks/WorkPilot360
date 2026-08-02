@@ -31,8 +31,10 @@ async function main() {
     approve: randomUUID(), reject: randomUUID(), normal: randomUUID(), cancel: randomUUID(), cancelNormal: randomUUID(), withdraw: randomUUID(), withdrawNormal: randomUUID(), withdrawBypass: randomUUID(), deleteBypass: randomUUID(), bypass: randomUUID(), foreign: randomUUID(),
     cancelSeriesA: randomUUID(), cancelSeriesB: randomUUID(), withdrawSeriesA: randomUUID(), withdrawSeriesB: randomUUID(),
     normalSeriesA: randomUUID(), normalSeriesB: randomUUID(), mixedSeriesA: randomUUID(), mixedSeriesB: randomUUID(),
+    approveSeriesA: randomUUID(), approveSeriesB: randomUUID(), rejectSeriesA: randomUUID(), rejectSeriesB: randomUUID(),
+    normalApproveSeriesA: randomUUID(), normalApproveSeriesB: randomUUID(), conflictSeriesA: randomUUID(), conflictSeriesB: randomUUID(), conflictConfirmed: randomUUID(),
   };
-  const entryIds = [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal, ids.withdraw, ids.withdrawNormal, ids.withdrawBypass, ids.deleteBypass, ids.bypass, ids.foreign, ids.cancelSeriesA, ids.cancelSeriesB, ids.withdrawSeriesA, ids.withdrawSeriesB, ids.normalSeriesA, ids.normalSeriesB, ids.mixedSeriesA, ids.mixedSeriesB];
+  const entryIds = [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal, ids.withdraw, ids.withdrawNormal, ids.withdrawBypass, ids.deleteBypass, ids.bypass, ids.foreign, ids.cancelSeriesA, ids.cancelSeriesB, ids.withdrawSeriesA, ids.withdrawSeriesB, ids.normalSeriesA, ids.normalSeriesB, ids.mixedSeriesA, ids.mixedSeriesB, ids.approveSeriesA, ids.approveSeriesB, ids.rejectSeriesA, ids.rejectSeriesB, ids.normalApproveSeriesA, ids.normalApproveSeriesB, ids.conflictSeriesA, ids.conflictSeriesB, ids.conflictConfirmed];
   const sessionIds = [ids.session, ids.employeeSession];
   const projectIds = [ids.project, ids.foreignProject];
   const draftIds = new Set();
@@ -64,6 +66,15 @@ async function main() {
       { ...baseEntry, id: ids.normalSeriesB, title: "QA Normalserie B", approvalStatus: "confirmed", date: "2026-09-10", recurrenceId: `qa-normal-series-${suffix}`, recurrenceRule: "weekly" },
       { ...baseEntry, id: ids.mixedSeriesA, title: "QA Mischserie A", date: "2026-09-04", recurrenceId: `qa-mixed-series-${suffix}`, recurrenceRule: "weekly" },
       { ...baseEntry, id: ids.mixedSeriesB, title: "QA Mischserie B", approvalStatus: "confirmed", date: "2026-09-11", recurrenceId: `qa-mixed-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.approveSeriesA, title: "QA Freigabeserie A", date: "2026-10-01", recurrenceId: `qa-approve-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.approveSeriesB, title: "QA Freigabeserie B", date: "2026-10-08", recurrenceId: `qa-approve-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.rejectSeriesA, title: "QA Ablehnungsserie A", date: "2026-10-02", recurrenceId: `qa-reject-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.rejectSeriesB, title: "QA Ablehnungsserie B", date: "2026-10-09", recurrenceId: `qa-reject-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.normalApproveSeriesA, title: "QA Normalfreigabeserie A", date: "2026-10-03", recurrenceId: `qa-normal-approve-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.normalApproveSeriesB, title: "QA Normalfreigabeserie B", date: "2026-10-10", recurrenceId: `qa-normal-approve-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.conflictSeriesA, title: "QA Konfliktserie A", date: "2026-10-04", recurrenceId: `qa-conflict-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.conflictSeriesB, title: "QA Konfliktserie B", date: "2026-10-11", recurrenceId: `qa-conflict-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.conflictConfirmed, title: "QA Bestätigter Konflikt", approvalStatus: "confirmed", date: "2026-10-11", startTime: "08:30", endTime: "09:30" },
     ] });
     await prisma.notification.create({ data: { id: randomUUID(), organizationId: actor.organizationId, userId: actor.id, channel: "app", subject: "Terminwunsch freigeben", body: "QA offener Freigabehinweis", linkTarget: "planning-entry", linkTargetId: ids.withdraw, linkLabel: "Termin öffnen" } });
 
@@ -129,6 +140,25 @@ async function main() {
     const mixedSeries = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: actor.id, entryId: ids.mixedSeriesA, decision: "withdraw_series", reason: "Mischstatus muss sicher sperren" }) });
     assert(mixedSeries.response.status === 409 && mixedSeries.payload?.code === "mixed_series_status", "Gemischter Serienstatus wurde nicht fail-closed gesperrt.");
 
+    const approveSeriesPrepared = await requestJson("/api/jarvis/chat", managerCookie, { method: "POST", body: JSON.stringify({ actorId: actor.id, message: `Gesamte Terminwunschserie ${ids.approveSeriesA} freigeben` }) });
+    assert(approveSeriesPrepared.response.ok && approveSeriesPrepared.payload?.actionDraft?.decision === "approve_series", `Freigabeserienentwurf wurde nicht erzeugt: ${JSON.stringify(approveSeriesPrepared.payload)}`);
+    const approveSeriesDraft = approveSeriesPrepared.payload.actionDraft; draftIds.add(approveSeriesDraft.previewId);
+    assert(approveSeriesDraft.confirmation.requiredText === `TERMINWUNSCH-SERIE FREIGEBEN ${ids.approveSeriesA}`, "Exakte Freigabeserienphrase ist falsch.");
+    assert(approveSeriesDraft.fields?.some((field) => field.label === "Serienumfang" && field.value === "2 Termine"), "Freigabeserienumfang fehlt.");
+    const approveSeriesResult = await requestJson(`/api/jarvis/action-drafts/${approveSeriesDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: approveSeriesDraft.revision, confirmationText: approveSeriesDraft.confirmation.requiredText }) });
+    assert(approveSeriesResult.response.ok && approveSeriesResult.payload?.actionDraft?.state === "executed", `Gesamte Wunschserie wurde nicht freigegeben: ${JSON.stringify(approveSeriesResult.payload)}`);
+    const approveSeriesReplay = await requestJson(`/api/jarvis/action-drafts/${approveSeriesDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: approveSeriesDraft.revision, confirmationText: approveSeriesDraft.confirmation.requiredText }) });
+    assert(approveSeriesReplay.response.ok && approveSeriesReplay.payload?.actionDraft?.state === "executed", "Exactly-once-Replay der Serienfreigabe fehlgeschlagen.");
+
+    const rejectSeriesPrepared = await requestJson("/api/jarvis/chat", managerCookie, { method: "POST", body: JSON.stringify({ actorId: actor.id, message: `Gesamte Terminwunschserie ${ids.rejectSeriesA} ablehnen. Grund: Kunde hat die komplette Wunschserie verworfen` }) });
+    assert(rejectSeriesPrepared.response.ok && rejectSeriesPrepared.payload?.actionDraft?.decision === "reject_series", `Ablehnungsserienentwurf wurde nicht erzeugt: ${JSON.stringify(rejectSeriesPrepared.payload)}`);
+    const rejectSeriesDraft = rejectSeriesPrepared.payload.actionDraft; draftIds.add(rejectSeriesDraft.previewId);
+    const rejectSeriesResult = await requestJson(`/api/jarvis/action-drafts/${rejectSeriesDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: rejectSeriesDraft.revision, confirmationText: rejectSeriesDraft.confirmation.requiredText }) });
+    assert(rejectSeriesResult.response.ok && rejectSeriesResult.payload?.actionDraft?.state === "executed", `Gesamte Wunschserie wurde nicht abgelehnt: ${JSON.stringify(rejectSeriesResult.payload)}`);
+
+    const conflictSeries = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: actor.id, entryId: ids.conflictSeriesA, decision: "approve_series" }) });
+    assert(conflictSeries.response.status === 409 && conflictSeries.payload?.code === "overlap_conflict", `Konflikt in einem späteren Serientermin wurde nicht fail-closed gesperrt: ${JSON.stringify(conflictSeries.payload)}`);
+
     const bypass = await requestJson("/api/planning-entries", managerCookie, { method: "POST", body: JSON.stringify({ actorUserId: actor.id, id: ids.bypass, approvalStatus: "confirmed" }) });
     assert(bypass.response.status === 409, "Der alte POST-Weg konnte einen Terminwunsch bestätigen.");
     const preflight = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: actor.id, entryId: ids.normal, decision: "approve" }) });
@@ -155,6 +185,11 @@ async function main() {
     assert(normalSeriesResult.response.ok && normalSeriesResult.payload?.result?.affectedEntryIds?.length === 2, "Gemeinsame Normalroute hat nicht die komplette Serie abgesagt.");
     const normalSeriesReplay = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-execute", requestId: normalSeriesRequestId, expectedFingerprint: normalSeriesPreflight.payload.evaluation.fingerprint, actorUserId: actor.id, entryId: ids.normalSeriesA, decision: "cancel_series", reason: "Normaloberfläche sagt komplette Serie ab" }) });
     assert(normalSeriesReplay.response.ok && normalSeriesReplay.payload?.result?.replayed === true, "Service-Replay der normalen Terminserienabsage fehlgeschlagen.");
+    const normalApproveSeriesPreflight = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: actor.id, entryId: ids.normalApproveSeriesA, decision: "approve_series" }) });
+    assert(normalApproveSeriesPreflight.response.ok && normalApproveSeriesPreflight.payload?.evaluation?.series?.count === 2, "Normalrouten-Freigabeserienprüfung fehlt.");
+    const normalApproveSeriesRequestId = randomUUID();
+    const normalApproveSeriesResult = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-execute", requestId: normalApproveSeriesRequestId, expectedFingerprint: normalApproveSeriesPreflight.payload.evaluation.fingerprint, actorUserId: actor.id, entryId: ids.normalApproveSeriesA, decision: "approve_series" }) });
+    assert(normalApproveSeriesResult.response.ok && normalApproveSeriesResult.payload?.result?.affectedEntryIds?.length === 2, "Gemeinsame Normalroute hat nicht die komplette Wunschserie freigegeben.");
     const withdrawDeleteBypass = await requestJson(`/api/planning-entries?id=${encodeURIComponent(ids.withdrawBypass)}&actorUserId=${encodeURIComponent(employee.id)}`, employeeCookie, { method: "DELETE" });
     assert(withdrawDeleteBypass.response.status === 409, "Der alte DELETE-Weg konnte einen offenen Terminwunsch zurückziehen.");
 
@@ -169,6 +204,9 @@ async function main() {
     assert(!rows.find((row) => row.id === ids.withdrawBypass)?.deletedAt, "Alte DELETE-Route hat den offenen Wunsch verändert.");
     for (const id of [ids.cancelSeriesA, ids.cancelSeriesB, ids.withdrawSeriesA, ids.withdrawSeriesB, ids.normalSeriesA, ids.normalSeriesB]) assert(Boolean(rows.find((row) => row.id === id)?.deletedAt), `Serieneintrag ${id} wurde nicht logisch entfernt.`);
     assert(!rows.find((row) => row.id === ids.mixedSeriesA)?.deletedAt && !rows.find((row) => row.id === ids.mixedSeriesB)?.deletedAt, "Gemischte Serie wurde trotz Sperre verändert.");
+    for (const id of [ids.approveSeriesA, ids.approveSeriesB, ids.normalApproveSeriesA, ids.normalApproveSeriesB]) assert(rows.find((row) => row.id === id)?.approvalStatus === "confirmed" && !rows.find((row) => row.id === id)?.deletedAt, `Freigabeserieneintrag ${id} wurde nicht bestätigt.`);
+    for (const id of [ids.rejectSeriesA, ids.rejectSeriesB]) assert(Boolean(rows.find((row) => row.id === id)?.deletedAt), `Ablehnungsserieneintrag ${id} wurde nicht logisch entfernt.`);
+    for (const id of [ids.conflictSeriesA, ids.conflictSeriesB]) assert(rows.find((row) => row.id === id)?.approvalStatus === "requested" && !rows.find((row) => row.id === id)?.deletedAt, `Konfliktserie ${id} wurde trotz Sperre verändert.`);
     assert(rows.find((row) => row.id === ids.bypass)?.approvalStatus === "requested", "Altrouten-Sperre hat den Wunsch verändert.");
     const histories = await prisma.planningEntryHistory.findMany({ where: { planningEntryId: { in: entryIds } } });
     assert(histories.filter((item) => item.planningEntryId === ids.approve && item.eventType === "approved").length === 1, "Freigabehistorie ist nicht exactly-once.");
@@ -183,7 +221,9 @@ async function main() {
     assert(notificationCount >= 5, "Mitarbeiterhinweise fehlen.");
     for (const id of [ids.cancelSeriesA, ids.cancelSeriesB, ids.normalSeriesA, ids.normalSeriesB]) assert(histories.filter((item) => item.planningEntryId === id && item.eventType === "series_cancelled").length === 1, `Serienabsagehistorie für ${id} ist nicht exactly-once.`);
     for (const id of [ids.withdrawSeriesA, ids.withdrawSeriesB]) assert(histories.filter((item) => item.planningEntryId === id && item.eventType === "series_withdrawn").length === 1, `Serienrückzugshistorie für ${id} ist nicht exactly-once.`);
-    result = { ok: true, baseUrl, actorRole: actor.role, roleBoundary: "verified", tenantBoundary: "verified", selfWithdrawal: true, wholeSeriesCancellation: true, wholeSeriesWithdrawal: true, mixedSeriesFailClosed: true, exactPhrase: true, exactlyOnce: true, normalApiSharedService: true, oldRouteBypassBlocked: true, oldDeleteBypassBlocked: true, employeeNotifications: notificationCount, executions: histories.length };
+    for (const id of [ids.approveSeriesA, ids.approveSeriesB, ids.normalApproveSeriesA, ids.normalApproveSeriesB]) assert(histories.filter((item) => item.planningEntryId === id && item.eventType === "series_approved").length === 1, `Serienfreigabehistorie für ${id} ist nicht exactly-once.`);
+    for (const id of [ids.rejectSeriesA, ids.rejectSeriesB]) assert(histories.filter((item) => item.planningEntryId === id && item.eventType === "series_rejected").length === 1, `Serienablehnungshistorie für ${id} ist nicht exactly-once.`);
+    result = { ok: true, baseUrl, actorRole: actor.role, roleBoundary: "verified", tenantBoundary: "verified", selfWithdrawal: true, wholeSeriesApproval: true, wholeSeriesRejection: true, wholeSeriesCancellation: true, wholeSeriesWithdrawal: true, mixedSeriesFailClosed: true, laterOccurrenceConflictFailClosed: true, exactPhrase: true, exactlyOnce: true, normalApiSharedService: true, oldRouteBypassBlocked: true, oldDeleteBypassBlocked: true, employeeNotifications: notificationCount, executions: histories.length };
   } finally {
     await prisma.notification.deleteMany({ where: { linkTargetId: { in: entryIds } } });
     await prisma.projectLogbookEntry.deleteMany({ where: { projectId: { in: projectIds }, source: "planning-request-decision" } });

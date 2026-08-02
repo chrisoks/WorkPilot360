@@ -4,7 +4,7 @@ import { PrismaClient, Role } from "@prisma/client";
 process.loadEnvFile?.(".env");
 const prisma = new PrismaClient();
 const cleanupToken = process.argv.find((item) => item.startsWith("--cleanup="))?.slice("--cleanup=".length);
-const mode = process.argv.includes("--mode=cancel-series") ? "cancel-series" : process.argv.includes("--mode=cancel") ? "cancel" : "request";
+const mode = process.argv.includes("--mode=approve-series") ? "approve-series" : process.argv.includes("--mode=cancel-series") ? "cancel-series" : process.argv.includes("--mode=cancel") ? "cancel" : "request";
 
 async function cleanup(token) {
   const source = `qa-jarvis-planning-request-browser:${token}`;
@@ -29,23 +29,24 @@ async function seed() {
   if (!actor) throw new Error("Der angemeldete Browser-Testnutzer Christian wurde nicht gefunden.");
   const employee = await prisma.user.findFirst({ where: { organizationId: actor.organizationId, role: Role.MITARBEITER, isActive: true }, orderBy: { createdAt: "asc" }, select: { id: true, firstName: true, lastName: true } });
   if (!employee) throw new Error("Keine aktive Testperson gefunden.");
-  const token = Date.now().toString(36); const projectId = randomUUID(); const entryId = randomUUID(); const secondEntryId = mode === "cancel-series" ? randomUUID() : null;
+  const token = Date.now().toString(36); const projectId = randomUUID(); const entryId = randomUUID(); const secondEntryId = mode === "cancel-series" || mode === "approve-series" ? randomUUID() : null;
   const projectNumber = `QWR-${Date.now().toString().slice(-7)}`; const source = `qa-jarvis-planning-request-browser:${token}`;
   await prisma.workPilotProject.create({ data: {
-    id: projectId, organizationId: actor.organizationId, projectNumber, title: mode === "cancel-series" ? "QA JARVIS Klicktest Terminserie" : mode === "cancel" ? "QA JARVIS Klicktest Terminabsage" : "QA JARVIS Klicktest Terminwunsch", customer: "QA intern",
+    id: projectId, organizationId: actor.organizationId, projectNumber, title: mode === "approve-series" ? "QA JARVIS Klicktest Wunschserie" : mode === "cancel-series" ? "QA JARVIS Klicktest Terminserie" : mode === "cancel" ? "QA JARVIS Klicktest Terminabsage" : "QA JARVIS Klicktest Terminwunsch", customer: "QA intern",
     status: "Umsetzung", projectType: "Hausmeisterservice", projectKind: "Dauerprojekt", recurringBillingMode: "hourly",
     trade: "Hausmeisterservice", branch: "OK immocare", responsibleName: `${actor.firstName} ${actor.lastName}`.trim(), source,
   } });
-  const recurring = mode === "cancel" || mode === "cancel-series";
+  const recurring = mode === "cancel" || mode === "cancel-series" || mode === "approve-series";
+  const confirmed = mode === "cancel" || mode === "cancel-series";
   const baseEntry = {
     organizationId: actor.organizationId, source: "manual", board: "OK immocare", groupName: "QA",
     userId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}`.trim(), startTime: "08:00", endTime: "09:00", durationMinutes: 60,
     description: "Wird nach dem Klicktest bereinigt", projectId, projectLabel: `${projectNumber} | QA JARVIS Klicktest`,
-    planningTrade: "Hausmeisterservice", approvalStatus: recurring ? "confirmed" : "requested", recurrenceId: recurring ? `qa-series-${token}` : null, recurrenceRule: recurring ? "weekly" : null, requestedByUserId: employee.id, requestedByName: `${employee.firstName} ${employee.lastName}`.trim(),
+    planningTrade: "Hausmeisterservice", approvalStatus: confirmed ? "confirmed" : "requested", recurrenceId: recurring ? `qa-series-${token}` : null, recurrenceRule: recurring ? "weekly" : null, requestedByUserId: employee.id, requestedByName: `${employee.firstName} ${employee.lastName}`.trim(),
   };
   await prisma.planningEntry.createMany({ data: [
-    { ...baseEntry, id: entryId, date: "2026-08-26", title: mode === "cancel-series" ? "QA JARVIS Serienklick 1" : mode === "cancel" ? "QA JARVIS Absageklick" : "QA JARVIS Freigabeklick" },
-    ...(secondEntryId ? [{ ...baseEntry, id: secondEntryId, date: "2026-09-02", title: "QA JARVIS Serienklick 2" }] : []),
+    { ...baseEntry, id: entryId, date: "2026-08-26", title: mode === "approve-series" ? "QA JARVIS Wunschserienklick 1" : mode === "cancel-series" ? "QA JARVIS Serienklick 1" : mode === "cancel" ? "QA JARVIS Absageklick" : "QA JARVIS Freigabeklick" },
+    ...(secondEntryId ? [{ ...baseEntry, id: secondEntryId, date: "2026-09-02", title: mode === "approve-series" ? "QA JARVIS Wunschserienklick 2" : "QA JARVIS Serienklick 2" }] : []),
   ] });
   console.log(JSON.stringify({ token, mode, entryId, entryIds: [entryId, ...(secondEntryId ? [secondEntryId] : [])], projectId, projectNumber }));
 }

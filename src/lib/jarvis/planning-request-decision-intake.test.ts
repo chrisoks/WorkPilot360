@@ -62,4 +62,11 @@ describe("planning request decision intake", () => {
       reason: "Einsatzserie nicht mehr möglich",
     });
   });
+
+  it("extracts approval and rejection of an entire request series", () => {
+    expect(extractPlanningRequestDecision("Gesamte Terminwunschserie request-123 freigeben")).toMatchObject({ entryId: "request-123", decision: "approve_series" });
+    expect(extractPlanningRequestDecision("Alle Terminwünsche der Terminwunschserie request-123 ablehnen. Grund: Serie kollidiert mit Urlaub")).toEqual({
+      entryId: "request-123", decision: "reject_series", reason: "Serie kollidiert mit Urlaub",
+    });
+  });
 });

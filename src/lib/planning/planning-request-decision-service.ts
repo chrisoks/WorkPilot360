@@ -7,7 +7,7 @@ import { sendPushToUserSafely } from "@/lib/push/web-push";
 
 type DatabaseClient = typeof prisma | Prisma.TransactionClient;
 
-export type PlanningRequestDecision = "approve" | "reject" | "cancel" | "withdraw" | "cancel_series" | "withdraw_series";
+export type PlanningRequestDecision = "approve" | "reject" | "cancel" | "withdraw" | "approve_series" | "reject_series" | "cancel_series" | "withdraw_series";
 export type PlanningRequestDecisionActor = {
   id: string;
   email: string;
@@ -129,6 +129,10 @@ export function getPlanningRequestDecisionConfirmationText(
         ? `TERMIN ABSAGEN ${entryId.trim()}`
       : decision === "withdraw"
         ? `TERMINWUNSCH ZURÜCKZIEHEN ${entryId.trim()}`
+        : decision === "approve_series"
+          ? `TERMINWUNSCH-SERIE FREIGEBEN ${entryId.trim()}`
+          : decision === "reject_series"
+            ? `TERMINWUNSCH-SERIE ABLEHNEN ${entryId.trim()}`
         : decision === "cancel_series"
           ? `TERMIN-SERIE ABSAGEN ${entryId.trim()}`
           : `TERMINWUNSCH-SERIE ZURÜCKZIEHEN ${entryId.trim()}`;
@@ -162,11 +166,11 @@ async function evaluateInternal(input: {
   lock?: boolean;
 }) {
   const decision = input.decision;
-  if (!["approve", "reject", "cancel", "withdraw", "cancel_series", "withdraw_series"].includes(decision)) {
+  if (!["approve", "reject", "cancel", "withdraw", "approve_series", "reject_series", "cancel_series", "withdraw_series"].includes(decision)) {
     throw new PlanningRequestDecisionError("invalid_decision", "Bitte Terminwunsch freigeben, ablehnen, zurückziehen oder einen bestätigten Termin absagen.", 400);
   }
   const reason = clean(input.reason);
-  if (decision !== "approve" && (reason.length < 3 || reason.length > 500)) {
+  if (decision !== "approve" && decision !== "approve_series" && (reason.length < 3 || reason.length > 500)) {
     throw new PlanningRequestDecisionError("reason_required", `${decision === "cancel" ? "Eine Terminabsage" : decision === "cancel_series" ? "Die Absage einer Terminserie" : decision === "withdraw" ? "Das Zurückziehen eines Terminwunsches" : decision === "withdraw_series" ? "Das Zurückziehen einer Terminwunschserie" : "Eine Ablehnung"} benötigt einen nachvollziehbaren Grund mit 3 bis 500 Zeichen.`, 400);
   }
 
@@ -192,7 +196,7 @@ async function evaluateInternal(input: {
     throw new PlanningRequestDecisionError("assignee_missing", "Der Terminwunsch hat keine eindeutig zugeordnete Person.", 409);
   }
 
-  const seriesDecision = decision === "cancel_series" || decision === "withdraw_series";
+  const seriesDecision = decision.endsWith("_series");
   if (seriesDecision && !entry.recurrenceId) {
     throw new PlanningRequestDecisionError("series_missing", "Dieser Planungseintrag gehört keiner eindeutig gespeicherten Terminserie an.", 409);
   }
@@ -202,6 +206,9 @@ async function evaluateInternal(input: {
   if (seriesDecision && (!seriesEntries.length || seriesEntries.some((item) => item.approvalStatus !== entry.approvalStatus))) {
     throw new PlanningRequestDecisionError("mixed_series_status", "Die Serie enthält unterschiedliche Freigabestatus und darf nicht pauschal verändert werden.", 409);
   }
+  if (seriesDecision && seriesEntries.some((item) => !item.userId)) {
+    throw new PlanningRequestDecisionError("assignee_missing", "Mindestens ein Serieneintrag hat keine eindeutig zugeordnete Person.", 409);
+  }
   if (decision === "withdraw_series" && !actorCanManage && seriesEntries.some((item) => item.userId !== input.actor.id && item.requestedByUserId !== input.actor.id)) {
     throw new PlanningRequestDecisionError("forbidden", "Die Serie enthält mindestens einen Terminwunsch einer anderen Person.", 403);
   }
@@ -210,6 +217,13 @@ async function evaluateInternal(input: {
   const assignee = assignees[0];
   if (decision === "approve" && !assignee?.isActive) {
     throw new PlanningRequestDecisionError("assignee_inactive", "Die vorgesehene Person ist nicht mehr aktiv.", 409);
+  }
+  if (decision === "approve_series") {
+    const assigneeIds = [...new Set(seriesEntries.map((item) => item.userId!).filter(Boolean))];
+    const activeAssignees = await input.db.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "User" WHERE "organizationId"=${input.organizationId} AND "id" IN (${Prisma.join(assigneeIds)}) AND "isActive"=true`;
+    if (activeAssignees.length !== assigneeIds.length) {
+      throw new PlanningRequestDecisionError("assignee_inactive", "Mindestens eine für die Serie vorgesehene Person ist nicht mehr aktiv.", 409);
+    }
   }
 
   const projects = entry.projectId
@@ -221,6 +235,14 @@ async function evaluateInternal(input: {
   }
   if (!cancellation && !withdrawal && project?.status.toLocaleLowerCase("de-DE").includes("archiviert")) {
     throw new PlanningRequestDecisionError("project_archived", "Ein Terminwunsch in einem archivierten Projekt darf nicht entschieden werden.", 409);
+  }
+  if ((decision === "approve_series" || decision === "reject_series")) {
+    const projectIds = [...new Set(seriesEntries.map((item) => item.projectId).filter((item): item is string => Boolean(item)))];
+    const seriesProjects = projectIds.length
+      ? await input.db.$queryRaw<Array<{ id: string; status: string }>>`SELECT "id","status" FROM "WorkPilotProject" WHERE "organizationId"=${input.organizationId} AND "id" IN (${Prisma.join(projectIds)})`
+      : [];
+    if (seriesProjects.length !== projectIds.length) throw new PlanningRequestDecisionError("project_missing", "Mindestens ein mit der Serie verknüpftes Projekt wurde nicht gefunden.", 409);
+    if (seriesProjects.some((item) => item.status.toLocaleLowerCase("de-DE").includes("archiviert"))) throw new PlanningRequestDecisionError("project_archived", "Mindestens ein Terminwunsch der Serie gehört zu einem archivierten Projekt.", 409);
   }
 
   const absences = decision === "approve"
@@ -236,6 +258,16 @@ async function evaluateInternal(input: {
   if (overlaps.length) {
     throw new PlanningRequestDecisionError("overlap_conflict", `Der Terminwunsch überschneidet sich mit ${overlaps.map((item) => `„${item.title}“ ${item.startTime}-${item.endTime}`).join(", ")}.`, 409, overlaps);
   }
+  const seriesConflicts: Array<{ entryId: string; absenceIds: string[]; overlaps: Array<{ id: string; title: string; startTime: string; endTime: string }> }> = [];
+  if (decision === "approve_series") {
+    for (const seriesEntry of seriesEntries) {
+      const entryAbsences = await input.db.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "Absence" WHERE "organizationId"=${input.organizationId} AND "userId"=${seriesEntry.userId} AND "date"=${seriesEntry.date}::date AND "deletedAt" IS NULL AND "status"='genehmigt' AND "type" IN ('urlaub','krank','ueberstundenabbau') AND (COALESCE("dayPart",'full')='full' OR ("dayPart"='first-half' AND ${seriesEntry.startTime}<'12:00') OR ("dayPart"='second-half' AND ${seriesEntry.endTime}>'12:00'))`;
+      if (entryAbsences.length) throw new PlanningRequestDecisionError("absence_conflict", `${seriesEntry.employeeName || "Eine vorgesehene Person"} ist am ${seriesEntry.date} im Terminzeitraum genehmigt abwesend.`, 409);
+      const entryOverlaps = await input.db.$queryRaw<Array<{ id: string; title: string; startTime: string; endTime: string }>>`SELECT "id","title","startTime","endTime" FROM "PlanningEntry" WHERE "organizationId"=${input.organizationId} AND "id"<>${seriesEntry.id} AND "userId"=${seriesEntry.userId} AND "date"=${seriesEntry.date} AND "deletedAt" IS NULL AND COALESCE("approvalStatus",'confirmed')='confirmed' AND "startTime"<${seriesEntry.endTime} AND "endTime">${seriesEntry.startTime} ORDER BY "startTime"`;
+      if (entryOverlaps.length) throw new PlanningRequestDecisionError("overlap_conflict", `Der Serienwunsch am ${seriesEntry.date} überschneidet sich mit ${entryOverlaps.map((item) => `„${item.title}“ ${item.startTime}-${item.endTime}`).join(", ")}.`, 409, entryOverlaps);
+      seriesConflicts.push({ entryId: seriesEntry.id, absenceIds: entryAbsences.map((item) => item.id), overlaps: entryOverlaps });
+    }
+  }
 
   const requester = entry.requestedByName || "Nicht angegeben";
   const series = seriesDecision ? {
@@ -245,7 +277,7 @@ async function evaluateInternal(input: {
     toDate: seriesEntries[seriesEntries.length - 1].date,
     entryIds: seriesEntries.map((item) => item.id),
   } : null;
-  const evidence = { entry, decision, reason, assignee, project, seriesEntries, absenceIds: absences.map((item) => item.id), overlaps };
+  const evidence = { entry, decision, reason, assignee, project, seriesEntries, seriesConflicts, absenceIds: absences.map((item) => item.id), overlaps };
   return {
     decision,
     reason,
@@ -296,7 +328,7 @@ export async function executePlanningRequestDecisionInTransaction(input: {
   if (!clean(input.requestId) || clean(input.requestId).length > 120 || !/^[a-f0-9]{64}$/i.test(clean(input.expectedFingerprint))) {
     throw new PlanningRequestDecisionError("invalid_execution", "Prüfwert oder Ausführungs-ID fehlen. Bitte den Terminwunsch neu prüfen.", 400);
   }
-  const seriesDecision = input.decision === "cancel_series" || input.decision === "withdraw_series";
+  const seriesDecision = input.decision.endsWith("_series");
   if (seriesDecision) {
     const seed = await loadEntry(input.tx, input.organizationId, input.entryId);
     if (!seed.recurrenceId) throw new PlanningRequestDecisionError("series_missing", "Dieser Planungseintrag gehört keiner eindeutig gespeicherten Terminserie an.", 409);
@@ -304,11 +336,11 @@ export async function executePlanningRequestDecisionInTransaction(input: {
     const replayMarkerId = deterministicId("planning-request-decision-history", input.organizationId, input.requestId);
     const replayMarker = await input.tx.$queryRaw<Array<{ planningEntryId: string; toStatus: string | null; createdAt: Date }>>`SELECT "planningEntryId","toStatus","createdAt" FROM "PlanningEntryHistory" WHERE "organizationId"=${input.organizationId} AND "id"=${replayMarkerId} LIMIT 1`;
     if (replayMarker.length) {
-      const expectedStatus = input.decision === "cancel_series" ? "cancelled" : "withdrawn";
+      const expectedStatus = input.decision === "approve_series" ? "confirmed" : input.decision === "reject_series" ? "rejected" : input.decision === "cancel_series" ? "cancelled" : "withdrawn";
       if (replayMarker[0].planningEntryId !== input.entryId || replayMarker[0].toStatus !== expectedStatus) {
         throw new PlanningRequestDecisionError("replay_conflict", "Diese Ausführungs-ID wurde bereits für eine andere Terminserienentscheidung verwendet.", 409);
       }
-      const expectedEvent = input.decision === "cancel_series" ? "series_cancelled" : "series_withdrawn";
+      const expectedEvent = input.decision === "approve_series" ? "series_approved" : input.decision === "reject_series" ? "series_rejected" : input.decision === "cancel_series" ? "series_cancelled" : "series_withdrawn";
       const affected = await input.tx.$queryRaw<Array<{ id: string }>>`SELECT p."id" FROM "PlanningEntry" p INNER JOIN "PlanningEntryHistory" h ON h."planningEntryId"=p."id" AND h."organizationId"=p."organizationId" WHERE p."organizationId"=${input.organizationId} AND p."recurrenceId"=${seed.recurrenceId} AND h."eventType"=${expectedEvent} AND h."createdAt"=${replayMarker[0].createdAt} ORDER BY p."date",p."startTime",p."id"`;
       return { entryId: input.entryId, decision: input.decision, approvalStatus: expectedStatus, deleted: true, replayed: true, affectedEntryIds: affected.map((item) => item.id) } satisfies PlanningRequestDecisionResult;
     }
@@ -320,29 +352,36 @@ export async function executePlanningRequestDecisionInTransaction(input: {
     const prior = await input.tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "PlanningEntryHistory" WHERE "organizationId"=${input.organizationId} AND "id" IN (${Prisma.join(historyIds)})`;
     if (prior.length) throw new PlanningRequestDecisionError("replay_conflict", "Die Serienausführung ist nur teilweise protokolliert und wird sicherheitshalber nicht fortgesetzt.", 409);
     const now = new Date();
-    const savedRows = await input.tx.$queryRaw<EntryRow[]>`UPDATE "PlanningEntry" SET "deletedAt"=${now},"updatedAt"=${now} WHERE "organizationId"=${input.organizationId} AND "id" IN (${Prisma.join(evaluation.series.entryIds)}) AND "approvalStatus"=${input.decision === "cancel_series" ? "confirmed" : "requested"} AND "deletedAt" IS NULL RETURNING *`;
+    const approved = input.decision === "approve_series";
+    const savedRows = approved
+      ? await input.tx.$queryRaw<EntryRow[]>`UPDATE "PlanningEntry" SET "approvalStatus"='confirmed',"approvedByUserId"=${input.actor.id},"approvedAt"=${now},"updatedAt"=${now} WHERE "organizationId"=${input.organizationId} AND "id" IN (${Prisma.join(evaluation.series.entryIds)}) AND "approvalStatus"='requested' AND "deletedAt" IS NULL RETURNING *`
+      : await input.tx.$queryRaw<EntryRow[]>`UPDATE "PlanningEntry" SET "deletedAt"=${now},"updatedAt"=${now} WHERE "organizationId"=${input.organizationId} AND "id" IN (${Prisma.join(evaluation.series.entryIds)}) AND "approvalStatus"=${input.decision === "cancel_series" ? "confirmed" : "requested"} AND "deletedAt" IS NULL RETURNING *`;
     if (savedRows.length !== evaluation.series.entryIds.length) throw new PlanningRequestDecisionError("stale_context", "Mindestens ein Serieneintrag wurde parallel verändert. Bitte neu prüfen.", 409);
     const cancelled = input.decision === "cancel_series";
+    const rejected = input.decision === "reject_series";
     for (const saved of savedRows) {
       const perEntryRequestId = `${input.requestId}:${saved.id}`;
-      const note = cancelled ? `Terminserie abgesagt. Grund: ${evaluation.reason}` : `Terminwunsch-Serie zurückgezogen. Grund: ${evaluation.reason}`;
-      await input.tx.$executeRaw`INSERT INTO "PlanningEntryHistory" ("id","organizationId","planningEntryId","projectId","eventType","actorUserId","actorName","fromStatus","toStatus","note","createdAt") VALUES (${saved.id === input.entryId ? replayMarkerId : deterministicId("planning-request-decision-history", input.organizationId, input.requestId, saved.id)},${input.organizationId},${saved.id},${saved.projectId},${cancelled ? "series_cancelled" : "series_withdrawn"},${input.actor.id},${actorName(input.actor)},${cancelled ? "confirmed" : "requested"},${cancelled ? "cancelled" : "withdrawn"},${note},${now})`;
+      const note = approved ? "Terminwunsch-Serie freigegeben" : rejected ? `Terminwunsch-Serie abgelehnt. Grund: ${evaluation.reason}` : cancelled ? `Terminserie abgesagt. Grund: ${evaluation.reason}` : `Terminwunsch-Serie zurückgezogen. Grund: ${evaluation.reason}`;
+      const eventType = approved ? "series_approved" : rejected ? "series_rejected" : cancelled ? "series_cancelled" : "series_withdrawn";
+      const toStatus = approved ? "confirmed" : rejected ? "rejected" : cancelled ? "cancelled" : "withdrawn";
+      await input.tx.$executeRaw`INSERT INTO "PlanningEntryHistory" ("id","organizationId","planningEntryId","projectId","eventType","actorUserId","actorName","fromStatus","toStatus","note","createdAt") VALUES (${saved.id === input.entryId ? replayMarkerId : deterministicId("planning-request-decision-history", input.organizationId, input.requestId, saved.id)},${input.organizationId},${saved.id},${saved.projectId},${eventType},${input.actor.id},${actorName(input.actor)},${cancelled ? "confirmed" : "requested"},${toStatus},${note},${now})`;
       if (saved.projectId) await input.tx.projectLogbookEntry.upsert({
         where: { organizationId_source_callReference_projectId: { organizationId: input.organizationId, source: "planning-request-decision", callReference: perEntryRequestId, projectId: saved.projectId } },
         update: {},
-        create: { id: randomUUID(), organizationId: input.organizationId, projectId: saved.projectId, title: cancelled ? "Terminserie abgesagt" : "Terminwunsch-Serie zurückgezogen", body: `${saved.title}: ${note}`, author: actorName(input.actor), authorUserId: input.actor.id, source: "planning-request-decision", callReference: perEntryRequestId },
+        create: { id: randomUUID(), organizationId: input.organizationId, projectId: saved.projectId, title: approved ? "Terminwunsch-Serie freigegeben" : rejected ? "Terminwunsch-Serie abgelehnt" : cancelled ? "Terminserie abgesagt" : "Terminwunsch-Serie zurückgezogen", body: `${saved.title}: ${note}`, author: actorName(input.actor), authorUserId: input.actor.id, source: "planning-request-decision", callReference: perEntryRequestId },
       });
       await input.tx.notification.updateMany({ where: { organizationId: input.organizationId, linkTarget: "planning-entry", linkTargetId: saved.id, subject: "Terminwunsch freigeben", resolvedAt: null }, data: { resolvedAt: now, readAt: now } });
       const responsibleIds = input.decision === "withdraw_series" ? await input.tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "User" WHERE "organizationId"=${input.organizationId} AND "isActive"=true AND COALESCE("planningResponsibleFor", '[]'::jsonb) ? ${`${saved.board}:${saved.groupName}`}` : [];
-      const subject = cancelled ? "Terminserie abgesagt" : "Terminwunsch-Serie zurückgezogen";
-      const body = `${cancelled ? "Der Termin" : "Der Terminwunsch"} „${saved.title}“ am ${saved.date} von ${saved.startTime} bis ${saved.endTime} wurde als Teil der Serie ${cancelled ? "abgesagt" : "zurückgezogen"}. Grund: ${evaluation.reason}`;
+      const subject = approved ? "Terminwunsch-Serie bestätigt" : rejected ? "Terminwunsch-Serie abgelehnt" : cancelled ? "Terminserie abgesagt" : "Terminwunsch-Serie zurückgezogen";
+      const actionText = approved ? "bestätigt" : rejected ? "abgelehnt" : cancelled ? "abgesagt" : "zurückgezogen";
+      const body = `Der ${approved || rejected ? "Terminwunsch" : cancelled ? "Termin" : "Terminwunsch"} „${saved.title}“ am ${saved.date} von ${saved.startTime} bis ${saved.endTime} wurde als Teil der Serie ${actionText}.${evaluation.reason ? ` Grund: ${evaluation.reason}` : ""}`;
       for (const userId of new Set([clean(saved.userId), clean(saved.requestedByUserId), ...responsibleIds.map((item) => clean(item.id))].filter(Boolean))) {
         if (userId === input.actor.id) continue;
         const id = notificationId(input.organizationId, perEntryRequestId, userId);
         await input.tx.notification.upsert({ where: { id }, update: {}, create: { id, organizationId: input.organizationId, userId, taskId: null, channel: "app", subject, body, linkTarget: "planning-entry", linkTargetId: saved.id, linkLabel: "Planung öffnen", sentAt: null } });
       }
     }
-    return { entryId: input.entryId, decision: input.decision, approvalStatus: cancelled ? "cancelled" : "withdrawn", deleted: true, replayed: false, affectedEntryIds: evaluation.series.entryIds } satisfies PlanningRequestDecisionResult;
+    return { entryId: input.entryId, decision: input.decision, approvalStatus: approved ? "confirmed" : rejected ? "rejected" : cancelled ? "cancelled" : "withdrawn", deleted: !approved, replayed: false, affectedEntryIds: evaluation.series.entryIds } satisfies PlanningRequestDecisionResult;
   }
   await input.tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.organizationId}),hashtext(${`planning-request-decision:${input.entryId}`}))`;
   const historyId = deterministicId("planning-request-decision-history", input.organizationId, input.requestId);
@@ -482,7 +521,7 @@ export async function deliverPlanningRequestDecisionNotifications(input: {
   const entries = await prisma.$queryRaw<Array<{ id: string; userId: string | null; requestedByUserId: string | null; board: string; groupName: string; recurrenceId: string | null }>>`SELECT "id","userId","requestedByUserId","board","groupName","recurrenceId" FROM "PlanningEntry" WHERE "organizationId"=${input.organizationId} AND "id"=${input.entryId} LIMIT 1`;
   const entry = entries[0];
   if (!entry) return;
-  const targetEntries = (input.decision === "cancel_series" || input.decision === "withdraw_series") && entry.recurrenceId
+  const targetEntries = input.decision?.endsWith("_series") && entry.recurrenceId
     ? await prisma.$queryRaw<typeof entries>`SELECT "id","userId","requestedByUserId","board","groupName","recurrenceId" FROM "PlanningEntry" WHERE "organizationId"=${input.organizationId} AND "recurrenceId"=${entry.recurrenceId}`
     : [entry];
   for (const target of targetEntries) {

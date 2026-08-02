@@ -1376,6 +1376,24 @@ describe("JARVIS action-draft API", () => {
     expect(payload.message).not.toContain("weitere Serieneinträge blieben unverändert");
   });
 
+  it.each([
+    ["approve_series", "TERMINWUNSCH-SERIE FREIGEBEN request-1", "genau einmal freigegeben"],
+    ["reject_series", "TERMINWUNSCH-SERIE ABLEHNEN request-1", "genau einmal begründet abgelehnt"],
+  ] as const)("reports the complete appointment-request series result for %s", async (decision, confirmationText, resultText) => {
+    mocks.confirmJarvisPlanningRequestDecisionDraft.mockResolvedValueOnce({
+      actionId: "planning.request.manage", state: "executed", decision,
+    });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "planning.request.manage", command: "confirm", revision: 9,
+      confirmationText,
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.message).toContain("vollständig angezeigte offene Terminwunschserie");
+    expect(payload.message).toContain(resultText);
+    expect(payload.message).not.toContain("weitere Serieneinträge blieben unverändert");
+  });
+
   it("passes only the exact contact phrase to the bound contact draft", async () => {
     mocks.confirmJarvisContactManagementDraft.mockResolvedValueOnce({
       actionId: "contact.manage", state: "executed", result: { entityType: "contact", entityId: "contact-1", label: "Kontakt öffnen" },

@@ -1087,12 +1087,12 @@ async function buildJarvisPlanningRequestDecisionDraft(input: {
 }) {
   if (!input.sessionId) return { type: "refusal" as const, topicId: "action.planning-request-decision.session-required", message: "Für eine Terminwunschentscheidung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert." };
   const details = extractPlanningRequestDecision(input.question);
-  const seriesDecision = details.decision === "cancel_series" || details.decision === "withdraw_series";
+  const seriesDecision = Boolean(details.decision?.endsWith("_series"));
   const cancellation = details.decision === "cancel" || details.decision === "cancel_series";
   const withdrawal = details.decision === "withdraw" || details.decision === "withdraw_series";
   if (!details.entryId) return { type: "clarification" as const, topicId: "action.planning-request-decision.entry-required", message: `Welcher ${cancellation ? "bestätigte Termin" : "Terminwunsch"} bezeichnet die ${seriesDecision ? "gesamte Serie" : "gewünschte Einzelentscheidung"}? Nenne bitte die vollständige ID eines sichtbaren Serieneintrags aus der Terminübersicht. Es wurde noch nichts verändert.` };
   if (!details.decision) return { type: "clarification" as const, topicId: "action.planning-request-decision.action-required", message: "Soll der Terminwunsch freigegeben oder abgelehnt beziehungsweise ein bestätigter Termin abgesagt werden? Es wurde noch nichts verändert." };
-  if ((details.decision === "reject" || cancellation || withdrawal) && details.reason.length < 3) return { type: "clarification" as const, topicId: "action.planning-request-decision.reason-required", message: `Für ${cancellation ? seriesDecision ? "die Absage der gesamten Terminserie" : "die Terminabsage" : withdrawal ? seriesDecision ? "das Zurückziehen der gesamten Terminwunschserie" : "das Zurückziehen" : "die Ablehnung"} brauche ich einen nachvollziehbaren Grund mit mindestens drei Zeichen. Es wurde noch nichts verändert.` };
+  if ((details.decision === "reject" || details.decision === "reject_series" || cancellation || withdrawal) && details.reason.length < 3) return { type: "clarification" as const, topicId: "action.planning-request-decision.reason-required", message: `Für ${cancellation ? seriesDecision ? "die Absage der gesamten Terminserie" : "die Terminabsage" : withdrawal ? seriesDecision ? "das Zurückziehen der gesamten Terminwunschserie" : "das Zurückziehen" : details.decision === "reject_series" ? "die Ablehnung der gesamten Terminwunschserie" : "die Ablehnung"} brauche ich einen nachvollziehbaren Grund mit mindestens drei Zeichen. Es wurde noch nichts verändert.` };
   const preview = createJarvisActionPreview({
     previewId: randomUUID(),
     actionId: "planning.request.manage",
@@ -1104,7 +1104,11 @@ async function buildJarvisPlanningRequestDecisionDraft(input: {
   if (!preview.ok) return { type: "refusal" as const, topicId: "action.planning-request-decision.refused", message: `${preview.message} Es wurde nichts verändert.` };
   try {
     const actionDraft = await createPersistedJarvisPlanningRequestDecisionDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
-    return { type: "answer" as const, topicId: "action.planning-request-decision", message: details.decision === "cancel_series"
+    return { type: "answer" as const, topicId: "action.planning-request-decision", message: details.decision === "approve_series"
+      ? `Ich habe die Freigabe der gesamten offenen Terminwunschserie serverseitig geprüft. Kontrolliere Serienumfang, Zeitraum, Projekte, alle Mitarbeitenden, Abwesenheiten und Überschneidungen. Erst die exakte Bestätigungsphrase gibt alle ${actionDraft.fields.find((field) => field.label === "Serienumfang")?.value ?? "angezeigten Terminwünsche"} atomar und genau einmal frei.`
+      : details.decision === "reject_series"
+        ? `Ich habe die Ablehnung der gesamten offenen Terminwunschserie serverseitig geprüft. Kontrolliere Serienumfang, Zeitraum, Projekte, Mitarbeitende und Ablehnungsgrund. Erst die exakte Bestätigungsphrase lehnt alle ${actionDraft.fields.find((field) => field.label === "Serienumfang")?.value ?? "angezeigten Terminwünsche"} atomar und genau einmal ab.`
+      : details.decision === "cancel_series"
       ? `Ich habe die Absage der gesamten bestätigten Terminserie serverseitig geprüft. Kontrolliere besonders Serienumfang, Zeitraum, Projekte, Mitarbeitende und Absagegrund. Erst die exakte Bestätigungsphrase sagt alle ${actionDraft.fields.find((field) => field.label === "Serienumfang")?.value ?? "angezeigten Serientermine"} atomar und genau einmal ab.`
       : details.decision === "withdraw_series"
         ? `Ich habe das Zurückziehen der gesamten offenen Terminwunschserie serverseitig geprüft. Kontrolliere besonders Serienumfang, Zeitraum, Projekte, Mitarbeitende und Rückzugsgrund. Erst die exakte Bestätigungsphrase zieht alle ${actionDraft.fields.find((field) => field.label === "Serienumfang")?.value ?? "angezeigten Terminwünsche"} atomar und genau einmal zurück.`

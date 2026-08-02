@@ -1381,7 +1381,7 @@ export async function PATCH(req: Request) {
   const actor = actorResult.actor;
   const command = cleanString(body.command);
   if (command === "decision-preflight" || command === "decision-execute") {
-    const decision = cleanString(body.decision) as "approve" | "reject" | "cancel" | "withdraw" | "cancel_series" | "withdraw_series";
+    const decision = cleanString(body.decision) as "approve" | "reject" | "cancel" | "withdraw" | "approve_series" | "reject_series" | "cancel_series" | "withdraw_series";
     const decisionInput = {
       organizationId: organization.id,
       actor,

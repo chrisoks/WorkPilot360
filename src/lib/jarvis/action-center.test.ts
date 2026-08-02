@@ -214,6 +214,27 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     })).toMatchObject({ ok: true, value: { actionId: "planning.request.manage", execution: { enabled: false, reason: "preview_only" } } });
   });
 
+  it.each([
+    ["approve_series", undefined],
+    ["reject_series", "Die zweite Woche kollidiert mit Urlaub"],
+  ] as const)("accepts the complete-series decision %s as a bounded critical preview", (decision, reason) => {
+    expect(createJarvisActionPreview({
+      previewId: `preview-planning-request-${decision}`,
+      actionId: "planning.request.manage",
+      payload: { entryId: "request-123456", decision, ...(reason ? { reason } : {}) },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-02T15:00:00.000Z",
+    })).toMatchObject({
+      ok: true,
+      value: {
+        actionId: "planning.request.manage",
+        payload: { decision },
+        execution: { enabled: false, reason: "preview_only" },
+      },
+    });
+  });
+
   it("creates a critical reason-bound confirmed appointment cancellation preview", () => {
     expect(createJarvisActionPreview({
       previewId: "preview-planning-cancel",

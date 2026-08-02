@@ -1,6 +1,6 @@
 export type PlanningRequestDecisionIntake = {
   entryId: string;
-  decision: "approve" | "reject" | "cancel" | "withdraw" | "cancel_series" | "withdraw_series" | null;
+  decision: "approve" | "reject" | "cancel" | "withdraw" | "approve_series" | "reject_series" | "cancel_series" | "withdraw_series" | null;
   reason: string;
 };
 
@@ -20,6 +20,10 @@ export function extractPlanningRequestDecision(question: string): PlanningReques
   const wholeSeries = /\b(?:gesamte[nrsm]?|ganze[nrsm]?|komplette[nrsm]?|vollständige[nrsm]?|alle)\b/i.test(question) || /termin(?:wunsch)?-?serie/i.test(question);
   const decision = wholeSeries && /terminwunsch/i.test(question) && /(zurückzieh|zurueckzieh)/i.test(question)
     ? "withdraw_series"
+    : wholeSeries && /terminwunsch/i.test(question) && /(ablehn|zurückweis|zurueckweis)/i.test(question)
+      ? "reject_series"
+    : wholeSeries && /terminwunsch/i.test(question) && /(freigeb|gib[\s\S]{0,80}\bfrei\b|genehmig|bestätig|bestaetig)/i.test(question)
+      ? "approve_series"
     : wholeSeries && /\btermin(?:serie)?\b/i.test(question) && /(absag|streich|löschen|loeschen)/i.test(question)
       ? "cancel_series"
     : /terminwunsch/i.test(question) && /(zurückzieh|zurueckzieh)/i.test(question)

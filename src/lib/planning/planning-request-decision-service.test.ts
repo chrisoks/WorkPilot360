@@ -73,8 +73,35 @@ describe("planning request decision service", () => {
     expect(getPlanningRequestDecisionConfirmationText("request-1", "cancel")).toBe("TERMIN ABSAGEN request-1");
     expect(getPlanningRequestDecisionConfirmationText("request-1", "cancel_series")).toBe("TERMIN-SERIE ABSAGEN request-1");
     expect(getPlanningRequestDecisionConfirmationText("request-1", "withdraw_series")).toBe("TERMINWUNSCH-SERIE ZURÜCKZIEHEN request-1");
+    expect(getPlanningRequestDecisionConfirmationText("request-1", "approve_series")).toBe("TERMINWUNSCH-SERIE FREIGEBEN request-1");
+    expect(getPlanningRequestDecisionConfirmationText("request-1", "reject_series")).toBe("TERMINWUNSCH-SERIE ABLEHNEN request-1");
     expect(matchesPlanningRequestDecisionConfirmation("request-1", "approve", "TERMINWUNSCH FREIGEBEN request-1")).toBe(true);
     expect(matchesPlanningRequestDecisionConfirmation("request-1", "approve", "terminwunsch freigeben request-1")).toBe(false);
+  });
+
+  it("checks every member before approving a complete request series", async () => {
+    const first = entry({ recurrenceId: "series-approval", recurrenceRule: "weekly" });
+    const second = entry({ id: "request-2", recurrenceId: "series-approval", recurrenceRule: "weekly", date: "2026-08-12" });
+    const db = fakeDb(
+      [first], [first, second], [assignee], [{ id: assignee.id }], [project], [{ id: project.id, status: project.status }],
+      [], [], [], [],
+    );
+    const evaluation = await evaluatePlanningRequestDecision({
+      db: db as never, organizationId: "org-1", actor, entryId: "request-1", decision: "approve_series",
+    });
+    expect(evaluation).toMatchObject({ decision: "approve_series", series: { count: 2, entryIds: ["request-1", "request-2"] }, warnings: [] });
+  });
+
+  it("fails the complete series approval when any occurrence overlaps", async () => {
+    const first = entry({ recurrenceId: "series-approval", recurrenceRule: "weekly" });
+    const second = entry({ id: "request-2", recurrenceId: "series-approval", recurrenceRule: "weekly", date: "2026-08-12" });
+    const db = fakeDb(
+      [first], [first, second], [assignee], [{ id: assignee.id }], [project], [{ id: project.id, status: project.status }],
+      [], [], [], [{ id: "confirmed-2", title: "Anderer Einsatz", startTime: "08:30", endTime: "09:30" }],
+    );
+    await expect(evaluatePlanningRequestDecision({
+      db: db as never, organizationId: "org-1", actor, entryId: "request-1", decision: "approve_series",
+    })).rejects.toMatchObject({ code: "overlap_conflict", status: 409 } satisfies Partial<PlanningRequestDecisionError>);
   });
 
   it("binds the complete active confirmed series and exposes its exact scope", async () => {

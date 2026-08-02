@@ -5098,6 +5098,44 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.createPersistedJarvisPlanningRequestDecisionDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "planning.request.manage", payload: { entryId: "request-123456", decision: "reject", reason: "Mitarbeiter bereits ausgelastet" } }) }));
   });
 
+  it.each([
+    {
+      message: "Gesamte Terminwunschserie request-123456 freigeben",
+      decision: "approve_series",
+      requiredText: "TERMINWUNSCH-SERIE FREIGEBEN request-123456",
+      reason: undefined,
+    },
+    {
+      message: "Gesamte Terminwunschserie request-123456 ablehnen. Grund: Die zweite Woche kollidiert mit Urlaub",
+      decision: "reject_series",
+      requiredText: "TERMINWUNSCH-SERIE ABLEHNEN request-123456",
+      reason: "Die zweite Woche kollidiert mit Urlaub",
+    },
+  ])("prepares the complete appointment-request series decision $decision without executing it", async ({ message, decision, requiredText, reason }) => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisPlanningRequestDecisionDraft.mockImplementationOnce(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "planning.request.manage", title: "Termin oder Terminwunsch kontrolliert entscheiden", decision, badge: "Bereit", state: "awaiting_confirmation", revision: 1,
+      expiresAt: "2026-08-02T18:00:00.000Z", entryId: preview.payload.entryId, projectId: "project-1", fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message }),
+    }));
+    expect(await response.json()).toMatchObject({
+      type: "answer",
+      topicId: "action.planning-request-decision",
+      actionDraft: { actionId: "planning.request.manage", decision },
+    });
+    expect(mocks.createPersistedJarvisPlanningRequestDecisionDraft).toHaveBeenCalledWith(expect.objectContaining({
+      preview: expect.objectContaining({
+        actionId: "planning.request.manage",
+        payload: { entryId: "request-123456", decision, ...(reason ? { reason } : {}) },
+      }),
+    }));
+  });
+
   it("prepares a reason-bound confirmed appointment cancellation without executing it", async () => {
     const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
     mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
