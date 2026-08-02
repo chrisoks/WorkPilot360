@@ -2738,3 +2738,43 @@ Ausführung bei falscher Phrase, Freigabe bei exakter Phrase, sicheren Abbruch
 und null Browserfehler. Sämtliche QA-Daten wurden auf null bereinigt; der
 Live-Prisma-Diff ist leer. WorkPilot läuft unter PID `687327`,
 KlinikNavigator blieb unverändert unter PID `398228`.
+
+## 25. Kontrollierter Projektarchivierungs-Lebenszyklus
+
+JARVIS kann ein eindeutig über die Projektnummer bestimmtes Projekt als
+kritische Aktion `project.archive` kontrolliert archivieren oder
+wiederherstellen. Ein Grund ist Pflicht. Physisches Löschen ist nicht Teil des
+Vertikalschnitts. Archivieren und Wiederherstellen laufen in JARVIS und der
+normalen Projektmaske über
+`src/lib/projects/project-lifecycle-service.ts`; das allgemeine
+Projektspeichern verweigert entsprechende Statusübergänge als Nebenweg.
+
+Die vollständige Vorschau umfasst Projekt und Kunde, Ausgangs- und Zielstatus,
+Grund, Angebote, Rechnungen, Planungen, Projektzeiten, laufende Stempelungen,
+offene Aufgaben, private `StoredFile`-Dateien und verknüpfte Online-Anfragen.
+Laufende Stempelungen, zukünftige bestätigte Planung oder offene Aufgaben
+blockieren die Archivierung fail-closed. Alle Fachbelege und Verknüpfungen
+bleiben erhalten. Bei der Wiederherstellung wird ausschließlich der durch den
+offenen Archiv-Timeline-Eintrag belegte frühere operative Status verwendet;
+Altarchive ohne eindeutigen Nachweis bleiben gesperrt.
+
+Erst `PROJEKT ARCHIVIEREN <Projektnummer>` beziehungsweise
+`PROJEKT WIEDERHERSTELLEN <Projektnummer>` darf exakt und
+groß-/kleinschreibungssensitiv schreiben. Organisations-, Sitzungs-, Rollen-,
+Impersonation-, Revisions-, TTL-, Integritäts- und Fingerprintprüfung,
+PostgreSQL-Advisory-Lock, serialisierbare Transaktion, bedingtes Update und
+Exactly-once-Logbuch verhindern Mandantenüberschreitung, Doppelklick,
+Parallelzugriff und Replay. Status, Timeline, Logbuch, Audit und
+Eskalationsauflösung entstehen gemeinsam oder gar nicht.
+
+Lokal bestanden 153 Testdateien mit 1.593 Tests, TypeScript und der
+90-Seiten-Build. Der permanente Korpus blieb exakt 110 Fälle groß und bestand
+110/110 mit einer Archivierungsvorschau und null ausgeführten Aktionen. Die
+isolierte QA bestätigte Rollenbindung, Blocker, falsche Phrase, Abbruch,
+Archivierung, Replay, exakte Wiederherstellung des Status `Abgeschlossen`, je
+zwei Timeline-/Logbuch-/Audit-Einträge, erhaltene Angebote, Rechnungen und
+Dateien sowie null QA-Rückstände. Echte Klicktests bestätigten JARVIS und die
+normale Projektmaske, deaktivierte Ausführung bei falscher Phrase, Archivieren,
+Wiederherstellen und die sichtbare Erfolgsmeldung ohne Fehler auf einem
+frischen Dashboard-Lauf. Release-Commit, Backup, Produktions-QA und Runtime
+werden nach dem seriellen Deployment ergänzt.

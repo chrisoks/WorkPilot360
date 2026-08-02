@@ -43,6 +43,7 @@ const fake = vi.hoisted(() => {
   const cancellationInvoices: Array<Record<string, any>> = [];
   const creditInvoices: Array<Record<string, any>> = [];
   const projectStatusChanges: Array<Record<string, any>> = [];
+  const projectLifecycleChanges: Array<Record<string, any>> = [];
   const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
     reason,
     targetStatus,
@@ -63,6 +64,18 @@ const fake = vi.hoisted(() => {
   const executeProjectStatusChange = vi.fn(async (input: Record<string, any>) => {
     const row = { id: input.projectId, status: input.targetStatus };
     projectStatusChanges.push(row);
+    return { project: row, replayed: false };
+  });
+  const evaluateProjectLifecycle = vi.fn(async ({ projectId, lifecycleAction, reason }: { projectId: string; lifecycleAction: "archive" | "restore"; reason: string }) => ({
+    lifecycleAction, reason,
+    project: { id: projectId, projectNumber: "MKG-209", title: "Marketing", customer: "Musterkunde", currentStatus: lifecycleAction === "archive" ? "Abgeschlossen" : "Archiviert", projectKind: "Einmalprojekt", responsibleName: "Jarvis Tester", restoreStatus: lifecycleAction === "restore" ? "Abgeschlossen" : "", updatedAt: "2026-07-29T18:00:00.000Z" },
+    evidence: { offers: 1, activeOffers: 0, invoices: 1, unpaidInvoices: 0, planningEntries: 0, futureConfirmedPlanningEntries: 0, projectTimeEntries: 2, runningStampSessions: 0, openTasks: 0, storedFiles: 3, onlineRequests: 1 },
+    checks: [{ key: "relations", label: "Verknüpfungen", status: "ok", detail: "Geprüft." }],
+    warnings: ["Fachdaten bleiben erhalten."], blockingIssues: [], fingerprint: "f".repeat(64),
+  }));
+  const executeProjectLifecycle = vi.fn(async (input: Record<string, any>) => {
+    const row = { id: input.projectId, status: input.lifecycleAction === "archive" ? "Archiviert" : "Abgeschlossen" };
+    projectLifecycleChanges.push(row);
     return { project: row, replayed: false };
   });
   const evaluateInvoicePayment = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate?: string }) => ({
@@ -622,6 +635,7 @@ const fake = vi.hoisted(() => {
       cancellationInvoices.length = 0;
       creditInvoices.length = 0;
       projectStatusChanges.length = 0;
+      projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
       evaluateInvoicePayment.mockClear();
@@ -634,6 +648,8 @@ const fake = vi.hoisted(() => {
       createInvoiceCredit.mockClear();
       evaluateProjectStatusChange.mockClear();
       executeProjectStatusChange.mockClear();
+      evaluateProjectLifecycle.mockClear();
+      executeProjectLifecycle.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -668,6 +684,9 @@ const fake = vi.hoisted(() => {
     projectStatusChanges,
     evaluateProjectStatusChange,
     executeProjectStatusChange,
+    projectLifecycleChanges,
+    evaluateProjectLifecycle,
+    executeProjectLifecycle,
   };
 });
 
@@ -682,6 +701,13 @@ vi.mock("@/lib/projects/project-status-service", () => ({
   ProjectStatusServiceError: class ProjectStatusServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
+}));
+vi.mock("@/lib/projects/project-lifecycle-service", () => ({
+  evaluateProjectLifecycle: fake.evaluateProjectLifecycle,
+  executeProjectLifecycle: fake.executeProjectLifecycle,
+  getProjectLifecycleConfirmationText: (projectNumber: string, action: string) => action === "archive" ? `PROJEKT ARCHIVIEREN ${projectNumber}` : `PROJEKT WIEDERHERSTELLEN ${projectNumber}`,
+  matchesProjectLifecycleConfirmation: (projectNumber: string, action: string, value: string) => value.trim() === (action === "archive" ? `PROJEKT ARCHIVIEREN ${projectNumber}` : `PROJEKT WIEDERHERSTELLEN ${projectNumber}`),
+  ProjectLifecycleServiceError: class ProjectLifecycleServiceError extends Error { code = "invalid_input"; },
 }));
 vi.mock("@/lib/invoices/invoice-draft-service", () => ({
   evaluateInvoiceDraft: fake.evaluateInvoiceDraft,
@@ -846,6 +872,9 @@ import {
   cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft,
   createPersistedJarvisProjectStatusDraft,
+  cancelJarvisProjectLifecycleDraft,
+  confirmJarvisProjectLifecycleDraft,
+  createPersistedJarvisProjectLifecycleDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 import { calculateWinterService } from "@/lib/winter-service/calculation";
@@ -2797,5 +2826,35 @@ describe("persistent JARVIS project-status drafts", () => {
     );
     expect(cancelled.state).toBe("cancelled");
     expect(fake.executeProjectStatusChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("persistent JARVIS project lifecycle drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string, lifecycleAction: "archive" | "restore" = "archive") => ({
+    version: 1 as const, previewId, actionId: "project.archive" as const,
+    actionTitle: "Projekt archivieren oder wiederherstellen", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { projectId: "project-1", lifecycleAction, reason: "Revisionssicher dokumentiert" },
+    execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("archives exactly once after the exact phrase", async () => {
+    const created = await createPersistedJarvisProjectLifecycleDraft({ ...binding(), now: baseNow, preview: preview("project-archive-1") });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", lifecycleAction: "archive", confirmation: { requiredText: "PROJEKT ARCHIVIEREN MKG-209" } });
+    const first = await confirmJarvisProjectLifecycleDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisProjectLifecycleDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("project-1");
+    expect(fake.projectLifecycleChanges).toEqual([{ id: "project-1", status: "Archiviert" }]);
+    expect(fake.executeProjectLifecycle).toHaveBeenCalledWith(expect.objectContaining({ lifecycleAction: "archive", requestId: "project-archive-1", expectedFingerprint: "f".repeat(64), source: "jarvis" }));
+  });
+
+  it("rejects an inexact phrase and cancels without executing", async () => {
+    const wrong = await createPersistedJarvisProjectLifecycleDraft({ ...binding(), now: baseNow, preview: preview("project-archive-wrong") });
+    await expect(confirmJarvisProjectLifecycleDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisProjectLifecycleDraft({ ...binding(), now: baseNow, preview: preview("project-archive-cancel") });
+    expect((await cancelJarvisProjectLifecycleDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    expect(fake.projectLifecycleChanges).toHaveLength(0);
   });
 });

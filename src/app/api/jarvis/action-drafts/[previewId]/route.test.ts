@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisTaskDraft: vi.fn(),
   cancelJarvisProjectStatusDraft: vi.fn(),
   confirmJarvisProjectStatusDraft: vi.fn(),
+  cancelJarvisProjectLifecycleDraft: vi.fn(),
+  confirmJarvisProjectLifecycleDraft: vi.fn(),
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
@@ -71,6 +73,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisTaskDraft: mocks.confirmJarvisTaskDraft,
   cancelJarvisProjectStatusDraft: mocks.cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft: mocks.confirmJarvisProjectStatusDraft,
+  cancelJarvisProjectLifecycleDraft: mocks.cancelJarvisProjectLifecycleDraft,
+  confirmJarvisProjectLifecycleDraft: mocks.confirmJarvisProjectLifecycleDraft,
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
@@ -312,6 +316,8 @@ describe("JARVIS action-draft API", () => {
       state: "executed",
       result: { entityType: "project", entityId: "project-1", label: "Geändertes Projekt öffnen" },
     });
+    mocks.cancelJarvisProjectLifecycleDraft.mockResolvedValue({ ...draft, actionId: "project.archive", state: "cancelled" });
+    mocks.confirmJarvisProjectLifecycleDraft.mockResolvedValue({ ...draft, actionId: "project.archive", state: "executed", result: { entityType: "project", entityId: "project-1", label: "Projekt öffnen" } });
     mocks.completeJarvisInvoiceDeliveryDraft.mockResolvedValue({
       ...draft,
       actionId: "document.send",
@@ -1253,6 +1259,16 @@ describe("JARVIS action-draft API", () => {
     expect(response.status).toBe(200);
     expect(body.message).toContain("sämtliche Fachdaten blieben unverändert");
     expect(mocks.cancelJarvisProjectStatusDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 2);
+    expect(mocks.confirmJarvisProjectStatusDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact project archive phrase to the bound lifecycle draft", async () => {
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "project.archive", command: "confirm", revision: 4,
+      confirmationText: "PROJEKT ARCHIVIEREN GLR-449", projectId: "other-project", deleteFiles: true,
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisProjectLifecycleDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 4, "PROJEKT ARCHIVIEREN GLR-449");
     expect(mocks.confirmJarvisProjectStatusDraft).not.toHaveBeenCalled();
   });
 

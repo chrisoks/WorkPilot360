@@ -293,6 +293,7 @@ async function main() {
   let invoiceLifecycleDraftPrepared = false;
   let taskLifecycleDraftPrepared = false;
   let projectStatusDraftPrepared = false;
+  let projectLifecycleDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -310,6 +311,7 @@ async function main() {
         const isInvoiceLifecycleCase = item.question.includes("Lösche Rechnungsentwurf");
         const isTaskLifecycleCase = item.question.includes("QA JARVIS Aufgaben-Lebenszyklus");
         const isProjectStatusCase = item.question.includes("QA-100");
+        const isProjectLifecycleCase = item.question.includes("QA-200");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -336,6 +338,8 @@ async function main() {
               ? `Archiviere die Aufgabe „${lifecycleTask.title}“ kontrolliert. Grund: Irrtümlich doppelt angelegt.`
             : isProjectStatusCase
               ? `Setze Projekt ${projectStatusProject.projectNumber} auf Angebot. Grund: Der Angebotsprozess wurde fachlich eröffnet.`
+            : isProjectLifecycleCase
+              ? `Archiviere Projekt ${projectStatusProject.projectNumber}. Grund: Auftrag abgeschlossen und revisionssicher geprüft.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -410,6 +414,15 @@ async function main() {
             });
           } else {
             projectStatusDraftPrepared = true;
+          }
+        }
+        if (isProjectLifecycleCase) {
+          if (payload.actionDraft?.actionId !== "project.archive") {
+            failures.push({ id: item.id, status: response.status, error: "Die Archivierungsfrage hat keine kontrollierte project.archive-Vorschau erzeugt." });
+          } else if (payload.actionDraft.state !== "awaiting_confirmation" || payload.actionDraft.confirmation?.enabled !== true || payload.actionDraft.blockingIssues?.length || payload.actionDraft.lifecycleAction !== "archive") {
+            failures.push({ id: item.id, status: response.status, error: "Die Archivierungsfrage hat keine vollständig prüfbare, unblockierte Bestätigungsvorschau erzeugt." });
+          } else {
+            projectLifecycleDraftPrepared = true;
           }
         }
         if (isReminderCase && reminderInvoice) {
@@ -816,10 +829,10 @@ async function main() {
         where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id, createdAt: { gte: now } },
       }),
       prisma.projectLogbookEntry.count({
-        where: { organizationId: actor.organizationId, projectId: projectStatusProject.id, source: "project-status", createdAt: { gte: now } },
+        where: { organizationId: actor.organizationId, projectId: projectStatusProject.id, source: { in: ["project-status", "project-archive", "project-restore"] }, createdAt: { gte: now } },
       }),
       prisma.auditLog.count({
-        where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id, action: "project.status.changed", createdAt: { gte: now } },
+        where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id, action: { in: ["project.status.changed", "project.archived", "project.restored"] }, createdAt: { gte: now } },
       }),
     ]);
     if (
@@ -888,6 +901,7 @@ async function main() {
     invoiceLifecycleDraftPrepared,
     taskLifecycleDraftPrepared,
     projectStatusDraftPrepared,
+    projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
       ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
       : 0,

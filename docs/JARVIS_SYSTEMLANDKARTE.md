@@ -368,3 +368,34 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   `/var/backups/workpilot360/20260801T221053Z-before-jarvis-project-status`.
   110/110 Produktionsfragen, isolierte Exactly-once-QA, echter Klicktest in
   Projektmaske und JARVIS, leerer Live-Prisma-Diff und null QA-Rückstände.
+
+## Projekte archivieren und wiederherstellen
+
+- Kritische JARVIS-Aktion: `project.archive`; fachlich ausschließlich
+  `archive | restore`, niemals physisches Löschen und niemals ein frei
+  gewählter Wiederherstellungsstatus.
+- Gemeinsamer Fachservice für JARVIS und normale Projektmaske:
+  `src/lib/projects/project-lifecycle-service.ts`; gemeinsamer UI-Endpunkt:
+  `/api/hero/projects/lifecycle`.
+- Die Archivierung ist fail-closed gesperrt, solange eine Stempelung läuft,
+  eine zukünftige bestätigte Planung oder eine offene Aufgabe besteht. Die
+  Vorschau zeigt zusätzlich Angebote, Rechnungen, Projektzeiten,
+  `StoredFile`-Dateien und über `convertedProjectId` verknüpfte
+  Online-Anfragen. Keine dieser Relationen wird gelöscht oder umgehängt.
+- Wiederherstellung ist nur aus `Archiviert` möglich und verwendet exakt den
+  operativen `fromStatus` des offenen Archiv-Timeline-Eintrags. Legacy-Daten
+  ohne revisionssicheren Nachweis bleiben gesperrt.
+- Exakte, groß-/kleinschreibungssensitive Phrasen:
+  `PROJEKT ARCHIVIEREN <Projektnummer>` und
+  `PROJEKT WIEDERHERSTELLEN <Projektnummer>`.
+- Organisation, Sitzung, Session-/Effektivrolle, Impersonation, Revision,
+  TTL, HMAC, Payload-/Kontexthash und Beziehungsfingerprint werden erneut
+  geprüft. Advisory-Lock, serialisierbare Transaktion, bedingtes Update und
+  Logbuch-Idempotenz schützen Parallelzugriff und Replay.
+- Atomar ändern sich ausschließlich Projektstatus, Status-Timeline,
+  Projektlogbuch, Audit und überholte Statuseskalationen. Das allgemeine
+  Projektspeichern lehnt Archiv-/Restore-Übergänge mit
+  `lifecycle_required` ab, sodass kein Nebenweg die Fachprüfung umgeht.
+- Permanente Abnahme: exakt 110 Fragen in
+  `src/lib/jarvis/live-question-corpus.ts`; isolierte Ausführungs-QA in
+  `scripts/qa-jarvis-project-lifecycle.mjs`.

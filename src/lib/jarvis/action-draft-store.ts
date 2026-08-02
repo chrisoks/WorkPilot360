@@ -27,6 +27,7 @@ import {
   type JarvisInvoiceLifecycleDraftView,
   type JarvisTaskLifecycleDraftView,
   type JarvisProjectStatusDraftView,
+  type JarvisProjectLifecycleDraftView,
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
@@ -168,6 +169,13 @@ import {
   matchesProjectStatusConfirmation,
   ProjectStatusServiceError,
 } from "@/lib/projects/project-status-service";
+import {
+  evaluateProjectLifecycle,
+  executeProjectLifecycle,
+  getProjectLifecycleConfirmationText,
+  matchesProjectLifecycleConfirmation,
+  ProjectLifecycleServiceError,
+} from "@/lib/projects/project-lifecycle-service";
 import {
   createConfirmedInvoiceDraft,
   evaluateInvoiceDraft,
@@ -831,6 +839,30 @@ const projectStatusContextSchema = z.object({
   warnings: z.array(z.string()),
   blockingIssues: z.array(z.string()),
   fingerprint: z.string().length(64),
+}).strict();
+
+const projectLifecyclePayloadSchema = z.object({
+  projectId: z.string().trim().min(1).max(120),
+  lifecycleAction: z.enum(["archive", "restore"]),
+  reason: z.string().trim().min(1).max(500),
+}).strict();
+
+const projectLifecycleContextSchema = z.object({
+  lifecycleAction: z.enum(["archive", "restore"]),
+  reason: z.string(),
+  project: z.object({
+    id: z.string(), projectNumber: z.string(), title: z.string(), customer: z.string(),
+    currentStatus: z.string(), projectKind: z.string(), responsibleName: z.string(), restoreStatus: z.string(), updatedAt: z.string().datetime({ offset: true }),
+  }).strict(),
+  evidence: z.object({
+    offers: z.number().int().min(0), activeOffers: z.number().int().min(0),
+    invoices: z.number().int().min(0), unpaidInvoices: z.number().int().min(0),
+    planningEntries: z.number().int().min(0), futureConfirmedPlanningEntries: z.number().int().min(0),
+    projectTimeEntries: z.number().int().min(0), runningStampSessions: z.number().int().min(0),
+    openTasks: z.number().int().min(0), storedFiles: z.number().int().min(0), onlineRequests: z.number().int().min(0),
+  }).strict(),
+  checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string() }).strict()),
+  warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
 }).strict();
 
 const invoiceLifecycleContextSchema = z.object({
@@ -4006,6 +4038,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "project.status.change") {
     return getJarvisProjectStatusDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "project.archive") {
+    return getJarvisProjectLifecycleDraft(previewId, binding, now);
   }
   if (draft?.actionId === "invoice.finalize") {
     return getJarvisInvoiceFinalizationDraft(previewId, binding, now);
@@ -9562,6 +9597,8 @@ function toJarvisProjectStatusDraftView(
       { label: "Kunde", value: context.project.customer || "–" },
       { label: "Projektart", value: context.project.projectKind || "–" },
       { label: "Verantwortlich", value: context.project.responsibleName || "–" },
+      { label: "Projektart", value: context.project.projectKind || "–" },
+      { label: "Verantwortlich", value: context.project.responsibleName || "–" },
       { label: "Aktueller Status", value: context.project.currentStatus },
       { label: "Neuer Status", value: context.targetStatus },
       { label: "Grund", value: context.reason },
@@ -9708,6 +9745,154 @@ export async function confirmJarvisProjectStatusDraft(
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof ProjectStatusServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     throw new JarvisActionDraftError("execution_failed", "Der Projektstatus wurde nicht geändert und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayChangeProjectLifecycle(binding: JarvisTaskDraftBinding) {
+  return canArchiveProjects(binding.profile.sessionActor) && canArchiveProjects(binding.profile.effectiveActor);
+}
+
+function validateProjectLifecycleBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId ||
+      draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId ||
+      draft.impersonating !== binding.profile.isImpersonating) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Projektarchivierung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  }
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) {
+    throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Archivierungsprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  }
+  if (!integrityMatches(draft)) throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Projektarchivierung ist ungültig.", 409);
+  const payload = projectLifecyclePayloadSchema.safeParse(draft.payload);
+  const context = projectLifecycleContextSchema.safeParse(draft.context);
+  if (draft.actionId !== "project.archive" || !payload.success || !context.success || hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash) {
+    throw new JarvisActionDraftError("integrity_failed", "Projektarchivierung oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundProjectLifecycleDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Projektarchivierung wurde nicht gefunden.", 404);
+  validateProjectLifecycleBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validateProjectLifecycleBinding(current, binding) };
+}
+
+function toJarvisProjectLifecycleDraftView(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding): JarvisProjectLifecycleDraftView {
+  const { context } = validateProjectLifecycleBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayChangeProjectLifecycle(binding);
+  const ready = state === "awaiting_confirmation" && permitted && context.blockingIssues.length === 0;
+  const reason: JarvisProjectLifecycleDraftView["confirmation"]["reason"] =
+    state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" :
+    state === "executing" ? "executing" : !permitted ? "not_permitted" : context.blockingIssues.length ? "blocked" : "ready";
+  const targetStatus = context.lifecycleAction === "archive" ? "Archiviert" : context.project.restoreStatus;
+  return {
+    version: 2, previewId: draft.id, actionId: "project.archive", title: "Projekt kontrolliert archivieren oder wiederherstellen",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), projectId: context.project.id,
+    lifecycleAction: context.lifecycleAction, targetStatus,
+    fields: [
+      { label: "Projekt", value: `${context.project.projectNumber} · ${context.project.title}` },
+      { label: "Kunde", value: context.project.customer || "–" },
+      { label: "Aktion", value: context.lifecycleAction === "archive" ? "Archivieren" : "Wiederherstellen" },
+      { label: "Aktueller Status", value: context.project.currentStatus },
+      { label: "Zielstatus", value: targetStatus || "Nicht sicher belegt" },
+      { label: "Grund", value: context.reason },
+      { label: "Angebote", value: `${context.evidence.offers} (${context.evidence.activeOffers} aktiv)` },
+      { label: "Rechnungen", value: `${context.evidence.invoices} (${context.evidence.unpaidInvoices} unbezahlt)` },
+      { label: "Planungen", value: `${context.evidence.planningEntries} (${context.evidence.futureConfirmedPlanningEntries} zukünftig bestätigt)` },
+      { label: "Projektzeiten", value: String(context.evidence.projectTimeEntries) },
+      { label: "Laufende Stempelungen", value: String(context.evidence.runningStampSessions) },
+      { label: "Offene Aufgaben", value: String(context.evidence.openTasks) },
+      { label: "Dateien", value: String(context.evidence.storedFiles) },
+      { label: "Online-Anfragen", value: String(context.evidence.onlineRequests) },
+    ],
+    checks: context.checks, warnings: context.warnings,
+    blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Projektarchivierungen sind für diese Rollenkombination nicht freigegeben."] : [])],
+    confirmation: { enabled: ready, reason, requiredText: getProjectLifecycleConfirmationText(context.project.projectNumber, context.lifecycleAction) },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "project" as const, entityId: draft.resultEntityId, label: "Projekt öffnen" } } : {}),
+  };
+}
+
+export async function createPersistedJarvisProjectLifecycleDraft(input: {
+  preview: JarvisActionPreview<"project.archive">; organizationId: string; sessionId: string; profile: JarvisAccessProfile; now?: Date;
+}) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Projektarchivierung ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayChangeProjectLifecycle(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Projekte nicht archivieren oder wiederherstellen.", 403);
+  const now = input.now ?? new Date();
+  const payload = projectLifecyclePayloadSchema.parse(input.preview.payload);
+  const context = projectLifecycleContextSchema.parse(await evaluateProjectLifecycle({ organizationId: input.organizationId, ...payload }));
+  const actorIds = getActorIds(input.profile);
+  const state = context.blockingIssues.length ? "awaiting_input" : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = { id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId, sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role, effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role, impersonating: input.profile.isImpersonating, actionId: "project.archive", state, revision: 1, payloadHash: hashJson(payload), contextHash: hashJson(context), expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null, executedAt: null, resultEntityType: null, resultEntityId: null, lastErrorCode: context.blockingIssues.length ? "invalid_input" : null };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } });
+    await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked" });
+    return draft;
+  });
+  return toJarvisProjectLifecycleDraftView(created, input);
+}
+
+export async function getJarvisProjectLifecycleDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const { draft } = await loadBoundProjectLifecycleDraft(previewId, binding, now);
+  return toJarvisProjectLifecycleDraftView(draft, binding);
+}
+
+export async function cancelJarvisProjectLifecycleDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundProjectLifecycleDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisProjectLifecycleDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Projektarchivierung kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Projektarchivierung wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({ where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag }, data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) } });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Projektarchivierung wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" });
+    return current;
+  });
+  return toJarvisProjectLifecycleDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisProjectLifecycleDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundProjectLifecycleDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisProjectLifecycleDraftView(loaded.draft, binding);
+  const requiredText = getProjectLifecycleConfirmationText(loaded.context.project.projectNumber, loaded.context.lifecycleAction);
+  if (!matchesProjectLifecycleConfirmation(loaded.context.project.projectNumber, loaded.context.lifecycleAction, confirmationText)) throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Projektarchivierung darf bestätigt werden.", 409);
+  if (!mayChangeProjectLifecycle(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Projekte nicht archivieren oder wiederherstellen.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
+      if (!current) throw new JarvisActionDraftError("not_found", "Die Projektarchivierung wurde nicht gefunden.", 404);
+      const parsed = validateProjectLifecycleBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Projektarchivierung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true, firstName: true, lastName: true, email: true } });
+      if (!actor || !canArchiveProjects(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Archivierungsberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
+      const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
+      if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Das Projekt wird bereits verarbeitet.", 409);
+      const actorName = [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email;
+      const changed = await executeProjectLifecycle({ tx, organizationId: binding.organizationId, projectId: parsed.payload.projectId, lifecycleAction: parsed.payload.lifecycleAction, reason: parsed.payload.reason, actorId: actor.id, actorName, requestId: current.id, expectedFingerprint: parsed.context.fingerprint, source: "jarvis" });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "project", resultEntityId: changed.project.id };
+      const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "project", resultEntityId: changed.project.id, integrityTag: createIntegrityTag(executedData) } });
+      await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: changed.project.id, entityType: "project" } });
+      return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisProjectLifecycleDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundProjectLifecycleDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") return toJarvisProjectLifecycleDraftView(latest.draft, binding);
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof ProjectLifecycleServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
+    throw new JarvisActionDraftError("execution_failed", "Das Projekt wurde nicht archiviert oder wiederhergestellt und die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

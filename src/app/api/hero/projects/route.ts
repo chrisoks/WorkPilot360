@@ -747,6 +747,15 @@ export async function POST(req: Request) {
     LIMIT 1
   `;
   const currentProject = currentRows[0] ?? null;
+  if (
+    (!currentProject && isArchivedProjectStatus(status)) ||
+    (currentProject && isArchivedProjectStatus(currentProject.status) !== isArchivedProjectStatus(status))
+  ) {
+    return NextResponse.json(
+      { error: "Archivieren und Wiederherstellen sind nur über die kontrollierte Projekt-Lebenszyklusprüfung zulässig.", code: "lifecycle_required" },
+      { status: 409 }
+    );
+  }
   const projectKind = cleanString(body.projectKind);
   const incomingRecurringBillingMode = cleanRecurringBillingMode(body.recurringBillingMode);
   if (isRecurringProjectKind(projectKind) && !incomingRecurringBillingMode && !currentProject) {

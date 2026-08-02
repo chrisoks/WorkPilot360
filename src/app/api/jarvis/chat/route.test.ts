@@ -58,6 +58,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisInvoiceLifecycleDraft: vi.fn(),
   createPersistedJarvisTaskLifecycleDraft: vi.fn(),
   createPersistedJarvisProjectStatusDraft: vi.fn(),
+  createPersistedJarvisProjectLifecycleDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -145,6 +146,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisTaskLifecycleDraft,
   createPersistedJarvisProjectStatusDraft:
     mocks.createPersistedJarvisProjectStatusDraft,
+  createPersistedJarvisProjectLifecycleDraft:
+    mocks.createPersistedJarvisProjectLifecycleDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3351,6 +3354,24 @@ describe("POST /api/jarvis/chat", () => {
         },
       }),
     }));
+    projectLookup.mockRestore();
+  });
+
+  it("prepares project archiving as a critical non-executing draft", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const projectLookup = vi.spyOn(prisma.workPilotProject, "findMany").mockResolvedValueOnce([{ id: "project-1" }] as never);
+    mocks.createPersistedJarvisProjectLifecycleDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "project.archive", title: "Projekt kontrolliert archivieren oder wiederherstellen",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T03:00:00.000Z",
+      projectId: "project-1", lifecycleAction: "archive", targetStatus: "Archiviert", fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "PROJEKT ARCHIVIEREN GLR-449" }, cancellation: { enabled: true },
+      execution: { enabled: false, reason: "requires_confirmation" },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actorId: "user-1", message: "Archiviere Projekt GLR-449. Grund: Auftrag abgeschlossen und geprüft." }) }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.project-lifecycle", actionDraft: { actionId: "project.archive", lifecycleAction: "archive", execution: { enabled: false, reason: "requires_confirmation" } } });
+    expect(mocks.createPersistedJarvisProjectLifecycleDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "project.archive", payload: { projectId: "project-1", lifecycleAction: "archive", reason: "Auftrag abgeschlossen und geprüft" } }) }));
     projectLookup.mockRestore();
   });
 

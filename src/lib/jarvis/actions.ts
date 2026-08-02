@@ -350,12 +350,12 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
   },
   {
     id: "project.archive",
-    title: "Projekt archivieren",
+    title: "Projekt archivieren oder wiederherstellen",
     category: "project",
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["customer"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canArchiveProjects,
   },
   {

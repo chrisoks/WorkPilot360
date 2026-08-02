@@ -10,6 +10,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "task.prepare",
   "task.delete",
   "project.status.change",
+  "project.archive",
   "planning.prepare",
   "time.prepare",
   "project-logbook.prepare",
@@ -161,6 +162,14 @@ const projectStatusPreviewPayloadSchema = z
   })
   .strict();
 
+const projectLifecyclePreviewPayloadSchema = z
+  .object({
+    projectId: boundedId,
+    lifecycleAction: z.enum(["archive", "restore"]),
+    reason: boundedText(500),
+  })
+  .strict();
+
 const offerPreviewLineSchema = z
   .object({
     catalogItemId: boundedId.optional(),
@@ -306,6 +315,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "task.prepare": taskPreviewPayloadSchema,
   "task.delete": taskLifecyclePreviewPayloadSchema,
   "project.status.change": projectStatusPreviewPayloadSchema,
+  "project.archive": projectLifecyclePreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
@@ -329,6 +339,7 @@ export type JarvisActionPreviewPayloadMap = {
   "task.prepare": z.infer<typeof taskPreviewPayloadSchema>;
   "task.delete": z.infer<typeof taskLifecyclePreviewPayloadSchema>;
   "project.status.change": z.infer<typeof projectStatusPreviewPayloadSchema>;
+  "project.archive": z.infer<typeof projectLifecyclePreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "project-logbook.prepare": z.infer<
@@ -1100,6 +1111,13 @@ export type JarvisProjectStatusDraftView = {
   };
   cancellation: { enabled: boolean };
   result?: { entityType: "project"; entityId: string; label: string };
+};
+
+export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView, "actionId" | "title" | "targetStatus"> & {
+  actionId: "project.archive";
+  title: "Projekt kontrolliert archivieren oder wiederherstellen";
+  lifecycleAction: "archive" | "restore";
+  targetStatus: string;
 };
 
 export type JarvisInvoicePaymentDraftView = {

@@ -102,6 +102,7 @@ import {
   createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisTaskLifecycleDraft,
   createPersistedJarvisProjectStatusDraft,
+  createPersistedJarvisProjectLifecycleDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -161,6 +162,10 @@ import {
   extractProjectStatusChange,
   looksLikeProjectStatusChangeRequest,
 } from "@/lib/jarvis/project-status-intake";
+import {
+  extractProjectLifecycleRequest,
+  looksLikeProjectLifecycleRequest,
+} from "@/lib/jarvis/project-lifecycle-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -904,6 +909,29 @@ async function buildJarvisTaskLifecycleDraft(input: {
       topicId: "action.task-lifecycle.unavailable",
       message: `${error instanceof JarvisActionDraftError ? error.message : "Die Aufgabenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
     };
+  }
+}
+
+async function buildJarvisProjectLifecycleDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.project-lifecycle.session-required", message: "Für eine Projektarchivierung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert." };
+  const details = extractProjectLifecycleRequest(input.question);
+  if (!details.projectNumber) return { type: "clarification" as const, topicId: "action.project-lifecycle.project-required", message: "Welches Projekt soll archiviert oder wiederhergestellt werden? Nenne bitte die eindeutige Projektnummer. Es wurde noch nichts verändert." };
+  if (!details.lifecycleAction) return { type: "clarification" as const, topicId: "action.project-lifecycle.action-required", message: "Soll das Projekt archiviert oder wiederhergestellt werden? Es wurde noch nichts verändert." };
+  if (!details.reason || details.reason.length < 3) return { type: "clarification" as const, topicId: "action.project-lifecycle.reason-required", message: `Für diese kritische Aktion brauche ich einen nachvollziehbaren Grund, zum Beispiel: „Archiviere Projekt ${details.projectNumber}. Grund: Auftrag abgeschlossen und geprüft.“ Es wurde nichts verändert.` };
+  const projects = await prisma.workPilotProject.findMany({ where: { organizationId: input.organizationId, projectNumber: { equals: details.projectNumber, mode: "insensitive" } }, take: 2, select: { id: true } });
+  if (projects.length !== 1) return { type: projects.length ? "clarification" as const : "refusal" as const, topicId: projects.length ? "action.project-lifecycle.ambiguous" : "action.project-lifecycle.not-found", message: projects.length ? `Die Projektnummer „${details.projectNumber}“ ist nicht eindeutig. Es wurde nichts verändert.` : `Das Projekt ${details.projectNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts verändert.` };
+  const preview = createJarvisActionPreview({ previewId: randomUUID(), actionId: "project.archive", payload: { projectId: projects[0].id, lifecycleAction: details.lifecycleAction, reason: details.reason }, organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString() });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.project-lifecycle.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  try {
+    const actionDraft = await createPersistedJarvisProjectLifecycleDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return { type: "answer" as const, topicId: "action.project-lifecycle", message: "Ich habe den vollständigen Projektlebenszyklus serverseitig geprüft. Kontrolliere vorherigen und neuen Status, Grund, Planungen, Aufgaben, laufende Stempelungen, Angebote, Rechnungen, Zeiten, Dateien und Online-Anfragen. Erst die exakte Bestätigungsphrase archiviert oder stellt das Projekt genau einmal wieder her; verknüpfte Fachdaten werden nicht gelöscht oder umgehängt.", actionDraft };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.project-lifecycle.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Projektarchivierung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.` };
   }
 }
 
@@ -2872,6 +2900,16 @@ export async function POST(req: Request) {
         accessProfile,
       }),
       "management"
+    );
+  }
+  if (looksLikeProjectLifecycleRequest(message)) {
+    return respond(
+      await buildJarvisProjectLifecycleDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      })
     );
   }
   if (looksLikeProjectStatusChangeRequest(message)) {

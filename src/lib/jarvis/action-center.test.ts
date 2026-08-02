@@ -168,6 +168,29 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     })).toMatchObject({ ok: false, code: "invalid_payload" });
   });
 
+  it("creates a critical project archive preview without execution", () => {
+    const result = createJarvisActionPreview({
+      previewId: "preview-project-archive",
+      actionId: "project.archive",
+      payload: { projectId: "project-1", lifecycleAction: "archive", reason: "Auftrag abgeschlossen und geprüft" },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-02T01:00:00.000Z",
+    });
+    expect(result).toMatchObject({ ok: true, value: { actionId: "project.archive", payload: { lifecycleAction: "archive" }, execution: { enabled: false, reason: "preview_only" } } });
+  });
+
+  it("rejects undeclared project archive side effects", () => {
+    expect(createJarvisActionPreview({
+      previewId: "preview-project-archive-tampered",
+      actionId: "project.archive",
+      payload: { projectId: "project-1", lifecycleAction: "archive", reason: "Auftrag abgeschlossen", deleteFiles: true },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-02T01:00:00.000Z",
+    })).toMatchObject({ ok: false, code: "invalid_payload" });
+  });
+
   it("creates an explicitly registered critical offer-finalization preview", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-offer-finalize",
