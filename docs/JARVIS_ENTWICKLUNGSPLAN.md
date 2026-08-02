@@ -91,6 +91,29 @@ betroffenen Menschen.
 
 ## Aktueller Umsetzungsstand
 
+### Persönliche Stempelung vollständig bedienbar
+
+- Nach Pause/Fortsetzung und Start ist jetzt auch der persönliche Stempelstopp
+  produktiv abgeschlossen. JARVIS kann unproduktive Zeit beenden, fertige oder
+  unterbrochene Projektarbeit erfassen und zeigt vor Bestätigung Dauer, Pause,
+  Kosten-, Projekt-, Nachweis- und Abrechnungsfolgen.
+- Normale Oberfläche und JARVIS teilen Stopp-, Stundenabrechnungs-,
+  Unterbrechungs- und Endkontrollservices. Zeitbuchung, Status, Rechnung,
+  Aufgabe, Hinweise und Endkontroll-PDF sind gegen Replay geschützt; für
+  OK immocare gelten die verpflichtende Endkontrolle und der private
+  `StoredFile`-/S3-Weg.
+- Produktiv abgenommen auf Runtime-Commit
+  `0a48f80bfa93f44491c91cb07080c2ac4ea1ffbc` mit Backup
+  `/var/backups/workpilot360/20260802T121222Z-before-jarvis-stamp-stop`.
+  180/180 Testdateien, 1.782/1.782 Tests, 90-Seiten-Build, echter Klicktest,
+  lokale und produktive isolierte QA, 110/110 feste Fragen, leerer Prisma-Diff
+  und null QA-Rückstände sind belegt.
+- Gemäß GOAL wird ohne Pause chronologisch am nächsten offenen vollständigen
+  JARVIS-Vertikalschnitt weitergearbeitet. Angehalten wird nur, wenn eine
+  wesentliche fachliche, rechtliche, personelle oder irreversible Entscheidung
+  nicht sicher aus bestehender WorkPilot-Logik und den geltenden Invarianten
+  ableitbar ist.
+
 ### Kontrollierte Kontaktverwaltung und endgültige Löschung
 
 - `contact.manage` kann Firmen-, Privat- und Personenkontakte anlegen sowie

@@ -804,3 +804,46 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   isolierte lokale und produktive Exactly-once-QA, 110/110 Fragen und null
   Rückstände. Live-Prisma-Diff leer; WorkPilot PID `760146`, KlinikNavigator
   unverändert PID `398228`.
+
+## Persönliche Stempelung kontrolliert beenden
+
+- Aktions-ID `time.session.manage` mit Operation `stop`; sie betrifft nur die
+  eigene aktive Sitzung. Projektstempelungen benötigen ausdrücklich `fertig`
+  oder `unterbrochen`, Unterbrechungen zusätzlich einen dokumentierten Grund.
+- Gemeinsamer Fachservice `src/lib/time/stamp-session-stop-service.ts` für
+  `/api/stamp-session` und JARVIS. Er bindet Organisation, Benutzer,
+  Sitzungsfingerprint, Projekt- und Abrechnungskontext, berechnet Dauer, Pause
+  und Kosten-Snapshot und schreibt Entfernen der aktiven Sitzung sowie
+  Zeitbuchung serialisierbar und exactly-once unter Advisory-Lock.
+- Kritische Phrasen: `STEMPELUNG STOPPEN`,
+  `STEMPELUNG BEENDEN FERTIG <PROJEKTNUMMER>` und
+  `STEMPELUNG BEENDEN UNTERBROCHEN <PROJEKTNUMMER>`. JARVIS bindet zusätzlich
+  serverseitige Sitzung, Rollenpaar, Impersonation, Payload, unveränderlichen
+  Kontext, HMAC, Revision und Ablaufzeit; Replay erzeugt keine zweite Buchung.
+- Stunden-Dauerläufer verwenden
+  `src/lib/time/stamp-session-billing-service.ts`: Monatsentwurf,
+  Leistungszeile und Mitarbeiterzeit werden organisationsgebunden gesperrt,
+  auf die Zeitbuchung zurückverknüpft und bei Replay nur wiederverwendet.
+- Unterbrechungen nutzen
+  `src/lib/time/stamp-session-interruption-service.ts` sowie den gemeinsamen
+  Projektstatus-Service. Verantwortliche Aufgabe, Beteiligte und Hinweise an
+  Führung/Geschäftsführung werden deterministisch angelegt und bei partiellem
+  Retry vervollständigt.
+- Ein fertiges OK-immocare-Projekt erzwingt vor Ausführung die Wahl zwischen
+  eigener oder kollegialer Endkontrolle. Bei eigener Kontrolle müssen alle
+  sechs Prüfpunkte bestätigt sein. `src/lib/projects/final-inspection-service.ts`
+  ist der gemeinsame Weg für Normalmaske und JARVIS, erzeugt ein geschütztes
+  PDF, speichert es über `StoredFile` im privaten S3-Speicher, dokumentiert
+  `Dokumente: Endkontrolle` im Projektlogbuch und setzt abhängig von
+  Endkontrolle sowie Vorher-/Nachherbildern den Abrechnungsstatus.
+- Permanente isolierte QA: `scripts/qa-jarvis-stamp-stop.mjs`; sie prüft falsche
+  Phrase, Sitzungsbindung, unproduktive Zeit, Stunden-Rechnungsentwurf und
+  Immocare-Endkontrolle einschließlich S3-PDF und Exactly-once-Replay. Der
+  feste Korpus bleibt exakt 110 Fragen und führt keine Aktion aus.
+- Produktivabnahme: Runtime
+  `0a48f80bfa93f44491c91cb07080c2ac4ea1ffbc`, Backup
+  `/var/backups/workpilot360/20260802T121222Z-before-jarvis-stamp-stop`,
+  180/180 Testdateien, 1.782/1.782 Tests, 90-Seiten-Build, echter Klicktest,
+  lokale und produktive isolierte QA, privates S3-PDF, 110/110 Fragen, null
+  Rückstände und leerer Live-Prisma-Diff. WorkPilot PID `765199`,
+  KlinikNavigator unverändert PID `398228`.

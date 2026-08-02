@@ -1,5 +1,31 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS persönlicher Stempelstopp 2026-08-02: `time.session.manage` beendet
+  ausschließlich die eigene laufende Stempelung des angemeldeten internen
+  Benutzers; Vertretung, Impersonation und Fremdstempelung sind ausgeschlossen.
+  Projektzeit verlangt `fertig` oder `unterbrochen`, bei Unterbrechung zusätzlich
+  einen Grund. Die kritischen Phrasen lauten `STEMPELUNG STOPPEN`,
+  `STEMPELUNG BEENDEN FERTIG <PROJEKTNUMMER>` und
+  `STEMPELUNG BEENDEN UNTERBROCHEN <PROJEKTNUMMER>`. Normale Stempelroute und
+  JARVIS verwenden denselben serialisierbaren Fachservice
+  `src/lib/time/stamp-session-stop-service.ts`; Zeitbuchung und Entfernen der
+  Sitzung sind atomar und exactly-once. Stunden-Dauerläufer erhalten über den
+  gemeinsamen Billing-Service genau eine Rechnungsentwurfsposition.
+  Unterbrechungen verwenden den gemeinsamen Projektstatus-, Aufgaben- und
+  Benachrichtigungsweg. Fertige OK-immocare-Projekte erzwingen eine selbst
+  bestätigte Sechs-Punkte-Endkontrolle oder Kollegenkontrolle; das PDF wird
+  über `StoredFile` im privaten S3-Speicher abgelegt und der Nachweis steuert
+  den gemeinsamen Abrechnungsstatus. Runtime-Commit
+  `0a48f80bfa93f44491c91cb07080c2ac4ea1ffbc`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T121222Z-before-jarvis-stamp-stop`.
+  Lokal bestanden 180/180 Testdateien mit 1.782/1.782 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, 90-Seiten-Build, 110/110 Fragen,
+  isolierte QA und ein echter JARVIS-Klicktest. Produktiv bestanden
+  unproduktiver, Stunden- und Immocare-Stopp samt Exactly-once-Replay, privatem
+  S3-PDF, 110/110 Fragen und null QA-Rückständen; Live-Prisma-Diff leer,
+  Dashboard/Formular HTTP 200. WorkPilot PID `765199`, KlinikNavigator
+  unverändert PID `398228`.
+
 - JARVIS persönlicher Stempelstart 2026-08-02: `time.session.manage` kann die
   eigene Stempelung des angemeldeten internen Benutzers jetzt auf ein
   eindeutiges Projekt oder eine konkret benannte unproduktive Tätigkeit
