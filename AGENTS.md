@@ -1,5 +1,32 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Terminverschiebung 2026-08-02: `planning.move`
+  verschiebt genau einen über seine vollständige ID benannten bestätigten
+  Termin oder Terminwunsch. Normale Planungsmaske und JARVIS verwenden
+  `src/lib/planning/planning-entry-move-service.ts`; direkte Zeitänderungen
+  bestehender Einträge über den alten POST-Weg sind gesperrt. Projekt,
+  Mitarbeiter, Freigabestatus, Abrechnungs- und Serienbezug bleiben erhalten.
+  Abwesenheit, Überschneidung, Projekt-/Archivstatus, Angebotsmonat und
+  Angebots- beziehungsweise Monatspauschalenkontingent werden vor Vorschau und
+  Ausführung erneut geprüft. Überplanung verlangt eine gebundene Begründung;
+  Serien werden niemals still vollständig verschoben. Die exakte Phrase lautet
+  `TERMIN VERSCHIEBEN <ID>`. Transaktion, Advisory-/Zeilensperre,
+  Fachfingerprint, Organisation, Sitzung, Rollenpaar, Impersonation, Revision,
+  HMAC und Exactly-once-Historie schützen die Ausführung. Logbuch, Historie und
+  In-App-Hinweise entstehen atomar; Mail/Push sind nachgelagerte sichere
+  Kanäle. Runtime-Commit `c0d11743bc16ffb005f89c7ac0516d58f027625f`;
+  verifiziertes Backup
+  `/var/backups/workpilot360/20260802T144707Z-before-jarvis-planning-move`.
+  Lokal 185/185 Testdateien mit 1.824/1.824 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, 90-Seiten-Build, isolierte QA,
+  110/110 Fragen und echter JARVIS-Klicktest. Produktiv bestanden Rollen-,
+  Mandanten-, Sitzungs-, Phrasen-, Serien-, Kontingent-, Shared-Service- und
+  Exactly-once-QA sowie 110/110 Fragen mit 33 vorbereiteten und null
+  ausgeführten Korpusaktionen; Rückstände und Live-Prisma-Diff leer,
+  Dashboard/Formular HTTP 200. WorkPilot PID `777855`, KlinikNavigator
+  unverändert PID `398228`. `StoredFile`, privater S3-Speicher und sämtliche
+  Online-Anfragen-Invarianten blieben unverändert.
+
 - JARVIS Zeiteintragsverwaltung 2026-08-02: `time.manage` korrigiert oder
   löscht einen über seine vollständige ID bestimmten bestehenden Zeiteintrag
   kontrolliert. Normale Zeitoberfläche und JARVIS verwenden denselben

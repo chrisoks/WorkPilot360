@@ -3668,3 +3668,56 @@ leer, Dashboard und öffentliches Formular HTTP 200; WorkPilot PID `774010`,
 KlinikNavigator unverändert PID `398228`. Keine Prisma-Schemaänderung;
 `StoredFile`, privater S3-Speicher und alle Online-Anfragen-Invarianten blieben
 erhalten.
+
+## 43. Bestehende Termine und Terminwünsche kontrolliert verschieben
+
+JARVIS kann einen über seine vollständige sichtbare ID eindeutig bestimmten
+bestätigten Termin oder Terminwunsch auf ein neues Datum und Zeitfenster
+verschieben. Titel, Beschreibung, Projekt, Mitarbeiter, Freigabestatus,
+Gewerk, Abrechnungsleistung und Serienzuordnung bleiben unverändert. Bei einem
+Serieneintrag erklärt die Vorschau ausdrücklich, dass nur dieser einzelne
+Termin verschoben wird; ein unbestimmter Wunsch zur Verschiebung einer ganzen
+Serie führt nicht zu einer stillen Massenänderung. Ausgeführt wird nur mit
+`TERMIN VERSCHIEBEN <ID>`.
+
+Normale Planungsmaske und JARVIS verwenden denselben Fachservice
+`src/lib/planning/planning-entry-move-service.ts`. Der bisherige allgemeine
+POST-Weg lehnt Datum-/Uhrzeitänderungen bestehender Einträge ab; die normale
+Oberfläche nutzt stattdessen den gemeinsamen PATCH-Vertrag mit Prüfung und
+Ausführung. Vor beiden Stufen werden aktive Mitarbeiterzuordnung,
+Abwesenheiten, projektgleiche Tagesdubletten, Überschneidungen,
+Projekt-/Archivstatus, Angebots-Ausführungsmonat und verfügbares Angebots- oder
+Monatspauschalenkontingent geprüft. Eine bewusste Überplanung benötigt eine
+nachvollziehbare Begründung, die zusammen mit dem Kontingentstand per
+Fingerprint gebunden wird.
+
+Die Ausführung läuft serialisierbar unter organisations- und
+termingebundenem PostgreSQL-Advisory-Lock sowie Zeilensperre. Organisation,
+Sitzung, Session-/Effektividentität, Rollen, Impersonation, Payload,
+Fachkontext, Revision, Ablaufzeit und HMAC bleiben gebunden. Ein veränderter
+Termin-, Abwesenheits-, Überschneidungs-, Projekt- oder Kontingentstand sperrt
+als `stale_context`. Planungshistorie, Projektlogbuch und deterministische
+In-App-Hinweise werden genau einmal angelegt; Mail und Push laufen danach als
+sichere Zusatzkanäle. Wiederholte Ausführung liefert denselben Termin ohne
+zweite Historie oder zweite Benachrichtigung.
+
+Lokal bestanden 185 Testdateien mit 1.824 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Die isolierte QA prüfte Rollen, Mandantentrennung, Abbruch,
+falsche/exakte Phrase, Sitzungsbindung, exactly-once, Serienerhalt, denselben
+Fachservice der normalen API, Mitarbeiterhinweise und die Sperre des alten
+Änderungswegs. Der feste Korpus bestand 110/110 mit 32 ausschließlich
+vorbereiteten und null ausgeführten Aktionen. Ein echter JARVIS-Klicktest
+deckte Vorschau, kritische Phrase, Ausführung und Navigation zum verschobenen
+Termin ab; sämtliche Testdaten wurden entfernt.
+
+Produktiv abgenommen auf Runtime-Commit
+`c0d11743bc16ffb005f89c7ac0516d58f027625f`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T144707Z-before-jarvis-planning-move`.
+Produktiv bestanden die isolierte Terminverschiebe-QA und 110/110 permanente
+Fragen mit 33 ausschließlich vorbereiteten, null ausgeführten Aktionen. Alle
+QA-Rückstände und der Live-Prisma-Diff sind leer; Dashboard und öffentliches
+Formular antworten mit HTTP 200. WorkPilot PID `777855`, KlinikNavigator
+unverändert PID `398228`. Keine Prisma-Schemaänderung; `StoredFile`, privater
+S3-Speicher und alle Online-Anfragen-Invarianten blieben erhalten.

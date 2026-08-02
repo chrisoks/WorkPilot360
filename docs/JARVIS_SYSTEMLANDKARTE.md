@@ -929,3 +929,37 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   33 vorbereiteten und 0 ausgeführten Korpusaktionen, null QA-Rückstände und
   leerer Live-Prisma-Diff. Dashboard/Formular HTTP 200; WorkPilot PID `774010`,
   KlinikNavigator unverändert PID `398228`.
+
+## Bestehende Termine und Terminwünsche kontrolliert verschieben
+
+- Aktions-ID `planning.move`; Ziel ist genau ein über seine vollständige ID
+  bestimmter bestätigter Termin oder Terminwunsch. Die exakte Phrase lautet
+  `TERMIN VERSCHIEBEN <ID>`.
+- Gemeinsamer Fachservice für normale Planungsmaske und JARVIS:
+  `src/lib/planning/planning-entry-move-service.ts`. Die normale Route nutzt
+  `PATCH` mit `preflight | execute`; direkte Datum-/Uhrzeitänderungen
+  bestehender Einträge über `POST` sind gesperrt.
+- Projekt, Mitarbeiter, Freigabestatus, Gewerk, Abrechnungsleistung und
+  Serienzuordnung bleiben erhalten. Eine ganze Serie wird niemals aufgrund
+  eines unbestimmten Wunsches verschoben; beim Einzeltermin bleibt der
+  Serienkontext sichtbar bestehen.
+- Preflight und Ausführung prüfen erneut Mitarbeiteraktivität, Abwesenheit,
+  projektgleiche Tagesdubletten, Überschneidungen, Projekt-/Archivstatus,
+  Angebots-Ausführungsmonat sowie Angebots- und Monatspauschalenkontingent.
+  Bewusste Überplanung verlangt eine fingerprintgebundene Begründung.
+- Organisation, Sitzung, Rollenpaar, Impersonation, Payload, vollständiger
+  Fachfingerprint, Revision, Ablaufzeit und HMAC sind gebunden. Die
+  serialisierbare Ausführung nutzt Advisory- und Zeilensperre; Historie,
+  Projektlogbuch und In-App-Hinweise entstehen exactly-once. Mail/Push bleiben
+  sichere nachgelagerte Zusatzkanäle.
+- Permanente isolierte QA: `scripts/qa-jarvis-planning-move.mjs`; Browser-
+  Fixture: `scripts/qa-jarvis-planning-move-browser-fixture.mjs`. Der feste
+  Korpus bleibt exakt 110 Fragen und führt keine Aktion aus.
+- Produktivabnahme: Runtime
+  `c0d11743bc16ffb005f89c7ac0516d58f027625f`, verifiziertes Backup
+  `/var/backups/workpilot360/20260802T144707Z-before-jarvis-planning-move`,
+  185/185 Testdateien, 1.824/1.824 Tests, 90-Seiten-Build, echter Klicktest,
+  lokale und produktive isolierte QA, produktiv 110/110 Fragen mit 33 nur
+  vorbereiteten und null ausgeführten Aktionen, null Rückstände und leerer
+  Live-Prisma-Diff. Dashboard/Formular HTTP 200; WorkPilot PID `777855`,
+  KlinikNavigator unverändert PID `398228`.
