@@ -2925,3 +2925,51 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `718512`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
+
+## 28. Personalstammdaten kontrolliert ändern
+
+`personnel.manage` bearbeitet ausschließlich bestehende aktive Mitarbeiter,
+die innerhalb der aktuellen Organisation eindeutig über ihre dienstliche
+E-Mail aufgelöst wurden. Freigegeben sind Vor-/Nachname, dienstliche E-Mail,
+Rolle, Personalnummer, Telefon/Mobiltelefon, Anschrift, Planungsboard und
+Planungsgruppe. Passwort, Mailkonto, Lohn- und Kostendaten, Kapazitätsmodelle,
+Führungshierarchie, Aktivierung/Deaktivierung sowie Mitarbeiteranlage und
+-löschung bleiben bewusst getrennte spätere Vertikalschnitte.
+
+Die Vorschau zeigt jeden Alt-/Neuwert sowie aktive Anmeldesitzungen, offene
+eigene Aufgaben, Planungseinträge und Projektzeiten. Diese operativen
+Zuordnungen werden nicht umverteilt oder verändert. Ein Rollenwechsel beendet
+atomar alle Anmeldesitzungen des Zielmitarbeiters. Eigene Rollenänderungen,
+Rollen oberhalb des handelnden Akteurs, Gastrolle, inaktive Mitarbeiter,
+doppelte dienstliche E-Mail oder Personalnummer, eine wirkungslose Änderung
+und das Herabstufen der letzten aktiven Geschäftsführung bleiben fail-closed
+gesperrt. Erst `MITARBEITER ÄNDERN <dienstliche E-Mail>` darf ausführen.
+
+Der Fachservice `src/lib/users/personnel-management-service.ts` bindet
+Organisation, Mitarbeiterstand, Änderungen, Rollenlage und Wirkungszähler per
+SHA-256. Sitzung, Rollenpaar, Impersonation, TTL, Revision, HMAC, Payload- und
+Kontexthash werden erneut geprüft. Advisory-Lock, serialisierbare Transaktion,
+optimistisches `updatedAt`, atomarer Sitzungsentzug und Audit
+`personnel.changed` sichern Parallelzugriff und Exactly-once. Die Oberfläche
+zeigt eine eigene Personalkarte und öffnet nach Ausführung die normale
+Mitarbeiterakte.
+
+Lokal bestanden 163 Testdateien mit 1.654 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Die isolierte lokale und produktive QA bestätigte Rollen- und
+Mandantengrenze, Abgrenzung gesperrter Vorgänge, Selbstrollenschutz, Abbruch,
+falsche/exakte Phrase, Dublette, Stale-Context, Sitzungsentzug, Audit und
+Exactly-once-Replay mit null Rückständen. Der echte UI-Klicktest bestätigte
+Alt-/Neuwertanzeige, Normalisierung, exakte Bestätigung, Ausführung und
+Rücksprung in die Mitarbeiterakte. Der permanente Korpus blieb exakt 110 Fälle
+groß und bestand lokal sowie produktiv 110/110; produktiv 24 vorbereitete,
+null ausgeführte Aktionen und null Rückstände.
+
+Produktiv abgenommen auf Runtime-Commit
+`f55fa4e4d4f2f6d42af3af81406820839c0f23cf`. Das verifizierte Datenbank-,
+Git- und Konfigurationsbackup liegt unter
+`/var/backups/workpilot360/20260802T035012Z-before-jarvis-personnel-management`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `721496`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.

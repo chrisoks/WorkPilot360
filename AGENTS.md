@@ -1,5 +1,36 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Personalstammdaten 2026-08-02: `personnel.manage` ist für die
+  kontrollierte Änderung bestehender aktiver Mitarbeiter produktiv
+  freigegeben. Zulässig sind ausschließlich Vor-/Nachname, dienstliche E-Mail,
+  Rolle, Personalnummer, Telefon/Mobil, Anschrift sowie Planungsboard und
+  Planungsgruppe. Passwort, Mailkonto, Lohn-/Kostendaten, Kapazitätsmodelle,
+  Führungshierarchie, Aktivierung/Deaktivierung sowie Anlage/Löschung bleiben
+  eigene spätere Aktionen. JARVIS löst den Mitarbeiter eindeutig und
+  organisationsgebunden über die dienstliche E-Mail auf, zeigt Alt-/Neuwerte,
+  Sitzungen, offene eigene Aufgaben, Planungen und Projektzeiten. Es werden
+  keine operativen Zuordnungen umverteilt. Eigene Rollenänderung, Vergabe einer
+  höheren Rolle als die des Akteurs, doppelte E-Mail/Personalnummer, Gastrolle,
+  inaktive Mitarbeiter und das Entfernen der letzten aktiven Geschäftsführung
+  blockieren fail-closed. Bei Rollenwechsel werden alle Zielsitzungen atomar
+  beendet. Exakte Phrase: `MITARBEITER ÄNDERN <dienstliche E-Mail>`. Sitzung,
+  Organisation, Rollenpaar, Impersonation, TTL, Revision, HMAC, Payload-/
+  Kontexthash, SHA-256-Fachfingerprint, serialisierbare Transaktion,
+  PostgreSQL-Advisory-Lock und optimistisches `updatedAt` sichern Stale-Context
+  und Exactly-once; Auditaktion `personnel.changed`. Fachservice:
+  `src/lib/users/personnel-management-service.ts`; isolierte QA:
+  `scripts/qa-jarvis-personnel-management.mjs`. Runtime-Commit
+  `f55fa4e4d4f2f6d42af3af81406820839c0f23cf`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T035012Z-before-jarvis-personnel-management`.
+  Lokal bestanden 163/163 Testdateien mit 1.654/1.654 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und der
+  90-Seiten-Build. Lokale und produktive isolierte QA, echter UI-Klicktest mit
+  Rücksprung in die Mitarbeiterakte sowie der permanente Korpus (110/110,
+  produktiv 24 nur vorbereitete Aktionen) sind grün; QA-Rückstände null.
+  Dashboard und Anfrageformular HTTP 200, Live-Prisma-Diff leer. WorkPilot PID
+  `721496`, KlinikNavigator unverändert PID `398228`. Keine Prisma-, Storage-
+  oder Online-Anfragen-Invariante wurde geändert.
+
 - JARVIS Katalogverwaltung 2026-08-02: `catalog.manage` ist für die kontrollierte
   Anlage und Bearbeitung von Artikeln und Leistungen produktiv freigegeben.
   JARVIS zeigt Stammdaten, EK/Selbstkosten, VK, Umsatzsteuer, Rohertrag, Marge,

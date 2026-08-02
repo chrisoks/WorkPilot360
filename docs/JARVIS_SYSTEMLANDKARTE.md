@@ -432,3 +432,25 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   `/var/backups/workpilot360/20260802T011132Z-before-jarvis-project-master-data`.
   Produktive isolierte QA und 110/110-Korpus bestanden ohne Rückstände;
   Live-Prisma-Diff leer, WorkPilot PID `706450`, KlinikNavigator PID `398228`.
+
+## Personalstammdaten kontrolliert ändern
+
+- JARVIS-Aktion `personnel.manage`; Ziel ist genau ein bestehender aktiver,
+  organisationsgebunden über die dienstliche E-Mail aufgelöster Mitarbeiter.
+- Freigegeben: Name, dienstliche E-Mail, Rolle, Personalnummer, Telefon/Mobil,
+  Anschrift, Planungsboard und Planungsgruppe. Passwort, Mailkonto, Lohn/Kosten,
+  Kapazität, Führungshierarchie, Aktivierung, Anlage und Löschung sind getrennt.
+- Vorschau: Alt-/Neuwerte, Sitzungen, offene eigene Aufgaben, Planungen und
+  Projektzeiten. Operative Zuordnungen bleiben unverändert; Rollenwechsel
+  beendet die Zielsitzungen atomar.
+- Fail-closed: eigene Rollenänderung, höhere Zielrolle, Gastrolle, inaktives
+  Ziel, Dublette, wirkungslose Änderung und letzte aktive Geschäftsführung.
+- Exakte Phrase: `MITARBEITER ÄNDERN <dienstliche E-Mail>`. Fachservice:
+  `src/lib/users/personnel-management-service.ts`; isolierte QA:
+  `scripts/qa-jarvis-personnel-management.mjs`.
+- Produktivabnahme: Runtime
+  `f55fa4e4d4f2f6d42af3af81406820839c0f23cf`, Backup
+  `/var/backups/workpilot360/20260802T035012Z-before-jarvis-personnel-management`,
+  163/163 Testdateien, 1.654/1.654 Tests, 110/110 Produktionsfragen, 24 nur
+  vorbereitete Aktionen, null Rückstände, Live-Prisma-Diff leer. WorkPilot PID
+  `721496`, KlinikNavigator PID `398228`.
