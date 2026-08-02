@@ -995,3 +995,32 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   33 nur vorbereiteten und null ausgeführten Aktionen, null Rückstände und
   leerer Live-Prisma-Diff. Dashboard/Formular HTTP 200; WorkPilot PID `780832`,
   KlinikNavigator unverändert PID `398228`.
+
+## Bestätigte Planungstermine kontrolliert absagen
+
+- Der bestehende Aktionsweg `planning.request.manage` unterstützt zusätzlich
+  `decision=cancel` für genau einen bestätigten Termin. Natürliche
+  Absage-/Streich-/Löschabsichten benötigen vollständige Termin-ID und
+  Absagegrund; exakte Phrase: `TERMIN ABSAGEN <ID>`.
+- Nur Planungsverantwortliche dürfen bestätigte Termine absagen. Normale
+  Planungsoberfläche und JARVIS verwenden ausschließlich
+  `src/lib/planning/planning-request-decision-service.ts`; der alte direkte
+  DELETE-Weg ist für bestätigte Termine gesperrt.
+- Serienbezug bleibt sichtbar und nur der einzelne Termin wird logisch
+  gelöscht. Offene Terminwünsche sowie alle übrigen Termine und Serienfolgen
+  bleiben unverändert.
+- Organisation, Sitzung, Rollenpaar, Impersonation, Payload, Termin-/Projekt-/
+  Personen-/Serienfingerprint, Revision, Ablauf und HMAC sind gebunden.
+  Serialisierbare Advisory-/Zeilensperre, Historie, Projektlogbuch und
+  In-App-Hinweise gewährleisten Exactly-once; Mail/Push folgen sicher danach.
+- QA liegt weiterhin in
+  `scripts/qa-jarvis-planning-request-decision.mjs`; das Browser-Fixture
+  unterstützt `--mode=cancel`. Der permanente Korpus bleibt exakt 110 Fragen.
+- Produktivabnahme: Runtime
+  `95def91426891069da93540d40f0df7191cd7450`, verifiziertes Backup
+  `/var/backups/workpilot360/20260802T154313Z-before-jarvis-planning-cancel`,
+  187/187 Testdateien mit 1.841/1.841 Tests, 90-Seiten-Build, echter Klicktest,
+  lokale und produktive erweiterte QA, produktiv 110/110 Fragen mit 33 nur
+  vorbereiteten und null ausgeführten Aktionen, null Rückstände und leerer
+  Prisma-Diff. Dashboard/Formular HTTP 200; WorkPilot PID `782943`,
+  KlinikNavigator unverändert PID `398228`.

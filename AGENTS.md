@@ -1,5 +1,32 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Terminabsage 2026-08-02: Der bestehende Aktionsweg
+  `planning.request.manage` umfasst jetzt zusätzlich die reason-bound
+  Entscheidung `cancel` für genau einen bestätigten Termin. JARVIS erkennt
+  Absage-, Streich- und Löschabsichten, verlangt vollständige Termin-ID,
+  Absagegrund und exakt `TERMIN ABSAGEN <ID>`. Normale Planungsoberfläche und
+  JARVIS verwenden denselben
+  `src/lib/planning/planning-request-decision-service.ts`; der alte direkte
+  DELETE-Weg für bestätigte Termine ist gesperrt. Serien werden niemals still
+  mit abgesagt. Organisation, Sitzung, Rollenpaar, Impersonation, Revision,
+  Ablauf, Payload, Termin-/Projekt-/Person-/Serienfingerprint und HMAC sind
+  gebunden. Ausführung, Planungshistorie, Projektlogbuch und deterministische
+  In-App-Hinweise sind serialisierbar und exactly-once; Mail/Push folgen
+  sicher nachgelagert. Runtime-Commit
+  `95def91426891069da93540d40f0df7191cd7450`; verifiziertes Backup
+  `/var/backups/workpilot360/20260802T154313Z-before-jarvis-planning-cancel`.
+  Lokal 187/187 Testdateien mit 1.841/1.841 Tests, TypeScript, Prisma,
+  90-Seiten-Build, isolierte QA, 110/110 Fragen und echter JARVIS-Klicktest.
+  Produktiv bestanden Rollen-, Mandanten-, Shared-Service-, Phrasen-,
+  Serien-, Bypass- und Exactly-once-QA mit fünf Fachausführungen und fünf
+  Mitarbeiterhinweisen sowie 110/110 Fragen mit 33 vorbereiteten und null
+  ausgeführten Korpusaktionen; Rückstände und Prisma-Diff leer,
+  Dashboard/Formular HTTP 200. WorkPilot PID `782943`, KlinikNavigator
+  unverändert PID `398228`. Eigene offene Terminwünsche werden weiterhin über
+  den getrennten bestehenden Rückzugsweg behandelt. Keine Prismaänderung;
+  `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+  unverändert.
+
 - JARVIS kontrollierte Terminwunschentscheidung 2026-08-02:
   `planning.request.manage` gibt genau einen über seine vollständige ID
   benannten offenen Terminwunsch frei oder lehnt ihn mit Pflichtbegründung ab.

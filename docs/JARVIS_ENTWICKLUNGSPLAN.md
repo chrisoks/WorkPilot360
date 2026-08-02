@@ -3601,6 +3601,54 @@ HTTP 200. WorkPilot PID `769535`, KlinikNavigator unverändert PID `398228`.
 Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
 Online-Anfragen-Invarianten blieben erhalten.
 
+## 45. Bestätigte Planungstermine kontrolliert absagen
+
+JARVIS kann einen über seine vollständige sichtbare ID eindeutig bestimmten
+bestätigten Planungstermin mit einem nachvollziehbaren Grund absagen. Die
+exakte kritische Phrase lautet `TERMIN ABSAGEN <ID>`. Bei einem Serieneintrag
+zeigt die Vorschau unübersehbar, dass nur dieser einzelne Termin betroffen ist;
+die übrige Serie bleibt unverändert. Offene Terminwünsche werden nicht über
+diesen Absageweg verändert.
+
+Die normale Planungsoberfläche und JARVIS verwenden denselben Fachservice
+`src/lib/planning/planning-request-decision-service.ts`. Die Normalmaske fragt
+den Absagegrund ab, führt zuerst die serverseitige Prüfung aus und bestätigt
+danach denselben fingerprintgebundenen Ausführungsvertrag. Der alte allgemeine
+DELETE-Weg lehnt bestätigte Termine mit HTTP 409 ab und kann die kontrollierte
+Absage nicht umgehen. Das Zurückziehen eigener offener Terminwünsche bleibt
+als getrennte bestehende Berechtigung erhalten.
+
+Nur Führungskraft, Geschäftsführung oder Admin dürfen bestätigte Termine
+absagen. Organisation, Sitzung, Session-/Effektividentität, Rollen,
+Impersonation, Payload, vollständiger Termin-, Projekt-, Personen- und
+Serienstand, Revision, Ablaufzeit und HMAC sind gebunden. Die Ausführung läuft
+serialisierbar unter organisations- und terminbezogenem Advisory-Lock sowie
+Zeilensperre. Soft-Delete, Planungshistorie, Projektlogbuch und
+deterministische In-App-Hinweise entstehen genau einmal; Mail und Push bleiben
+sichere nachgelagerte Zusatzkanäle.
+
+Lokal bestanden 187/187 Testdateien mit 1.841/1.841 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Die erweiterte isolierte QA prüfte zusätzlich JARVIS- und
+Normalroutenabsage, exakte Phrase, Pflichtgrund, Einzelterminwarnung,
+Exactly-once-Replay und die Sperre des alten DELETE-Wegs; fünf Fachfälle,
+fünf Mitarbeiterhinweise und null Rückstände. Der permanente Korpus blieb
+exakt 110 Fragen groß. Ein echter JARVIS-Klicktest bestätigte Vorschau,
+Serienhinweis, Phrasensperre, genau eine Absage und Navigation ins richtige
+Projekt; alle Testdaten wurden entfernt.
+
+Produktiv abgenommen auf Runtime-Commit
+`95def91426891069da93540d40f0df7191cd7450`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T154313Z-before-jarvis-planning-cancel`.
+Produktiv bestanden die erweiterte Rollen-, Mandanten-, Shared-Service-,
+Bypass-, Serien- und Exactly-once-QA sowie 110/110 permanente Fragen mit 33
+nur vorbereiteten, null ausgeführten Korpusaktionen. Rückstände und
+Live-Prisma-Diff sind leer; Dashboard und öffentliches Formular antworten mit
+HTTP 200. WorkPilot PID `782943`, KlinikNavigator unverändert PID `398228`.
+Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
+Online-Anfragen-Invarianten blieben erhalten.
+
 ## 42. Bestehende Zeiteinträge kontrolliert korrigieren und löschen
 
 JARVIS kann einen über seine vollständige Zeiteintrags-ID eindeutig benannten
