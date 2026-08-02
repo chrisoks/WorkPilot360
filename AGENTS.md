@@ -1,5 +1,32 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Terminwunschentscheidung 2026-08-02:
+  `planning.request.manage` gibt genau einen über seine vollständige ID
+  benannten offenen Terminwunsch frei oder lehnt ihn mit Pflichtbegründung ab.
+  Normale Planungsoberfläche und JARVIS verwenden ausschließlich
+  `src/lib/planning/planning-request-decision-service.ts`; der alte direkte
+  Statuswechsel über POST ist gesperrt. Nur Führungskraft, Geschäftsführung
+  oder Admin dürfen entscheiden. Die Freigabe prüft Mitarbeiter, Projekt,
+  Abwesenheiten und Überschneidungen unmittelbar erneut; Serien bleiben
+  ausdrücklich Einzelentscheidungen. Exakte Phrasen sind
+  `TERMINWUNSCH FREIGEBEN <ID>` und `TERMINWUNSCH ABLEHNEN <ID>`.
+  Organisation, Sitzung, Session-/Effektividentität, Rollen, Impersonation,
+  Revision, Ablauf, Payload, Fachfingerprint und HMAC sind gebunden. Die
+  serialisierbare Ausführung nutzt Advisory- und Zeilensperre; Historie,
+  Projektlogbuch und In-App-Hinweise entstehen exactly-once, Mail/Push folgen
+  sicher nachgelagert. Runtime-Commit
+  `17a1bdc07f971c20945f59da3749821d3862144c`; verifiziertes Backup
+  `/var/backups/workpilot360/20260802T152135Z-before-jarvis-planning-request-decision`.
+  Lokal bestanden 187/187 Testdateien mit 1.836/1.836 Tests, TypeScript,
+  Prisma, 90-Seiten-Build, isolierte QA, 110/110 Fragen und ein echter
+  JARVIS-Klicktest samt Ergebnisnavigation. Produktiv bestanden Rollen-,
+  Mandanten-, Phrasen-, Sitzungs-, Shared-Service-, Bypass- und
+  Exactly-once-QA sowie 110/110 Fragen mit 33 vorbereiteten und null
+  ausgeführten Korpusaktionen; Rückstände und Live-Prisma-Diff leer,
+  Dashboard/Formular HTTP 200. WorkPilot PID `780832`, KlinikNavigator
+  unverändert PID `398228`. Keine Prisma-Schemaänderung; `StoredFile`, privater
+  S3-Speicher und Online-Anfragen-Invarianten blieben unverändert.
+
 - JARVIS kontrollierte Terminverschiebung 2026-08-02: `planning.move`
   verschiebt genau einen über seine vollständige ID benannten bestätigten
   Termin oder Terminwunsch. Normale Planungsmaske und JARVIS verwenden

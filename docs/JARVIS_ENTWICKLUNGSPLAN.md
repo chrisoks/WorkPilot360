@@ -3721,3 +3721,53 @@ QA-Rückstände und der Live-Prisma-Diff sind leer; Dashboard und öffentliches
 Formular antworten mit HTTP 200. WorkPilot PID `777855`, KlinikNavigator
 unverändert PID `398228`. Keine Prisma-Schemaänderung; `StoredFile`, privater
 S3-Speicher und alle Online-Anfragen-Invarianten blieben erhalten.
+
+## 44. Terminwünsche kontrolliert freigeben oder ablehnen
+
+JARVIS kann einen über seine vollständige sichtbare ID eindeutig bestimmten
+offenen Terminwunsch freigeben oder mit einer mindestens drei Zeichen langen
+Begründung ablehnen. Entscheiden dürfen ausschließlich Führungskraft,
+Geschäftsführung oder Admin. Bei Serienterminen bleibt die Entscheidung auf
+den einzelnen Wunsch beschränkt und wird in der Vorschau ausdrücklich so
+benannt. Die exakten Phrasen lauten `TERMINWUNSCH FREIGEBEN <ID>` und
+`TERMINWUNSCH ABLEHNEN <ID>`.
+
+Normale Planungsoberfläche und JARVIS verwenden denselben Fachservice
+`src/lib/planning/planning-request-decision-service.ts`. Der frühere direkte
+Wechsel von `requested` nach `confirmed` über den allgemeinen POST-Vertrag ist
+gesperrt. Vor Freigabe und Ausführung werden offener Status, aktiver
+Mitarbeiter, vorhandenes nicht archiviertes Projekt, genehmigte Abwesenheiten
+und Überschneidungen mit bestätigten Einträgen erneut geprüft. Ablehnung wird
+als Soft-Delete des Wunsches mit dauerhaft nachvollziehbarer Entscheidung
+geführt.
+
+Die Ausführung läuft serialisierbar unter organisations- und
+terminwunschgebundenem PostgreSQL-Advisory-Lock sowie Zeilensperre.
+Organisation, Sitzung, Session-/Effektividentität, Rollen, Impersonation,
+Payload, Fachfingerprint, Revision, Ablaufzeit und HMAC sind gebunden.
+Zwischenzeitliche fachliche Änderungen sperren als `stale_context`.
+Planungshistorie, Projektlogbuch und deterministische In-App-Hinweise werden
+genau einmal angelegt; Mail und Push laufen danach als sichere Zusatzkanäle.
+
+Lokal bestanden 187 Testdateien mit 1.836 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Die isolierte QA prüfte Rollen, Mandantentrennung, Abbruch,
+falsche/exakte Phrase, Sitzungsbindung, Freigabe und Ablehnung exactly-once,
+denselben Fachservice der normalen API, die Sperre des alten Bypass-Wegs,
+Mitarbeiterhinweise und vollständige Bereinigung. Der feste Korpus bestand
+110/110 mit 32 ausschließlich vorbereiteten und null ausgeführten Aktionen.
+Ein echter JARVIS-Klicktest bestätigte Vorschau, Phrasensperre, genau eine
+Freigabe und die Ergebnisnavigation zur Planung; sämtliche Testdaten wurden
+entfernt.
+
+Produktiv abgenommen auf Runtime-Commit
+`17a1bdc07f971c20945f59da3749821d3862144c`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T152135Z-before-jarvis-planning-request-decision`.
+Produktiv bestanden die isolierte Rollen-, Mandanten-, Shared-Service-,
+Bypass- und Exactly-once-QA sowie 110/110 permanente Fragen mit 33 nur
+vorbereiteten, null ausgeführten Aktionen. Alle QA-Rückstände und der
+Live-Prisma-Diff sind leer; Dashboard und öffentliches Formular antworten mit
+HTTP 200. WorkPilot PID `780832`, KlinikNavigator unverändert PID `398228`.
+Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
+Online-Anfragen-Invarianten blieben erhalten.

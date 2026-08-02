@@ -963,3 +963,35 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   vorbereiteten und null ausgeführten Aktionen, null Rückstände und leerer
   Live-Prisma-Diff. Dashboard/Formular HTTP 200; WorkPilot PID `777855`,
   KlinikNavigator unverändert PID `398228`.
+
+## Terminwünsche kontrolliert freigeben oder ablehnen
+
+- Aktions-ID `planning.request.manage`; Ziel ist genau ein über seine
+  vollständige ID bestimmter offener Terminwunsch. Exakte Phrasen:
+  `TERMINWUNSCH FREIGEBEN <ID>` und `TERMINWUNSCH ABLEHNEN <ID>`. Eine
+  Ablehnung benötigt eine nachvollziehbare Begründung.
+- Nur Führungskraft, Geschäftsführung oder Admin dürfen entscheiden. Normale
+  Planungsoberfläche und JARVIS verwenden ausschließlich
+  `src/lib/planning/planning-request-decision-service.ts`; der alte direkte
+  POST-Statuswechsel ist gesperrt.
+- Die Freigabe prüft offenen Status, aktiven Mitarbeiter, Projektstatus,
+  genehmigte Abwesenheiten und Überschneidungen erneut. Eine Serie bleibt eine
+  sichtbare Einzelentscheidung. Ablehnung entfernt den Wunsch logisch und
+  bewahrt die Entscheidungshistorie.
+- Organisation, Sitzung, Rollenpaar, Impersonation, Payload, vollständiger
+  Fachfingerprint, Revision, Ablaufzeit und HMAC sind gebunden. Die
+  serialisierbare Ausführung nutzt Advisory- und Zeilensperre; Historie,
+  Projektlogbuch und In-App-Hinweise entstehen exactly-once. Mail/Push bleiben
+  sichere nachgelagerte Zusatzkanäle.
+- Permanente isolierte QA:
+  `scripts/qa-jarvis-planning-request-decision.mjs`; Browser-Fixture:
+  `scripts/qa-jarvis-planning-request-decision-browser-fixture.mjs`. Der feste
+  Korpus bleibt exakt 110 Fragen und führt keine Aktion aus.
+- Produktivabnahme: Runtime
+  `17a1bdc07f971c20945f59da3749821d3862144c`, verifiziertes Backup
+  `/var/backups/workpilot360/20260802T152135Z-before-jarvis-planning-request-decision`,
+  187/187 lokale Testdateien mit 1.836/1.836 Tests, 90-Seiten-Build, echter
+  Klicktest, lokale und produktive isolierte QA, produktiv 110/110 Fragen mit
+  33 nur vorbereiteten und null ausgeführten Aktionen, null Rückstände und
+  leerer Live-Prisma-Diff. Dashboard/Formular HTTP 200; WorkPilot PID `780832`,
+  KlinikNavigator unverändert PID `398228`.
