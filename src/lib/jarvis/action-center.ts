@@ -13,6 +13,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "project.status.change",
   "project.archive",
   "contact.manage",
+  "contact.delete",
   "planning.prepare",
   "time.prepare",
   "project-logbook.prepare",
@@ -224,6 +225,11 @@ const contactManagementPreviewPayloadSchema = z.object({
   }
 });
 
+const contactDeletionPreviewPayloadSchema = z.object({
+  contactId: boundedId,
+  reason: boundedText(1000),
+}).strict();
+
 const offerPreviewLineSchema = z
   .object({
     catalogItemId: boundedId.optional(),
@@ -372,6 +378,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "project.status.change": projectStatusPreviewPayloadSchema,
   "project.archive": projectLifecyclePreviewPayloadSchema,
   "contact.manage": contactManagementPreviewPayloadSchema,
+  "contact.delete": contactDeletionPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
@@ -398,6 +405,7 @@ export type JarvisActionPreviewPayloadMap = {
   "project.status.change": z.infer<typeof projectStatusPreviewPayloadSchema>;
   "project.archive": z.infer<typeof projectLifecyclePreviewPayloadSchema>;
   "contact.manage": z.infer<typeof contactManagementPreviewPayloadSchema>;
+  "contact.delete": z.infer<typeof contactDeletionPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "project-logbook.prepare": z.infer<
@@ -1192,6 +1200,18 @@ export type JarvisContactManagementDraftView = Omit<
   customerNumber: string;
   changes: Array<{ field: string; label: string; before: string; after: string }>;
   result?: { entityType: "contact"; entityId: string; label: string };
+};
+
+export type JarvisContactDeletionDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus" | "projectId" | "result"
+> & {
+  actionId: "contact.delete";
+  title: "Kontakt kontrolliert endgültig löschen";
+  contactId: string;
+  customerNumber: string;
+  reason: string;
+  references: Array<{ key: string; label: string; count: number }>;
 };
 
 export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView, "actionId" | "title" | "targetStatus"> & {

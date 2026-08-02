@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisProjectLifecycleDraft: vi.fn(),
   cancelJarvisContactManagementDraft: vi.fn(),
   confirmJarvisContactManagementDraft: vi.fn(),
+  cancelJarvisContactDeletionDraft: vi.fn(),
+  confirmJarvisContactDeletionDraft: vi.fn(),
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
@@ -83,6 +85,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisProjectLifecycleDraft: mocks.confirmJarvisProjectLifecycleDraft,
   cancelJarvisContactManagementDraft: mocks.cancelJarvisContactManagementDraft,
   confirmJarvisContactManagementDraft: mocks.confirmJarvisContactManagementDraft,
+  cancelJarvisContactDeletionDraft: mocks.cancelJarvisContactDeletionDraft,
+  confirmJarvisContactDeletionDraft: mocks.confirmJarvisContactDeletionDraft,
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
@@ -1254,6 +1258,31 @@ describe("JARVIS action-draft API", () => {
     expect(response.status).toBe(200);
     expect(mocks.confirmJarvisContactManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 4, "KONTAKT ANLEGEN Neue GmbH");
     expect(mocks.confirmJarvisProjectMasterDataDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact irreversible phrase to the bound contact deletion draft", async () => {
+    mocks.confirmJarvisContactDeletionDraft.mockResolvedValueOnce({
+      actionId: "contact.delete", state: "executed", contactId: "contact-1", customerNumber: "7000049",
+    });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "contact.delete", command: "confirm", revision: 6,
+      confirmationText: "KONTAKT ENDGÜLTIG LÖSCHEN 7000049", contactId: "other-contact", reason: "Manipuliert",
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisContactDeletionDraft).toHaveBeenCalledWith(
+      "preview-1", expect.anything(), 6, "KONTAKT ENDGÜLTIG LÖSCHEN 7000049"
+    );
+    expect(mocks.confirmJarvisContactManagementDraft).not.toHaveBeenCalled();
+  });
+
+  it("cancels contact deletion without confirming it", async () => {
+    mocks.cancelJarvisContactDeletionDraft.mockResolvedValueOnce({ actionId: "contact.delete", state: "cancelled" });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "contact.delete", command: "cancel", revision: 3,
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.cancelJarvisContactDeletionDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 3);
+    expect(mocks.confirmJarvisContactDeletionDraft).not.toHaveBeenCalled();
   });
 
   it("passes only the exact project-status phrase to the bound status draft", async () => {

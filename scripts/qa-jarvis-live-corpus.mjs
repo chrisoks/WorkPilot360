@@ -266,6 +266,17 @@ async function main() {
     },
     select: { id: true, projectNumber: true, status: true, updatedAt: true },
   });
+  const contactDeletionContact = await prisma.contact.create({
+    data: {
+      id: randomUUID(),
+      organizationId: actor.organizationId,
+      customerNumber: `87${Date.now().toString().slice(-8)}`,
+      type: "company",
+      category: "Kunde",
+      companyName: `QA JARVIS Löschvorschau ${Date.now()}`,
+    },
+    select: { id: true, customerNumber: true },
+  });
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -294,6 +305,7 @@ async function main() {
   let taskLifecycleDraftPrepared = false;
   let projectMasterDataDraftPrepared = false;
   let contactManagementDraftPrepared = false;
+  let contactDeletionDraftPrepared = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -316,6 +328,7 @@ async function main() {
         const isProjectLifecycleCase = item.question.includes("QA-200");
         const isProjectMasterDataCase = item.question.includes("QAM-300");
         const isContactManagementCase = item.question.includes("QAC-400");
+        const isContactDeletionCase = item.question.includes("QAD-500");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -348,6 +361,8 @@ async function main() {
               ? `Ändere Projekt ${projectStatusProject.projectNumber}: Titel: QA JARVIS Projektdaten geprüft; Laufzeit bis: 2026-11.`
             : isContactManagementCase
               ? `Lege einen neuen Firmenkontakt an: Firma: QA JARVIS Kontakt ${now.getTime()}; E-Mail: jarvis-kontakt-${now.getTime()}@example.test; Telefon: +49 511 123456.`
+            : isContactDeletionCase
+              ? `Lösche Kontakt ${contactDeletionContact.customerNumber} endgültig. Grund: Versehentliche Doppelanlage.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -440,6 +455,15 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Kontaktfrage hat keine vollständig prüfbare, unblockierte Anlagevorschau erzeugt." });
           } else {
             contactManagementDraftPrepared = true;
+          }
+        }
+        if (isContactDeletionCase) {
+          if (payload.actionDraft?.actionId !== "contact.delete") {
+            failures.push({ id: item.id, status: response.status, error: "Die Kontaktlöschfrage hat keine kontrollierte contact.delete-Vorschau erzeugt." });
+          } else if (payload.actionDraft.state !== "awaiting_confirmation" || payload.actionDraft.confirmation?.enabled !== true || payload.actionDraft.blockingIssues?.length || payload.actionDraft.contactId !== contactDeletionContact.id || payload.actionDraft.references?.some((reference) => reference.count !== 0)) {
+            failures.push({ id: item.id, status: response.status, error: "Die Kontaktlöschfrage hat keine vollständig prüfbare, referenzfreie Bestätigungsvorschau erzeugt." });
+          } else {
+            contactDeletionDraftPrepared = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -904,6 +928,9 @@ async function main() {
     await prisma.projectLogbookEntry.deleteMany({ where: { organizationId: actor.organizationId, projectId: projectStatusProject.id } });
     await prisma.auditLog.deleteMany({ where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id } });
     await prisma.workPilotProject.deleteMany({ where: { id: projectStatusProject.id, organizationId: actor.organizationId } });
+    await prisma.contactIntegrationEvent.deleteMany({ where: { contactId: contactDeletionContact.id } });
+    await prisma.auditLog.deleteMany({ where: { entityType: "contact", entityId: contactDeletionContact.id } });
+    await prisma.contact.deleteMany({ where: { id: contactDeletionContact.id, organizationId: actor.organizationId } });
     await prisma.authSession.deleteMany({ where: { id: sessionId } });
   }
 
@@ -928,6 +955,7 @@ async function main() {
     taskLifecycleDraftPrepared,
     projectMasterDataDraftPrepared,
     contactManagementDraftPrepared,
+    contactDeletionDraftPrepared,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
@@ -944,6 +972,7 @@ async function main() {
       : 0,
     qaLifecycleTaskRemaining: await prisma.task.count({ where: { id: lifecycleTask.id } }),
     qaProjectStatusProjectRemaining: await prisma.workPilotProject.count({ where: { id: projectStatusProject.id } }),
+    qaContactDeletionContactRemaining: await prisma.contact.count({ where: { id: contactDeletionContact.id } }),
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

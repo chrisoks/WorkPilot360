@@ -375,7 +375,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["customer"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canDeleteContacts,
   },
   {

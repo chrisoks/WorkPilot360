@@ -81,6 +81,21 @@ const fake = vi.hoisted(() => {
     contactChanges.push(row);
     return row;
   });
+  const contactDeletions: Array<Record<string, any>> = [];
+  const evaluateContactDeletion = vi.fn(async ({ contactId, reason }: { contactId: string; reason: string }) => ({
+    contact: { id: contactId, customerNumber: "7000049", displayName: "Muster GmbH", type: "company", category: "Kunde", updatedAt: "2026-07-29T18:00:00.000Z" },
+    reason,
+    references: [{ key: "projects", label: "Projekte", count: 0 }],
+    checks: [{ key: "references", label: "Fachliche Verknüpfungen", status: "ok", detail: "Alle Referenzen sind frei." }],
+    warnings: ["Die physische Löschung ist endgültig."],
+    blockingIssues: [],
+    fingerprint: "9".repeat(64),
+  }));
+  const executeContactDeletion = vi.fn(async (input: Record<string, any>) => {
+    const row = { id: input.contactId, customerNumber: "7000049", displayName: "Muster GmbH" };
+    contactDeletions.push(row);
+    return row;
+  });
   const projectLifecycleChanges: Array<Record<string, any>> = [];
   const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
     reason,
@@ -675,6 +690,7 @@ const fake = vi.hoisted(() => {
       projectStatusChanges.length = 0;
       projectMasterDataChanges.length = 0;
       contactChanges.length = 0;
+      contactDeletions.length = 0;
       projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
@@ -694,6 +710,8 @@ const fake = vi.hoisted(() => {
       evaluateContactChange.mockClear();
       executeContactCreation.mockClear();
       executeContactChange.mockClear();
+      evaluateContactDeletion.mockClear();
+      executeContactDeletion.mockClear();
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
       createProjectLogbookEntry.mockClear();
@@ -736,6 +754,9 @@ const fake = vi.hoisted(() => {
     evaluateContactChange,
     executeContactCreation,
     executeContactChange,
+    contactDeletions,
+    evaluateContactDeletion,
+    executeContactDeletion,
     evaluateProjectStatusChange,
     executeProjectStatusChange,
     projectLifecycleChanges,
@@ -762,6 +783,14 @@ vi.mock("@/lib/contacts/contact-management-service", () => ({
   getContactCreateConfirmationText: (name: string) => `KONTAKT ANLEGEN ${name}`,
   getContactChangeConfirmationText: (customerNumber: string) => `KONTAKT ÄNDERN ${customerNumber}`,
   ContactManagementServiceError: class ContactManagementServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
+vi.mock("@/lib/contacts/contact-deletion-service", () => ({
+  evaluateContactDeletion: fake.evaluateContactDeletion,
+  executeContactDeletion: fake.executeContactDeletion,
+  getContactDeletionConfirmationText: (customerNumber: string) => `KONTAKT ENDGÜLTIG LÖSCHEN ${customerNumber}`,
+  ContactDeletionServiceError: class ContactDeletionServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
 }));
@@ -949,6 +978,9 @@ import {
   cancelJarvisContactManagementDraft,
   confirmJarvisContactManagementDraft,
   createPersistedJarvisContactManagementDraft,
+  cancelJarvisContactDeletionDraft,
+  confirmJarvisContactDeletionDraft,
+  createPersistedJarvisContactDeletionDraft,
   cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft,
   createPersistedJarvisProjectStatusDraft,
@@ -2879,6 +2911,55 @@ describe("persistent JARVIS contact-management drafts", () => {
     const cancellable = await createPersistedJarvisContactManagementDraft({ ...binding(), now: baseNow, preview: preview("contact-cancel") });
     expect((await cancelJarvisContactManagementDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
     expect(fake.contactChanges).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS contact-deletion drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string) => ({
+    version: 1 as const, previewId, actionId: "contact.delete" as const,
+    actionTitle: "Kontakt endgültig löschen", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { contactId: "contact-1", reason: "Versehentliche Doppelanlage" },
+    execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("deletes the bound unreferenced contact exactly once after the exact phrase", async () => {
+    const created = await createPersistedJarvisContactDeletionDraft({ ...binding(), now: baseNow, preview: preview("contact-delete-1") });
+    expect(created).toMatchObject({
+      state: "awaiting_confirmation",
+      customerNumber: "7000049",
+      confirmation: { requiredText: "KONTAKT ENDGÜLTIG LÖSCHEN 7000049" },
+    });
+    const first = await confirmJarvisContactDeletionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisContactDeletionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.state).toBe("executed");
+    expect(fake.contactDeletions).toHaveLength(1);
+    expect(fake.executeContactDeletion).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: "contact-delete-1", expectedFingerprint: "9".repeat(64), reason: "Versehentliche Doppelanlage",
+    }));
+  });
+
+  it("rejects an inexact phrase and cancels without deleting", async () => {
+    const wrong = await createPersistedJarvisContactDeletionDraft({ ...binding(), now: baseNow, preview: preview("contact-delete-wrong") });
+    await expect(confirmJarvisContactDeletionDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisContactDeletionDraft({ ...binding(), now: baseNow, preview: preview("contact-delete-cancel") });
+    expect((await cancelJarvisContactDeletionDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    expect(fake.contactDeletions).toHaveLength(0);
+  });
+
+  it("keeps a referenced contact blocked and never enables confirmation", async () => {
+    fake.evaluateContactDeletion.mockResolvedValueOnce({
+      ...(await fake.evaluateContactDeletion({ contactId: "contact-1", reason: "Versehentliche Doppelanlage" })),
+      references: [{ key: "projects", label: "Projekte", count: 2 }],
+      checks: [{ key: "references", label: "Fachliche Verknüpfungen", status: "blocked", detail: "2 Projekte" }],
+      blockingIssues: ["Der Kontakt bleibt wegen verknüpfter Projekte erhalten."],
+    } as never);
+    const created = await createPersistedJarvisContactDeletionDraft({ ...binding(), now: baseNow, preview: preview("contact-delete-blocked") });
+    expect(created).toMatchObject({ state: "awaiting_input", references: [{ key: "projects", count: 2 }], confirmation: { enabled: false } });
+    await expect(confirmJarvisContactDeletionDraft(created.previewId, binding(), created.revision, "KONTAKT ENDGÜLTIG LÖSCHEN 7000049", baseNow)).rejects.toMatchObject({ code: "conflict" });
+    expect(fake.executeContactDeletion).not.toHaveBeenCalled();
   });
 });
 

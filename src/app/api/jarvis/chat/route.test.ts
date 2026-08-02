@@ -61,6 +61,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisProjectStatusDraft: vi.fn(),
   createPersistedJarvisProjectLifecycleDraft: vi.fn(),
   createPersistedJarvisContactManagementDraft: vi.fn(),
+  createPersistedJarvisContactDeletionDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -154,6 +155,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisProjectLifecycleDraft,
   createPersistedJarvisContactManagementDraft:
     mocks.createPersistedJarvisContactManagementDraft,
+  createPersistedJarvisContactDeletionDraft:
+    mocks.createPersistedJarvisContactDeletionDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3326,6 +3329,49 @@ describe("POST /api/jarvis/chat", () => {
       organizationId: "organization-1", sessionId: "session-1",
       preview: expect.objectContaining({ actionId: "contact.manage", payload: { mode: "create", values: { type: "company", companyName: "Neue GmbH", email: "info@neu.de", phone: "+49 511 123456" } } }),
     }));
+  });
+
+  it("prepares a fail-closed contact deletion for one organization-bound customer number", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const contactLookup = vi.spyOn(prisma.contact, "findMany").mockResolvedValueOnce([{ id: "contact-1" }] as never);
+    mocks.createPersistedJarvisContactDeletionDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "contact.delete", title: "Kontakt endgültig löschen",
+      badge: "Kritische Aktion", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T05:00:00.000Z",
+      contactId: "contact-1", customerNumber: "7000049", displayName: "Muster GmbH", reason: "Versehentliche Doppelanlage",
+      references: [{ key: "projects", label: "Projekte", count: 0 }], checks: [],
+      warnings: ["Die physische Löschung ist endgültig."], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "KONTAKT ENDGÜLTIG LÖSCHEN 7000049" },
+      cancellation: { enabled: true }, execution: { enabled: false, reason: "requires_confirmation" },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Lösche Kontakt 7000049 endgültig. Grund: Versehentliche Doppelanlage." }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.contact-deletion", actionDraft: { actionId: "contact.delete", state: "awaiting_confirmation" } });
+    expect(contactLookup).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: "organization-1", customerNumber: "7000049" }, take: 2,
+    }));
+    expect(mocks.createPersistedJarvisContactDeletionDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1", sessionId: "session-1",
+      preview: expect.objectContaining({ actionId: "contact.delete", payload: { contactId: "contact-1", reason: "Versehentliche Doppelanlage." } }),
+    }));
+    contactLookup.mockRestore();
+  });
+
+  it("asks for the unique number and reason before contact deletion", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const missingNumber = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actorId: "user-1", message: "Lösche den Kontakt endgültig." }),
+    }));
+    expect(await missingNumber.json()).toMatchObject({ type: "clarification", topicId: "action.contact-deletion.number-required" });
+    const missingReason = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actorId: "user-1", message: "Lösche Kontakt 7000049 endgültig." }),
+    }));
+    expect(await missingReason.json()).toMatchObject({ type: "clarification", topicId: "action.contact-deletion.reason-required" });
+    expect(mocks.createPersistedJarvisContactDeletionDraft).not.toHaveBeenCalled();
   });
 
   it("asks for a documented reason before preparing a project-status change", async () => {

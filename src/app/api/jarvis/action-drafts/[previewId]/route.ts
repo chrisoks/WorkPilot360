@@ -23,6 +23,7 @@ import {
   cancelJarvisProjectStatusDraft,
   cancelJarvisProjectLifecycleDraft,
   cancelJarvisContactManagementDraft,
+  cancelJarvisContactDeletionDraft,
   cancelJarvisTimeDraft,
   cancelJarvisVehicleTripCalculationDraft,
   cancelJarvisWinterCalculationDraft,
@@ -61,6 +62,7 @@ import {
   confirmJarvisProjectStatusDraft,
   confirmJarvisProjectLifecycleDraft,
   confirmJarvisContactManagementDraft,
+  confirmJarvisContactDeletionDraft,
   confirmJarvisTimeDraft,
   confirmJarvisVehicleTripCalculationDraft,
   confirmJarvisWinterCalculationDraft,
@@ -205,6 +207,7 @@ export async function PATCH(
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
     const isContactManagement = body.actionId === "contact.manage";
+    const isContactDeletion = body.actionId === "contact.delete";
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
@@ -226,7 +229,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isContactManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
+    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isContactManagement || isContactDeletion || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -488,6 +491,7 @@ export async function POST(
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
     const isContactManagement = body.actionId === "contact.manage";
+    const isContactDeletion = body.actionId === "contact.delete";
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
@@ -530,6 +534,12 @@ export async function POST(
           )
         : isContactManagement
         ? await cancelJarvisContactManagementDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isContactDeletion
+        ? await cancelJarvisContactDeletionDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -662,6 +672,8 @@ export async function POST(
           ? "Die Projektdatenänderung wurde abgebrochen. Das Projekt blieb vollständig unverändert."
           : isContactManagement
           ? "Die Kontaktaktion wurde abgebrochen. Es wurde kein Kontakt angelegt oder geändert."
+          : isContactDeletion
+          ? "Die Kontaktlöschung wurde abgebrochen. Der Kontakt und sämtliche Verknüpfungen blieben unverändert."
           : isProjectLifecycle
           ? "Die Projektarchivierung wurde abgebrochen. Projekt und sämtliche verknüpften Fachdaten blieben unverändert."
           : isProjectStatus
@@ -736,6 +748,13 @@ export async function POST(
         )
       : isContactManagement
       ? await confirmJarvisContactManagementDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isContactDeletion
+      ? await confirmJarvisContactDeletionDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -911,6 +930,8 @@ export async function POST(
             ? "Die angezeigten Projektstammdaten wurden nach deiner exakten Bestätigung genau einmal geändert. Logbuch, Audit und gegebenenfalls die Aufhebung der fachlichen Freigabe wurden gemeinsam geschrieben."
             : isContactManagement
             ? "Der Kontakt wurde nach deiner exakten Bestätigung genau einmal angelegt oder geändert. Dublettenprüfung, Integrationsereignis und Audit wurden gemeinsam geschrieben; Projekte und Objektadressen wurden nicht automatisch zugeordnet."
+            : isContactDeletion
+            ? "Der vollständig unverknüpfte Kontakt wurde nach deiner exakten kritischen Bestätigung genau einmal endgültig gelöscht. Integrationsereignis, Aktionshistorie und Auditnachweis bleiben erhalten."
             : isProjectLifecycle
             ? "Das Projekt wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Timeline, Logbuch und Audit wurden gemeinsam geschrieben; alle Verknüpfungen blieben erhalten."
             : isProjectStatus
@@ -958,6 +979,8 @@ export async function POST(
             ? "Die Projektdaten wurden nicht geändert."
             : isContactManagement
             ? "Der Kontakt wurde nicht angelegt oder geändert."
+            : isContactDeletion
+            ? "Der Kontakt wurde nicht gelöscht."
             : isProjectLifecycle
             ? "Das Projekt wurde nicht archiviert oder wiederhergestellt."
             : isProjectStatus

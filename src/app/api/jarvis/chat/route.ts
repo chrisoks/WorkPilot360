@@ -105,6 +105,7 @@ import {
   createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft,
   createPersistedJarvisContactManagementDraft,
+  createPersistedJarvisContactDeletionDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -176,6 +177,10 @@ import {
   extractContactManagementRequest,
   looksLikeContactManagementRequest,
 } from "@/lib/jarvis/contact-management-intake";
+import {
+  extractContactDeletionRequest,
+  looksLikeContactDeletionRequest,
+} from "@/lib/jarvis/contact-deletion-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -999,6 +1004,37 @@ async function buildJarvisContactManagementDraft(input: {
     };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.contact-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Kontaktaktion konnte nicht sicher vorbereitet werden."} Es wurde nichts angelegt oder geändert.` };
+  }
+}
+
+async function buildJarvisContactDeletionDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.contact-deletion.session-required", message: "Für eine endgültige Kontaktlöschung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts gelöscht." };
+  const details = extractContactDeletionRequest(input.question);
+  if (!details.customerNumber) return { type: "clarification" as const, topicId: "action.contact-deletion.number-required", message: "Welcher Kontakt soll endgültig gelöscht werden? Nenne bitte die eindeutige Kundennummer. Es wurde nichts gelöscht." };
+  if (details.reason.length < 3) return { type: "clarification" as const, topicId: "action.contact-deletion.reason-required", message: `Warum soll Kontakt ${details.customerNumber} endgültig gelöscht werden? Nenne einen nachvollziehbaren Grund mit „Grund: …“. Für normale Bestandsbereinigung sollte der Kontakt archiviert werden. Es wurde nichts gelöscht.` };
+  const contacts = await prisma.contact.findMany({ where: { organizationId: input.organizationId, customerNumber: details.customerNumber }, take: 2, select: { id: true } });
+  if (contacts.length !== 1) return {
+    type: contacts.length ? "clarification" as const : "refusal" as const,
+    topicId: contacts.length ? "action.contact-deletion.ambiguous" : "action.contact-deletion.not-found",
+    message: contacts.length ? `Die Kundennummer ${details.customerNumber} ist nicht eindeutig. Es wurde nichts gelöscht.` : `Der Kontakt mit Kundennummer ${details.customerNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts gelöscht.`,
+  };
+  const preview = createJarvisActionPreview({ previewId: randomUUID(), actionId: "contact.delete", payload: { contactId: contacts[0].id, reason: details.reason }, organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString() });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.contact-deletion.refused", message: `${preview.message} Es wurde nichts gelöscht.` };
+  try {
+    const actionDraft = await createPersistedJarvisContactDeletionDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return {
+      type: "answer" as const,
+      topicId: "action.contact-deletion",
+      message: "Ich habe die endgültige Kontaktlöschung serverseitig geprüft. Kontrolliere Identität, Grund und sämtliche Referenzfamilien. Schon eine einzige fachliche Verknüpfung blockiert fail-closed. Ein freier Kontakt wird erst nach der exakten kritischen Bestätigungsphrase genau einmal physisch gelöscht; diese Löschung kann nicht wiederhergestellt werden.",
+      actionDraft,
+    };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.contact-deletion.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Kontaktlöschung konnte nicht sicher vorbereitet werden."} Es wurde nichts gelöscht.` };
   }
 }
 
@@ -2995,6 +3031,17 @@ export async function POST(req: Request) {
   if (looksLikeProjectMasterDataChangeRequest(message)) {
     return respond(
       await buildJarvisProjectMasterDataDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "management"
+    );
+  }
+  if (looksLikeContactDeletionRequest(message)) {
+    return respond(
+      await buildJarvisContactDeletionDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,
