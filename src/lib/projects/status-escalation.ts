@@ -19,6 +19,8 @@ export type ProjectStatusEscalationPreviewItem = {
   stage: ProjectStatusEscalationStage;
   responsibleName: string;
   responsibleUserId: string | null;
+  responsibleResolution: "matched" | "missing" | "ambiguous";
+  responsibleMatchCount: number;
   responsibleAfterDays: number;
   managementAfterDays: number;
 };
@@ -43,6 +45,36 @@ function normalizeName(value: string | null | undefined) {
     .trim()
     .toLocaleLowerCase("de-DE")
     .replace(/\s+/g, " ");
+}
+
+export function resolveProjectResponsibleUser(
+  users: readonly User[],
+  responsibleName: string | null | undefined
+) {
+  const normalizedResponsibleName = normalizeName(responsibleName);
+  if (!normalizedResponsibleName) {
+    return {
+      user: null,
+      resolution: "missing" as const,
+      matchCount: 0,
+    };
+  }
+  const matches = users.filter(
+    (user) =>
+      user.isActive && normalizeName(userName(user)) === normalizedResponsibleName
+  );
+  if (matches.length !== 1) {
+    return {
+      user: null,
+      resolution: matches.length > 1 ? ("ambiguous" as const) : ("missing" as const),
+      matchCount: matches.length,
+    };
+  }
+  return {
+    user: matches[0],
+    resolution: "matched" as const,
+    matchCount: 1,
+  };
 }
 
 function elapsedCalendarDays(startedAt: Date, now: Date) {
@@ -103,8 +135,8 @@ export async function evaluateProjectStatusEscalations(input: {
     if (elapsedDays < rule.responsibleAfterDays) continue;
 
     const responsibleName = String(project.responsibleName || "").trim();
-    const responsible =
-      activeUsers.find((user) => normalizeName(userName(user)) === normalizeName(responsibleName)) ?? null;
+    const responsibleResolution = resolveProjectResponsibleUser(activeUsers, responsibleName);
+    const responsible = responsibleResolution.user;
     const stage: ProjectStatusEscalationStage =
       elapsedDays >= rule.managementAfterDays ? "management" : "responsible";
 
@@ -119,6 +151,8 @@ export async function evaluateProjectStatusEscalations(input: {
       stage,
       responsibleName,
       responsibleUserId: responsible?.id ?? null,
+      responsibleResolution: responsibleResolution.resolution,
+      responsibleMatchCount: responsibleResolution.matchCount,
       responsibleAfterDays: rule.responsibleAfterDays,
       managementAfterDays: rule.managementAfterDays,
     });

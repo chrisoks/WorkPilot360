@@ -61,7 +61,7 @@ function source(overrides: Partial<Awaited<ReturnType<ProjectStatusAutomationSta
         stage: "management",
         newRecipientNames: ["Christian Eid"],
         alreadyOpenRecipientNames: ["Max Mustermann"],
-        blockers: ["Verantwortlichkeit „Nicht gepflegt“ ist keinem aktiven Benutzer zugeordnet."],
+        blockers: ["Verantwortlichkeit „Max Mustermann“ passt zu 2 aktiven Benutzern und wird aus Sicherheitsgründen an keinen davon zugestellt."],
       }],
       ...overrides,
     }),
@@ -155,6 +155,7 @@ describe("JARVIS project-status automation status", () => {
     expect(rendered).toContain("fachliche Organisationsschalter ist ausgeschaltet");
     expect(rendered).toContain("Systemmail ist nicht vollständig konfiguriert");
     expect(rendered).toContain("Eine fällige Schwelle hat eine mehrdeutige Namenszuordnung");
+    expect(rendered).toContain("aus Sicherheitsgründen an keinen davon zugestellt");
     expect(rendered).toContain("Best-Effort-Kanal");
   });
 

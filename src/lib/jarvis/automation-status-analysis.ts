@@ -213,20 +213,11 @@ const liveSource: ProjectStatusAutomationStatusSource = {
       const blockers: string[] = [];
       if (item.responsibleUserId) {
         recipientIds.add(item.responsibleUserId);
-        const normalizedResponsible = normalizePersonName(item.responsibleName);
-        const matchingActiveUsers = users.filter(
-          (user) =>
-            user.isActive &&
-            normalizePersonName(
-              [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email
-            ) === normalizedResponsible
+      } else if (item.responsibleResolution === "ambiguous") {
+        ambiguousResponsible += 1;
+        blockers.push(
+          `Verantwortlichkeit „${item.responsibleName}“ passt zu ${item.responsibleMatchCount} aktiven Benutzern und wird aus Sicherheitsgründen an keinen davon zugestellt.`
         );
-        if (normalizedResponsible && matchingActiveUsers.length > 1) {
-          ambiguousResponsible += 1;
-          blockers.push(
-            `Verantwortlichkeit „${item.responsibleName}“ passt zu ${matchingActiveUsers.length} aktiven Benutzern und ist damit mehrdeutig.`
-          );
-        }
       } else {
         blockers.push(
           item.responsibleName
@@ -286,7 +277,7 @@ const liveSource: ProjectStatusAutomationStatusSource = {
         (item) => item.stage === "management"
       ).length,
       missingResponsible: preview.items.filter(
-        (item) => !item.responsibleUserId
+        (item) => item.responsibleResolution === "missing"
       ).length,
       ambiguousResponsible,
       openDeliveryEvents,
@@ -310,10 +301,6 @@ function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function normalizePersonName(value: string) {
-  return value.trim().toLocaleLowerCase("de-DE").replace(/\s+/g, " ");
 }
 
 function formatAuditState(value: Record<string, unknown>) {
@@ -583,10 +570,13 @@ export async function resolveJarvisProjectStatusAutomationStatus(input: {
           items: [
             `${snapshot.responsibleNotices} Treffer auf Stufe verantwortliche Person`,
             `${snapshot.managementNotices} Treffer auf Stufe Geschäftsführung`,
-            `${snapshot.missingResponsible} Treffer ohne eindeutig auflösbare verantwortliche Person`,
+            `${snapshot.missingResponsible} Treffer ohne passende aktive verantwortliche Person`,
             `${snapshot.ambiguousResponsible} Treffer mit mehrdeutiger Namenszuordnung`,
           ],
-          tone: dueCount > 0 || snapshot.missingResponsible > 0 ? "warning" : "positive",
+          tone:
+            dueCount > 0 || snapshot.missingResponsible > 0 || snapshot.ambiguousResponsible > 0
+              ? "warning"
+              : "positive",
         },
         {
           title: "Regelkonfiguration",
