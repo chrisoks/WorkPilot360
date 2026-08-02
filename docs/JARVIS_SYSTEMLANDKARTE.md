@@ -733,3 +733,37 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   JARVIS-spezifischer Online-Anfragen-E2E-Lauf, echter UI-Klicktest, 110/110
   Fragen, null QA-Rückstände und leerer Live-Prisma-Diff. WorkPilot PID
   `750917`, KlinikNavigator PID `398228`.
+
+## Persönliche laufende Stempelung: pausieren und fortsetzen
+
+- Aktions-ID `time.session.manage`; verfügbar für aktive interne Benutzer und
+  ausschließlich für die eigene, aktuell laufende Stempelung.
+- Natürliche Befehle für Pause und Fortsetzung werden erkannt. Start, Stop,
+  manuelle Zeiten und fremde Mitarbeiter bleiben ausdrücklich außerhalb
+  dieses Aktionswegs.
+- Gemeinsamer Fachservice `src/lib/time/stamp-session-service.ts` für die
+  normale Route `/api/stamp-session` und JARVIS. Der Service arbeitet
+  serialisierbar, verwendet PostgreSQL-Advisory-Lock plus Zeilensperre und
+  ändert Status, Pausenintervalle und JARVIS-Entwurf exactly-once in einer
+  Transaktion.
+- Kritische Phrasen: `STEMPELUNG PAUSIEREN` und
+  `STEMPELUNG FORTSETZEN`. Der JARVIS-Weg lehnt einen bereits erreichten
+  Zielzustand fail-closed ab; die normale Oberfläche behält ihre idempotente
+  Antwort bei.
+- Sicherheitsbindung: Organisation, Sitzung, Benutzer, Session-/Effektivrolle,
+  Impersonationszustand, Payload, Kontext, Fingerprint, Revision, Ablaufzeit
+  und HMAC-Integrität. Vertretung oder Bedienung einer fremden Stempelung ist
+  nicht möglich.
+- Die Vorschau berechnet den aktuell laufenden Arbeitsabschnitt und eine
+  laufende Pause bis zum Vorschauzeitpunkt mit. Nach Ausführung zeigt die Karte
+  den tatsächlich ausgeführten Zustand und nicht den alten Vorschauzustand.
+- Permanente isolierte QA:
+  `scripts/qa-jarvis-stamp-session.mjs`; der feste 110-Fragen-Korpus erzeugt
+  zusätzlich eine isolierte persönliche Stempelung, bereitet genau einen
+  Entwurf vor, führt ihn nicht aus und räumt alle Spuren auf.
+- Produktivabnahme: Runtime
+  `a35cd90d7f7d2bbbe03ae20b745acb6b4bdf151d`, Backup
+  `/var/backups/workpilot360/20260802T101258Z-before-jarvis-stamp-session`,
+  176/176 Testdateien, 1.760/1.760 Tests, 90-Seiten-Build, echte Klicktests,
+  isolierte lokale und produktive Exactly-once-QA, 110/110 Fragen und null
+  Rückstände. WorkPilot PID `755744`, KlinikNavigator PID `398228`.

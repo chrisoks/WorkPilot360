@@ -1,5 +1,23 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS persönliche Stempelpause/-fortsetzung 2026-08-02: Die neue Aktion
+  `time.session.manage` kann ausschließlich die eigene laufende Stempelung des
+  angemeldeten internen Benutzers pausieren oder fortsetzen. Keine Vertretung,
+  kein fremder Mitarbeiter und kein Start/Stop über diesen Aktionsweg. Normale
+  Stempelroute und JARVIS verwenden denselben serialisierbaren, gesperrten
+  Fachservice `src/lib/time/stamp-session-service.ts`; JARVIS bindet Entwurf,
+  HMAC, Kontext, Revision, Organisation, Sitzung, Identitäten und Rollen und
+  verlangt exakt `STEMPELUNG PAUSIEREN` beziehungsweise
+  `STEMPELUNG FORTSETZEN`. Runtime-Commit
+  `a35cd90d7f7d2bbbe03ae20b745acb6b4bdf151d`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T101258Z-before-jarvis-stamp-session`.
+  Lokal bestanden 176/176 Testdateien mit 1.760/1.760 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, 90-Seiten-Build, isolierte QA und echte
+  Klicktests für Pause/Fortsetzung. Produktiv bestanden isolierte Rollen-,
+  Sitzungs-, Phrasen-, Stale-Context- und Exactly-once-QA sowie 110/110 feste
+  Fragen; null QA-Rückstände, Live-Prisma-Diff leer, Dashboard/Formular HTTP
+  200. WorkPilot PID `755744`, KlinikNavigator unverändert PID `398228`.
+
 - Projektstatus-Empfängerauflösung fail-closed 2026-08-02: Die gemeinsame
   Fachlogik `resolveProjectResponsibleUser` liefert eine verantwortliche Person
   nur noch bei genau einem aktiven, normalisierten Namens-Treffer. Leere,

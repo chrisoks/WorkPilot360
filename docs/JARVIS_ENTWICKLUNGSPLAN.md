@@ -3429,3 +3429,49 @@ vorbereiteten, null ausgeführten Aktionen und null Rückständen. Live-Prisma-D
 leer, Dashboard und Formular HTTP 200; WorkPilot PID `750917`, KlinikNavigator
 unverändert PID `398228`. Keine Prisma-Schemaänderung; `StoredFile`, privater
 S3-Speicher und alle Online-Anfragen-Invarianten blieben erhalten.
+
+## 39. Persönliche laufende Stempelung pausieren und fortsetzen
+
+JARVIS kann die eigene laufende Stempelung des angemeldeten internen
+Benutzers jetzt kontrolliert pausieren und fortsetzen. Die Aktion
+`time.session.manage` ist strikt persönlich: Vertretung, Impersonation,
+Bedienung eines anderen Mitarbeiters, Start, Stop und manuelle Zeiterfassung
+sind über diesen Vertikalschnitt nicht möglich. Die Vorschau zeigt Projekt
+oder unproduktiven Kontext, Startzeit, aktuellen Zustand, bisher erfasste
+Arbeitszeit und Pause. Laufende Zeitsegmente werden bis zum Vorschauzeitpunkt
+korrekt einbezogen.
+
+Normale Oberfläche und JARVIS verwenden denselben Fachservice
+`src/lib/time/stamp-session-service.ts`. Die Änderung läuft in einer
+serialisierbaren Transaktion unter organisations-/benutzerbezogenem
+PostgreSQL-Advisory-Lock und Zeilensperre. JARVIS bindet den persistenten
+Entwurf an Organisation, Sitzung, Session- und Effektividentität, Rollen,
+Impersonationszustand, Payload-/Kontexthashes, Stempelrevision, Ablaufzeit und
+HMAC. Nur die exakten Phrasen `STEMPELUNG PAUSIEREN` und
+`STEMPELUNG FORTSETZEN` führen aus. Ein zwischenzeitlich veränderter Zustand
+endet fail-closed als `stale_context`; Wiederholungen erzeugen keine doppelte
+Pause oder Fortsetzung. Die normale Stempelroute behält für bereits erreichte
+Zielzustände ihre bisherige idempotente Antwort.
+
+Lokal bestanden 176 Testdateien mit 1.760 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, synchroner Datenbankstand und
+der 90-Seiten-Build. Die isolierte QA prüfte Vertretungsgrenze,
+Sitzungsbindung, Abbruch, falsche Phrase, veralteten Kontext, Pause und
+Fortsetzung exactly-once, zwei korrelierte Audit-Ausführungen und vollständige
+Bereinigung. Echte Klicktests deckten die zunächst fehlende laufende
+Arbeitsminute sowie die laufende Pausenminute auf; beide Berechnungen wurden
+vor Release korrigiert. Die Oberfläche zeigte danach korrekte Vorschauwerte,
+den ausgeführten Zustand und den passenden Stempelstatus im Dashboard ohne
+Browserfehler.
+
+Produktiv abgenommen auf Runtime-Commit
+`a35cd90d7f7d2bbbe03ae20b745acb6b4bdf151d`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T101258Z-before-jarvis-stamp-session`.
+Produktiv bestanden Dashboard und Formular mit HTTP 200, die isolierte
+Stempel-QA einschließlich Exactly-once und 110/110 permanente Fragen mit 30
+ausschließlich vorbereiteten, null ausgeführten Aktionen. Sämtliche
+QA-Entwürfe, Sitzungen und Stempelungen wurden entfernt; Live-Prisma-Diff
+leer. WorkPilot PID `755744`, KlinikNavigator unverändert PID `398228`. Keine
+Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
+Online-Anfragen-Invarianten blieben unverändert.
