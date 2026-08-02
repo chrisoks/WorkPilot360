@@ -3959,3 +3959,57 @@ Live-Prisma-Diff sind leer; Dashboard und öffentliches Formular antworten mit
 HTTP 200. WorkPilot PID `780832`, KlinikNavigator unverändert PID `398228`.
 Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
 Online-Anfragen-Invarianten blieben erhalten.
+
+## 45. Terminserie ab ausgewähltem Termin atomar verschieben
+
+Ein eindeutig sichtbarer bestätigter Termin oder Terminwunsch kann nun wahlweise
+einzeln oder zusammen mit allen zeitlich folgenden aktiven Einträgen derselben
+`recurrenceId` verschoben werden. Der neue explizite Umfang heißt
+`series_from_entry`; frühere Serientermine bleiben unverändert. Alle betroffenen
+Einträge und gebuchten Mitarbeitenden erhalten denselben Tages- und
+Minutenversatz. Die Termindauer darf bei dieser Aktion nicht nebenbei geändert
+werden. Ausgeführt wird nur mit
+`TERMIN-SERIE VERSCHIEBEN <ID>`.
+
+Normale Terminmaske und JARVIS verwenden weiterhin ausschließlich
+`src/lib/planning/planning-entry-move-service.ts`. Vorschau und Fingerprint
+binden Serien-ID, alle betroffenen Eintrag-IDs, Mitarbeitendenumfang, alten und
+neuen Zeitraum sowie gemeinsamen Versatz. Aktive Mitarbeitende, Projekt- und
+Archivstatus, Abwesenheiten, Tagesdubletten, interne und externe
+Überschneidungen, Angebots-Ausführungsmonat sowie Angebots- und Monatskontingente
+werden für jeden Eintrag geprüft. Ein einziger Konflikt blockiert die gesamte
+Verschiebung; eine bewusste Überplanung benötigt weiterhin die gebundene
+Begründung. Serienbezogener Advisory-Lock, Zeilensperren, deterministische
+Historien, Projektlogbuch und Hinweise sichern die gemeinsame Ausführung
+atomar und exactly-once.
+
+Im selben Release wurde ein Orchestrierungsfehler bei natürlich formulierten
+Angebotswünschen geschlossen. Sätze wie „Kannst du das Angebot für mich
+schreiben?“ werden direkt an den vorhandenen kontrollierten Angebotseditor
+weitergereicht. Erkennt die KI eine vorhandene Fähigkeit eindeutig, muss der
+Router sie aufrufen. Ist Ziel oder Aktion nicht sicher bestimmt, fragt JARVIS
+konkret nach; die generischen Fallbacks behaupten nicht mehr fälschlich, eine
+unbekannte Aktion sei „nicht freigegeben“. Echte Rollen-, Sicherheits- und
+fachlich bekannte Sperren bleiben davon unberührt.
+
+Lokal und produktiv bestanden 187 Testdateien mit 1.866 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Die neue isolierte QA
+`scripts/qa-jarvis-planning-series-move.mjs` prüfte zwei Mitarbeitende, vier
+gemeinsam verschobene Einträge, unveränderte frühere Termine, exakte Phrase,
+Rollen, Daueränderungssperre, Exactly-once, normale API und atomaren Rücklauf
+bei einem Konflikt in einer späteren Folge. Der bestehende Einzelterminlauf
+blieb vollständig grün. Echte lokale und produktive Klicktests bestätigten
+Serienvorschau/-ausführung und den beanstandeten Angebotsdialog. Der permanente
+Korpus blieb exakt 110 Fragen groß und bestand lokal sowie produktiv 110/110;
+produktiv wurden 33 Entwürfe nur vorbereitet und null Aktionen ausgeführt.
+
+Produktiv abgenommen auf Runtime-Commit
+`0a704728fdc4a98556934c01c233efe68fe480e1`. Das verifizierte Datenbank-, Git-,
+Konfigurations-, Prozess- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T185108Z-before-jarvis-planning-series-move`.
+Alle QA-Rückstände, der Live-Prisma-Diff und der getrackte Serverstatus sind
+leer; Dashboard und öffentliches Formular antworten mit HTTP 200. WorkPilot PID
+`798889`, KlinikNavigator unverändert PID `398228`. Keine Prisma-Schemaänderung;
+`StoredFile`, privater S3-Speicher und alle Online-Anfragen-Invarianten blieben
+erhalten.

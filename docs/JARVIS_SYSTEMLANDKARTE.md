@@ -1107,3 +1107,32 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   produktiv 110/110 Fragen, null Rückstände und leerer Prisma-Diff.
   Dashboard/Formular HTTP 200; WorkPilot PID `791271`, KlinikNavigator
   unverändert PID `398228`.
+
+## Terminserie ab ausgewähltem Eintrag verschieben
+
+- `planning.move` unterstützt neben `single` den ausdrücklichen Umfang
+  `series_from_entry`: ausgewählter und alle späteren aktiven Einträge derselben
+  `recurrenceId` werden gemeinsam verschoben; frühere Einträge bleiben stehen.
+- Die Vorschau zeigt Eintrags-/Mitarbeitendenanzahl, bisherigen und neuen
+  Serienzeitraum sowie Tages- und Minutenversatz. Exakt
+  `TERMIN-SERIE VERSCHIEBEN <ID>` gibt die atomare Ausführung frei.
+- Normale Oberfläche und JARVIS verwenden
+  `src/lib/planning/planning-entry-move-service.ts`. Alle Mitarbeitenden,
+  Projekte, Abwesenheiten, Überschneidungen, Ausführungsmonate und Kontingente
+  werden kollektiv geprüft; ein Konflikt sperrt die gesamte Serie. Advisory-
+  und Zeilensperren, deterministische Historien, Projektlogbuch und Hinweise
+  sichern Exactly-once.
+- Intent-Invariante: Eine eindeutig erkannte vorhandene Fähigkeit wird an ihren
+  Fachweg geroutet. Bei unsicherem Ziel fragt JARVIS nach, statt im generischen
+  Fallback eine fehlende Freigabe zu behaupten. Natürlich formulierte
+  Angebotswünsche öffnen den vorhandenen kontrollierten Angebotseditor.
+- Permanente Abnahme: exakt 110 Fragen; isolierte QA in
+  `scripts/qa-jarvis-planning-series-move.mjs` und bestehende Einzeltermin-QA,
+  echte lokale und produktive Klicktests.
+- Produktivabnahme Runtime `0a704728fdc4a98556934c01c233efe68fe480e1`,
+  Backup
+  `/var/backups/workpilot360/20260802T185108Z-before-jarvis-planning-series-move`,
+  187/187 Testdateien mit 1.866/1.866 Tests, 90-Seiten-Build, lokal/produktiv
+  110/110 Fragen, produktiv 33 nur vorbereitete und null ausgeführte Aktionen,
+  null Rückstände und leerer Prisma-Diff. Dashboard/Formular HTTP 200;
+  WorkPilot PID `798889`, KlinikNavigator unverändert PID `398228`.
