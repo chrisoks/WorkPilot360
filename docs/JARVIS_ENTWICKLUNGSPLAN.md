@@ -2785,3 +2785,40 @@ vollständig (110/110, 19 vorbereitete Entwürfe, keine Ausführung und null
 QA-Rückstände). Prisma blieb live synchron, der externe Dashboard- und
 Formularzugriff antwortete fehlerfrei. WorkPilot läuft unter PID `700433`,
 KlinikNavigator blieb unverändert unter PID `398228`.
+
+## 26. Kontrollierte Projektstammdatenänderung
+
+Der erste freigegebene `project.manage`-Vertikalschnitt bearbeitet bestehende,
+eindeutig über ihre Projektnummer bestimmte Projekte. JARVIS darf ausschließlich
+Projekttitel, Beschreibung, Laufzeitmonate, Gewerk, Projektadresse, Beteiligte,
+Projektverantwortung und zeitlich begrenzte Vertretung vorbereiten. Anlage neuer
+Projekte sowie Änderungen an Projektnummer, Kunde, Kontakten, Projektart,
+Geschäftsbereich, Status, Abrechnung und Budgets bleiben bewusst außerhalb
+dieses Änderungskanals und folgen in eigenen fachlichen Schritten.
+
+Die Vorschau zeigt jeden alten und neuen Wert. Archivierte Projekte, leere oder
+wirkungslose Änderungen und widersprüchliche Laufzeit-/Vertretungszeiträume
+werden fail-closed blockiert. Prüfungsrelevante Änderungen an einem bereits
+freigegebenen Projekt heben die Freigabe nachvollziehbar auf und erzeugen genau
+einen Eintrag in `WorkPilotProjectReviewHistory`. Erst die exakte Phrase
+`PROJEKT ÄNDERN <Projektnummer>` darf schreiben.
+
+`src/lib/projects/project-master-data-service.ts` bindet Organisation,
+Projektstand und Änderungssatz über einen SHA-256-Fingerprint. Sitzung,
+Session-/Effektivrolle, Impersonation, Revision, TTL, HMAC, Payload- und
+Kontexthash werden erneut geprüft. PostgreSQL-Advisory-Lock, serialisierbare
+Transaktion, bedingtes `updatedAt`-Update und Logbuch-Idempotenz verhindern
+Doppelklick, Parallelzugriff und Replay. Projektänderung, gegebenenfalls
+Freigabeaufhebung, Review-Historie, Projektlogbuch und Audit entstehen gemeinsam
+oder gar nicht.
+
+Lokal bestanden 155 Testdateien mit 1.604 Tests, TypeScript, Prisma,
+Mojibake-/Regressionschecks und der 90-Seiten-Build. Die isolierte QA bestätigte
+Rollen- und Mandantengrenze, sicheren Abbruch, falsche/exakte Phrase,
+Stale-Context-Sperre, Exactly-once, zwei exakt geänderte Felder, unveränderte
+Kern- und Fachdaten, Freigabeaufhebung sowie null Rückstände. Der permanente
+Korpus blieb exakt 110 Fälle groß und bestand 110/110 einschließlich einer
+unverändert bleibenden `project.manage`-Vorschau. Der echte UI-Klicktest zeigte
+Alt-/Neuwertvergleich, deaktivierte Ausführung bei falscher Phrase, erfolgreiche
+Ausführung bei exakter Phrase, korrekte Erfolgsmeldung und das geänderte Projekt
+ohne Browserfehler. Release-, Backup- und Produktionsabnahme folgen seriell.

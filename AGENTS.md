@@ -1,5 +1,22 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projektstammdaten 2026-08-02: `project.manage` ist als kontrollierte
+  Schreibaktion für bestehende, eindeutig per Projektnummer bestimmte Projekte
+  freigegeben. Zulässig sind ausschließlich Titel, Beschreibung,
+  Laufzeitmonate, Gewerk, Adresse, Beteiligte, Projektverantwortung und
+  zeitlich begrenzte Vertretung. Projektanlage, Projektnummer, Kunde/Kontakte,
+  Projektart, Geschäftsbereich, Status, Abrechnung und Budgets bleiben eigene
+  spätere Fachschritte. Die Vorschau zeigt jeden Alt-/Neuwert; exakte Phrase:
+  `PROJEKT ÄNDERN <Projektnummer>`. Archivierte Projekte, wirkungslose oder
+  widersprüchliche Änderungen und veraltete Vorschauen bleiben gesperrt.
+  Prüfungsrelevante Änderungen heben eine bestehende Freigabe atomar mit
+  Review-Historie, Logbuch und Audit auf. Fachservice:
+  `src/lib/projects/project-master-data-service.ts`; isolierte QA:
+  `scripts/qa-jarvis-project-master-data.mjs`. Lokal 155 Testdateien/1.604
+  Tests, 110/110 Korpusfragen, 90-Seiten-Build und echter UI-Klicktest grün;
+  null QA-Rückstände. Releaseangaben werden nach dem seriellen Deployment
+  ergänzt.
+
 - JARVIS Projektarchivierung 2026-08-02: Der reversible kritische
   `project.archive`-Vertikalschnitt ist produktiv auf Commit
   `781899aac894025833367b56086b724088c3f8ae`. Verifiziertes Code-, DB-,

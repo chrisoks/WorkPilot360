@@ -43,6 +43,19 @@ const fake = vi.hoisted(() => {
   const cancellationInvoices: Array<Record<string, any>> = [];
   const creditInvoices: Array<Record<string, any>> = [];
   const projectStatusChanges: Array<Record<string, any>> = [];
+  const projectMasterDataChanges: Array<Record<string, any>> = [];
+  const evaluateProjectMasterDataChange = vi.fn(async ({ projectId, changes }: { projectId: string; changes: Record<string, string> }) => ({
+    project: { id: projectId, projectNumber: "MKG-209", title: "Marketing", customer: "Musterkunde", status: "Umsetzung", reviewStatus: "approved", updatedAt: "2026-07-29T18:00:00.000Z" },
+    changes: Object.entries(changes).map(([field, after]) => ({ field, label: field === "title" ? "Projekttitel" : field, before: field === "title" ? "Marketing" : "Alt", after })),
+    reviewWillBeInvalidated: true,
+    checks: [{ key: "changes", label: "Änderungsumfang", status: "ok", detail: "Geprüft." }],
+    warnings: ["Fachdaten bleiben unverändert."], blockingIssues: [], fingerprint: "d".repeat(64),
+  }));
+  const executeProjectMasterDataChange = vi.fn(async (input: Record<string, any>) => {
+    const row = { id: input.projectId, ...input.changes };
+    projectMasterDataChanges.push(row);
+    return { project: row, replayed: false };
+  });
   const projectLifecycleChanges: Array<Record<string, any>> = [];
   const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
     reason,
@@ -635,6 +648,7 @@ const fake = vi.hoisted(() => {
       cancellationInvoices.length = 0;
       creditInvoices.length = 0;
       projectStatusChanges.length = 0;
+      projectMasterDataChanges.length = 0;
       projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
@@ -648,6 +662,8 @@ const fake = vi.hoisted(() => {
       createInvoiceCredit.mockClear();
       evaluateProjectStatusChange.mockClear();
       executeProjectStatusChange.mockClear();
+      evaluateProjectMasterDataChange.mockClear();
+      executeProjectMasterDataChange.mockClear();
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
       createProjectLogbookEntry.mockClear();
@@ -682,6 +698,9 @@ const fake = vi.hoisted(() => {
     evaluateInvoiceCredit,
     createInvoiceCredit,
     projectStatusChanges,
+    projectMasterDataChanges,
+    evaluateProjectMasterDataChange,
+    executeProjectMasterDataChange,
     evaluateProjectStatusChange,
     executeProjectStatusChange,
     projectLifecycleChanges,
@@ -691,6 +710,15 @@ const fake = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/db/client", () => ({ prisma: fake.prisma }));
+vi.mock("@/lib/projects/project-master-data-service", () => ({
+  evaluateProjectMasterDataChange: fake.evaluateProjectMasterDataChange,
+  executeProjectMasterDataChange: fake.executeProjectMasterDataChange,
+  getProjectMasterDataConfirmationText: (projectNumber: string) => `PROJEKT ÄNDERN ${projectNumber}`,
+  matchesProjectMasterDataConfirmation: (projectNumber: string, value: string) => value.trim() === `PROJEKT ÄNDERN ${projectNumber}`,
+  ProjectMasterDataServiceError: class ProjectMasterDataServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
 vi.mock("@/lib/projects/project-status-service", () => ({
   evaluateProjectStatusChange: fake.evaluateProjectStatusChange,
   executeProjectStatusChange: fake.executeProjectStatusChange,
@@ -869,6 +897,9 @@ import {
   completeJarvisInvoiceCreditDraft,
   confirmJarvisInvoiceCreditDraft,
   createPersistedJarvisInvoiceCreditDraft,
+  cancelJarvisProjectMasterDataDraft,
+  confirmJarvisProjectMasterDataDraft,
+  createPersistedJarvisProjectMasterDataDraft,
   cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft,
   createPersistedJarvisProjectStatusDraft,
@@ -2739,6 +2770,36 @@ describe("persistent JARVIS invoice credit drafts", () => {
       ready.previewId, binding(), ready.revision, ready.confirmation.requiredText.toLowerCase(), baseNow
     )).rejects.toMatchObject({ code: "invalid_input" });
     expect(fake.creditInvoices).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS project-master-data drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string) => ({
+    version: 1 as const, previewId, actionId: "project.manage" as const,
+    actionTitle: "Projektstammdaten kontrolliert bearbeiten", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { projectId: "project-1", changes: { title: "Marketing West" } },
+    execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("changes the bound fields exactly once after the exact phrase", async () => {
+    const created = await createPersistedJarvisProjectMasterDataDraft({ ...binding(), now: baseNow, preview: preview("project-master-1") });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", reviewWillBeInvalidated: true, confirmation: { requiredText: "PROJEKT ÄNDERN MKG-209" } });
+    const first = await confirmJarvisProjectMasterDataDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisProjectMasterDataDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("project-1");
+    expect(fake.projectMasterDataChanges).toEqual([{ id: "project-1", title: "Marketing West" }]);
+    expect(fake.executeProjectMasterDataChange).toHaveBeenCalledWith(expect.objectContaining({ requestId: "project-master-1", expectedFingerprint: "d".repeat(64), source: "jarvis" }));
+  });
+
+  it("rejects an inexact phrase and cancels without executing", async () => {
+    const wrong = await createPersistedJarvisProjectMasterDataDraft({ ...binding(), now: baseNow, preview: preview("project-master-wrong") });
+    await expect(confirmJarvisProjectMasterDataDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisProjectMasterDataDraft({ ...binding(), now: baseNow, preview: preview("project-master-cancel") });
+    expect((await cancelJarvisProjectMasterDataDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    expect(fake.projectMasterDataChanges).toHaveLength(0);
   });
 });
 

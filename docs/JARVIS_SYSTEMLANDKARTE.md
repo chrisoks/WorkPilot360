@@ -405,3 +405,25 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   isolierte Live-QA vollständig grün, permanenter Korpus 110/110 mit 19 nur
   vorbereiteten Entwürfen und null Rückständen. WorkPilot PID `700433`,
   KlinikNavigator unverändert PID `398228`.
+
+## Projektstammdaten kontrolliert ändern
+
+- JARVIS-Aktion `project.manage` ist als kontrollierte Schreibaktion für
+  bestehende, eindeutig per Projektnummer bestimmte Projekte freigegeben.
+- Freigegebene Felder: Titel, Beschreibung, Laufzeit von/bis, Gewerk, Adresse,
+  Beteiligte, Projektverantwortung sowie Vertretung mit Zeitraum. Nicht umfasst
+  sind Projektanlage, Projektnummer, Kunde/Kontakte, Projektart,
+  Geschäftsbereich, Status, Abrechnung und Budgets.
+- Fachservice: `src/lib/projects/project-master-data-service.ts`; Intake:
+  `src/lib/jarvis/project-master-data-intake.ts`; persistenter Entwurf und
+  Ausführung über `src/lib/jarvis/action-draft-store.ts` und
+  `/api/jarvis/action-drafts/[previewId]`.
+- Exakte Phrase: `PROJEKT ÄNDERN <Projektnummer>`. Organisation, Sitzung,
+  Rollenpaar, Impersonation, Revision, TTL, HMAC, Payload-/Kontexthash,
+  Projektfingerprint, Advisory-Lock, serialisierbare Transaktion, bedingtes
+  Update und Logbuch-Idempotenz gelten fail-closed.
+- Atomare Wirkung: nur angezeigte Projektfelder, gegebenenfalls Aufhebung der
+  fachlichen Freigabe, `WorkPilotProjectReviewHistory`, Projektlogbuch und
+  Audit. Alle übrigen Projekt- und Fachdaten bleiben unverändert.
+- Permanente Abnahme bleibt exakt 110 Fragen; isolierte Ausführungs-QA:
+  `scripts/qa-jarvis-project-master-data.mjs`.

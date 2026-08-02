@@ -26,6 +26,7 @@ import {
   type JarvisOfferLifecycleDraftView,
   type JarvisInvoiceLifecycleDraftView,
   type JarvisTaskLifecycleDraftView,
+  type JarvisProjectMasterDataDraftView,
   type JarvisProjectStatusDraftView,
   type JarvisProjectLifecycleDraftView,
   type JarvisInvoiceDraftView,
@@ -162,6 +163,13 @@ import {
   matchesTaskLifecycleConfirmation,
   TaskLifecycleServiceError,
 } from "@/lib/tasks/task-lifecycle-service";
+import {
+  evaluateProjectMasterDataChange,
+  executeProjectMasterDataChange,
+  getProjectMasterDataConfirmationText,
+  matchesProjectMasterDataConfirmation,
+  ProjectMasterDataServiceError,
+} from "@/lib/projects/project-master-data-service";
 import {
   evaluateProjectStatusChange,
   executeProjectStatusChange,
@@ -814,6 +822,42 @@ const projectStatusPayloadSchema = z.object({
   projectId: z.string().trim().min(1).max(120),
   targetStatus: z.string().trim().min(1).max(80),
   reason: z.string().trim().min(1).max(500),
+}).strict();
+
+const projectMasterDataChangesSchema = z.object({
+  title: z.string().max(180).optional(),
+  description: z.string().max(4000).optional(),
+  projectRuntimeFrom: z.string().max(7).optional(),
+  projectRuntimeUntil: z.string().max(7).optional(),
+  trade: z.string().max(180).optional(),
+  address: z.string().max(500).optional(),
+  participants: z.string().max(500).optional(),
+  responsibleName: z.string().max(180).optional(),
+  deputyName: z.string().max(180).optional(),
+  deputyFrom: z.string().max(7).optional(),
+  deputyUntil: z.string().max(7).optional(),
+}).strict().refine((changes) => Object.keys(changes).length > 0);
+
+const projectMasterDataPayloadSchema = z.object({
+  projectId: z.string().trim().min(1).max(120),
+  changes: projectMasterDataChangesSchema,
+}).strict();
+
+const projectMasterDataContextSchema = z.object({
+  project: z.object({
+    id: z.string(), projectNumber: z.string(), title: z.string(), customer: z.string(),
+    status: z.string(), reviewStatus: z.string(), updatedAt: z.string().datetime({ offset: true }),
+  }).strict(),
+  changes: z.array(z.object({
+    field: z.string(), label: z.string(), before: z.string(), after: z.string(),
+  }).strict()),
+  reviewWillBeInvalidated: z.boolean(),
+  checks: z.array(z.object({
+    key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string(),
+  }).strict()),
+  warnings: z.array(z.string()),
+  blockingIssues: z.array(z.string()),
+  fingerprint: z.string().length(64),
 }).strict();
 
 const projectStatusContextSchema = z.object({
@@ -4035,6 +4079,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "task.delete") {
     return getJarvisTaskLifecycleDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "project.manage") {
+    return getJarvisProjectMasterDataDraft(previewId, binding, now);
   }
   if (draft?.actionId === "project.status.change") {
     return getJarvisProjectStatusDraft(previewId, binding, now);
@@ -9526,6 +9573,188 @@ export async function confirmJarvisTaskLifecycleDraft(
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof TaskLifecycleServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     throw new JarvisActionDraftError("execution_failed", "Die Aufgabe wurde nicht geändert und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayChangeProjectMasterData(binding: JarvisTaskDraftBinding) {
+  return canManageProjects(binding.profile.sessionActor) && canManageProjects(binding.profile.effectiveActor);
+}
+
+function validateProjectMasterDataBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Projektdatenänderung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  }
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) {
+    throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Projektdatenprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  }
+  if (!integrityMatches(draft)) throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Projektdatenänderung ist ungültig.", 409);
+  const payload = projectMasterDataPayloadSchema.safeParse(draft.payload);
+  const context = projectMasterDataContextSchema.safeParse(draft.context);
+  if (draft.actionId !== "project.manage" || !payload.success || !context.success || hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash) {
+    throw new JarvisActionDraftError("integrity_failed", "Projektdatenänderung oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundProjectMasterDataDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Projektdatenänderung wurde nicht gefunden.", 404);
+  validateProjectMasterDataBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validateProjectMasterDataBinding(current, binding) };
+}
+
+function toJarvisProjectMasterDataDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisProjectMasterDataDraftView {
+  const { context } = validateProjectMasterDataBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayChangeProjectMasterData(binding);
+  const ready = state === "awaiting_confirmation" && permitted && context.blockingIssues.length === 0;
+  const reason: JarvisProjectMasterDataDraftView["confirmation"]["reason"] =
+    state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" :
+    state === "executing" ? "executing" : !permitted ? "not_permitted" : context.blockingIssues.length ? "blocked" : "ready";
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "project.manage",
+    title: "Projektstammdaten kontrolliert ändern",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    projectId: context.project.id,
+    fields: [
+      { label: "Projekt", value: `${context.project.projectNumber} · ${context.project.title}` },
+      { label: "Kunde", value: context.project.customer || "–" },
+      { label: "Status", value: context.project.status },
+      { label: "Prüfstatus", value: context.project.reviewStatus },
+      { label: "Änderungen", value: String(context.changes.length) },
+    ],
+    changes: context.changes,
+    reviewWillBeInvalidated: context.reviewWillBeInvalidated,
+    checks: context.checks,
+    warnings: context.warnings,
+    blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Projektdatenänderungen sind für diese Rollenkombination nicht freigegeben."] : [])],
+    confirmation: { enabled: ready, reason, requiredText: getProjectMasterDataConfirmationText(context.project.projectNumber) },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "project" as const, entityId: draft.resultEntityId, label: "Projekt öffnen" } } : {}),
+  };
+}
+
+export async function createPersistedJarvisProjectMasterDataDraft(input: {
+  preview: JarvisActionPreview<"project.manage">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Projektdatenänderung ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayChangeProjectMasterData(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Projektdaten nicht ändern.", 403);
+  const now = input.now ?? new Date();
+  const payload = projectMasterDataPayloadSchema.parse(input.preview.payload);
+  const context = projectMasterDataContextSchema.parse(await evaluateProjectMasterDataChange({ organizationId: input.organizationId, ...payload }));
+  const actorIds = getActorIds(input.profile);
+  const state = context.blockingIssues.length ? "awaiting_input" : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "project.manage",
+    state,
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: context.blockingIssues.length ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } });
+    await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked" });
+    return draft;
+  });
+  return toJarvisProjectMasterDataDraftView(created, input);
+}
+
+export async function getJarvisProjectMasterDataDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const { draft } = await loadBoundProjectMasterDataDraft(previewId, binding, now);
+  return toJarvisProjectMasterDataDraftView(draft, binding);
+}
+
+export async function cancelJarvisProjectMasterDataDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundProjectMasterDataDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisProjectMasterDataDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Projektdatenänderung kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Projektdatenänderung wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({ where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag }, data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) } });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Projektdatenänderung wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" });
+    return current;
+  });
+  return toJarvisProjectMasterDataDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisProjectMasterDataDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  confirmationText: string,
+  now = new Date()
+) {
+  const loaded = await loadBoundProjectMasterDataDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisProjectMasterDataDraftView(loaded.draft, binding);
+  const requiredText = getProjectMasterDataConfirmationText(loaded.context.project.projectNumber);
+  if (!matchesProjectMasterDataConfirmation(loaded.context.project.projectNumber, confirmationText)) throw new JarvisActionDraftError("invalid_input", `Gib zur Bestätigung exakt „${requiredText}“ ein.`, 400);
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Projektdatenänderung darf bestätigt werden.", 409);
+  if (!mayChangeProjectMasterData(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Projektdaten nicht ändern.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
+      if (!current) throw new JarvisActionDraftError("not_found", "Die Projektdatenänderung wurde nicht gefunden.", 404);
+      const parsed = validateProjectMasterDataBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Projektdatenänderung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true, firstName: true, lastName: true, email: true } });
+      if (!actor || !canManageProjects(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Projektberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
+      const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
+      if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Das Projekt wird bereits geändert.", 409);
+      const actorName = [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email;
+      const changed = await executeProjectMasterDataChange({ tx, organizationId: binding.organizationId, projectId: parsed.payload.projectId, changes: parsed.payload.changes, actorId: actor.id, actorName, requestId: current.id, expectedFingerprint: parsed.context.fingerprint, source: "jarvis" });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "project", resultEntityId: changed.project.id };
+      const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "project", resultEntityId: changed.project.id, integrityTag: createIntegrityTag(executedData) } });
+      await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: changed.project.id, entityType: "project" } });
+      return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisProjectMasterDataDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundProjectMasterDataDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") return toJarvisProjectMasterDataDraftView(latest.draft, binding);
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof ProjectMasterDataServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
+    throw new JarvisActionDraftError("execution_failed", "Die Projektdaten wurden nicht geändert und die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

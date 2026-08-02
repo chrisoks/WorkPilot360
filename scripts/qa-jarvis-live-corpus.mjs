@@ -292,6 +292,7 @@ async function main() {
   let offerLifecycleDraftPrepared = false;
   let invoiceLifecycleDraftPrepared = false;
   let taskLifecycleDraftPrepared = false;
+  let projectMasterDataDraftPrepared = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -312,6 +313,7 @@ async function main() {
         const isTaskLifecycleCase = item.question.includes("QA JARVIS Aufgaben-Lebenszyklus");
         const isProjectStatusCase = item.question.includes("QA-100");
         const isProjectLifecycleCase = item.question.includes("QA-200");
+        const isProjectMasterDataCase = item.question.includes("QAM-300");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -340,6 +342,8 @@ async function main() {
               ? `Setze Projekt ${projectStatusProject.projectNumber} auf Angebot. Grund: Der Angebotsprozess wurde fachlich eröffnet.`
             : isProjectLifecycleCase
               ? `Archiviere Projekt ${projectStatusProject.projectNumber}. Grund: Auftrag abgeschlossen und revisionssicher geprüft.`
+            : isProjectMasterDataCase
+              ? `Ändere Projekt ${projectStatusProject.projectNumber}: Titel: QA JARVIS Projektdaten geprüft; Laufzeit bis: 2026-11.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -414,6 +418,15 @@ async function main() {
             });
           } else {
             projectStatusDraftPrepared = true;
+          }
+        }
+        if (isProjectMasterDataCase) {
+          if (payload.actionDraft?.actionId !== "project.manage") {
+            failures.push({ id: item.id, status: response.status, error: "Die Projektdatenfrage hat keine kontrollierte project.manage-Vorschau erzeugt." });
+          } else if (payload.actionDraft.state !== "awaiting_confirmation" || payload.actionDraft.confirmation?.enabled !== true || payload.actionDraft.blockingIssues?.length || payload.actionDraft.changes?.length !== 2) {
+            failures.push({ id: item.id, status: response.status, error: "Die Projektdatenfrage hat keine vollständig prüfbare, unblockierte Änderungsvorschau erzeugt." });
+          } else {
+            projectMasterDataDraftPrepared = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -829,10 +842,10 @@ async function main() {
         where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id, createdAt: { gte: now } },
       }),
       prisma.projectLogbookEntry.count({
-        where: { organizationId: actor.organizationId, projectId: projectStatusProject.id, source: { in: ["project-status", "project-archive", "project-restore"] }, createdAt: { gte: now } },
+        where: { organizationId: actor.organizationId, projectId: projectStatusProject.id, source: { in: ["project-master-data", "project-status", "project-archive", "project-restore"] }, createdAt: { gte: now } },
       }),
       prisma.auditLog.count({
-        where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id, action: { in: ["project.status.changed", "project.archived", "project.restored"] }, createdAt: { gte: now } },
+        where: { organizationId: actor.organizationId, entityType: "project", entityId: projectStatusProject.id, action: { in: ["project.master-data.changed", "project.status.changed", "project.archived", "project.restored"] }, createdAt: { gte: now } },
       }),
     ]);
     if (
@@ -900,6 +913,7 @@ async function main() {
     offerLifecycleDraftPrepared,
     invoiceLifecycleDraftPrepared,
     taskLifecycleDraftPrepared,
+    projectMasterDataDraftPrepared,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId

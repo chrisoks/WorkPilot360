@@ -9,6 +9,7 @@ import {
 export const JARVIS_PREVIEW_ACTION_IDS = [
   "task.prepare",
   "task.delete",
+  "project.manage",
   "project.status.change",
   "project.archive",
   "planning.prepare",
@@ -159,6 +160,28 @@ const projectStatusPreviewPayloadSchema = z
     projectId: boundedId,
     targetStatus: boundedText(80),
     reason: boundedText(500),
+  })
+  .strict();
+
+const projectMasterDataPreviewPayloadSchema = z
+  .object({
+    projectId: boundedId,
+    changes: z
+      .object({
+        title: optionalText(180),
+        description: z.string().trim().max(4000).optional(),
+        projectRuntimeFrom: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+        projectRuntimeUntil: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+        trade: optionalText(180),
+        address: optionalText(500),
+        participants: optionalText(500),
+        responsibleName: optionalText(180),
+        deputyName: optionalText(180),
+        deputyFrom: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+        deputyUntil: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+      })
+      .strict()
+      .refine((changes) => Object.keys(changes).length > 0, "Mindestens ein Projektfeld ist erforderlich."),
   })
   .strict();
 
@@ -314,6 +337,7 @@ const documentSendPreviewPayloadSchema = z
 const PREVIEW_PAYLOAD_SCHEMAS = {
   "task.prepare": taskPreviewPayloadSchema,
   "task.delete": taskLifecyclePreviewPayloadSchema,
+  "project.manage": projectMasterDataPreviewPayloadSchema,
   "project.status.change": projectStatusPreviewPayloadSchema,
   "project.archive": projectLifecyclePreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
@@ -338,6 +362,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
 export type JarvisActionPreviewPayloadMap = {
   "task.prepare": z.infer<typeof taskPreviewPayloadSchema>;
   "task.delete": z.infer<typeof taskLifecyclePreviewPayloadSchema>;
+  "project.manage": z.infer<typeof projectMasterDataPreviewPayloadSchema>;
   "project.status.change": z.infer<typeof projectStatusPreviewPayloadSchema>;
   "project.archive": z.infer<typeof projectLifecyclePreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
@@ -1113,6 +1138,16 @@ export type JarvisProjectStatusDraftView = {
   result?: { entityType: "project"; entityId: string; label: string };
 };
 
+export type JarvisProjectMasterDataDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus"
+> & {
+  actionId: "project.manage";
+  title: "Projektstammdaten kontrolliert ändern";
+  changes: Array<{ field: string; label: string; before: string; after: string }>;
+  reviewWillBeInvalidated: boolean;
+};
+
 export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView, "actionId" | "title" | "targetStatus"> & {
   actionId: "project.archive";
   title: "Projekt kontrolliert archivieren oder wiederherstellen";
@@ -1838,6 +1873,8 @@ export function createJarvisActionPreview<
   const isReleasedPreviewContract =
     (decision.action.risk === "prepare" &&
       decision.action.confirmation === "preview") ||
+    (decision.action.risk === "write" &&
+      decision.action.confirmation === "confirm") ||
     (decision.action.risk === "critical" &&
       decision.action.confirmation === "critical");
   if (

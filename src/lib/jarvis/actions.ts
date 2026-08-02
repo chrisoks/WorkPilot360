@@ -340,12 +340,12 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
   },
   {
     id: "project.manage",
-    title: "Projekt anlegen oder bearbeiten",
+    title: "Projektstammdaten kontrolliert bearbeiten",
     category: "project",
     risk: "write",
     confirmation: "confirm",
     dataClasses: ["customer"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canManageProjects,
   },
   {

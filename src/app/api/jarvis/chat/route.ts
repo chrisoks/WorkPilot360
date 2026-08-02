@@ -101,6 +101,7 @@ import {
   createPersistedJarvisOfferLifecycleDraft,
   createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisTaskLifecycleDraft,
+  createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft,
   createPersistedJarvisInvoiceDraft,
@@ -158,6 +159,10 @@ import {
   extractTaskLifecycle,
   looksLikeTaskLifecycleRequest,
 } from "@/lib/jarvis/task-lifecycle-intake";
+import {
+  extractProjectMasterDataChangeRequest,
+  looksLikeProjectMasterDataChangeRequest,
+} from "@/lib/jarvis/project-master-data-intake";
 import {
   extractProjectStatusChange,
   looksLikeProjectStatusChangeRequest,
@@ -909,6 +914,36 @@ async function buildJarvisTaskLifecycleDraft(input: {
       topicId: "action.task-lifecycle.unavailable",
       message: `${error instanceof JarvisActionDraftError ? error.message : "Die Aufgabenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
     };
+  }
+}
+
+async function buildJarvisProjectMasterDataDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.project-master-data.session-required", message: "Für eine Projektdatenänderung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert." };
+  const details = extractProjectMasterDataChangeRequest(input.question);
+  if (!details.projectNumber) return { type: "clarification" as const, topicId: "action.project-master-data.project-required", message: "Bei welchem Projekt sollen Stammdaten geändert werden? Nenne bitte die eindeutige Projektnummer. Es wurde noch nichts verändert." };
+  if (!Object.keys(details.changes).length) return { type: "clarification" as const, topicId: "action.project-master-data.changes-required", message: "Welche Projektdaten sollen geändert werden? Nutze zum Beispiel „Titel: …; Beschreibung: …; Gewerk: …; Laufzeit bis: JJJJ-MM“. Es wurde noch nichts verändert." };
+  const projects = await prisma.workPilotProject.findMany({
+    where: { organizationId: input.organizationId, projectNumber: { equals: details.projectNumber, mode: "insensitive" } },
+    take: 2,
+    select: { id: true },
+  });
+  if (projects.length !== 1) return {
+    type: projects.length ? "clarification" as const : "refusal" as const,
+    topicId: projects.length ? "action.project-master-data.ambiguous" : "action.project-master-data.not-found",
+    message: projects.length ? `Die Projektnummer „${details.projectNumber}“ ist nicht eindeutig. Es wurde nichts verändert.` : `Das Projekt ${details.projectNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts verändert.`,
+  };
+  const preview = createJarvisActionPreview({ previewId: randomUUID(), actionId: "project.manage", payload: { projectId: projects[0].id, changes: details.changes }, organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString() });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.project-master-data.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  try {
+    const actionDraft = await createPersistedJarvisProjectMasterDataDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return { type: "answer" as const, topicId: "action.project-master-data", message: "Ich habe die Projektdatenänderung serverseitig geprüft. Kontrolliere jeden alten und neuen Wert sowie den fachlichen Prüfstatus. Erst die exakte Bestätigungsphrase ändert ausschließlich die angezeigten Felder genau einmal; Status, Kunde, Projektnummer, Abrechnung und sämtliche verknüpften Fachdaten bleiben unverändert.", actionDraft };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.project-master-data.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Projektdatenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.` };
   }
 }
 
@@ -2894,6 +2929,17 @@ export async function POST(req: Request) {
   if (looksLikeTaskLifecycleRequest(message)) {
     return respond(
       await buildJarvisTaskLifecycleDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "management"
+    );
+  }
+  if (looksLikeProjectMasterDataChangeRequest(message)) {
+    return respond(
+      await buildJarvisProjectMasterDataDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,

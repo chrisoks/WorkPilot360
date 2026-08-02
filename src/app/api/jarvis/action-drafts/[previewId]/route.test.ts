@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   completeJarvisTaskDraft: vi.fn(),
   cancelJarvisTaskDraft: vi.fn(),
   confirmJarvisTaskDraft: vi.fn(),
+  cancelJarvisProjectMasterDataDraft: vi.fn(),
+  confirmJarvisProjectMasterDataDraft: vi.fn(),
   cancelJarvisProjectStatusDraft: vi.fn(),
   confirmJarvisProjectStatusDraft: vi.fn(),
   cancelJarvisProjectLifecycleDraft: vi.fn(),
@@ -71,6 +73,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   completeJarvisTaskDraft: mocks.completeJarvisTaskDraft,
   cancelJarvisTaskDraft: mocks.cancelJarvisTaskDraft,
   confirmJarvisTaskDraft: mocks.confirmJarvisTaskDraft,
+  cancelJarvisProjectMasterDataDraft: mocks.cancelJarvisProjectMasterDataDraft,
+  confirmJarvisProjectMasterDataDraft: mocks.confirmJarvisProjectMasterDataDraft,
   cancelJarvisProjectStatusDraft: mocks.cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft: mocks.confirmJarvisProjectStatusDraft,
   cancelJarvisProjectLifecycleDraft: mocks.cancelJarvisProjectLifecycleDraft,
@@ -304,6 +308,17 @@ describe("JARVIS action-draft API", () => {
       actionId: "invoice.delete",
       state: "executed",
       result: { entityType: "invoice", entityId: "invoice-1", label: "Öffnen" },
+    });
+    mocks.cancelJarvisProjectMasterDataDraft.mockResolvedValue({
+      ...draft,
+      actionId: "project.manage",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisProjectMasterDataDraft.mockResolvedValue({
+      ...draft,
+      actionId: "project.manage",
+      state: "executed",
+      result: { entityType: "project", entityId: "project-1", label: "Projekt öffnen" },
     });
     mocks.cancelJarvisProjectStatusDraft.mockResolvedValue({
       ...draft,
@@ -1212,6 +1227,16 @@ describe("JARVIS action-draft API", () => {
     );
     expect(mocks.confirmJarvisInvoiceCancellationDraft).not.toHaveBeenCalled();
     expect(mocks.confirmJarvisInvoicePaymentDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact project-data phrase to the bound project draft", async () => {
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "project.manage", command: "confirm", revision: 5,
+      confirmationText: "PROJEKT ÄNDERN GLR-449", changes: { title: "Manipuliert" },
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisProjectMasterDataDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 5, "PROJEKT ÄNDERN GLR-449");
+    expect(mocks.confirmJarvisProjectStatusDraft).not.toHaveBeenCalled();
   });
 
   it("passes only the exact project-status phrase to the bound status draft", async () => {

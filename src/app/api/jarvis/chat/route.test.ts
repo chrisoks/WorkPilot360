@@ -57,6 +57,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisInvoiceCreditDraft: vi.fn(),
   createPersistedJarvisInvoiceLifecycleDraft: vi.fn(),
   createPersistedJarvisTaskLifecycleDraft: vi.fn(),
+  createPersistedJarvisProjectMasterDataDraft: vi.fn(),
   createPersistedJarvisProjectStatusDraft: vi.fn(),
   createPersistedJarvisProjectLifecycleDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
@@ -144,6 +145,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisTaskLifecycleDraft:
     mocks.createPersistedJarvisTaskLifecycleDraft,
+  createPersistedJarvisProjectMasterDataDraft:
+    mocks.createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft:
     mocks.createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft:
@@ -3272,6 +3275,31 @@ describe("POST /api/jarvis/chat", () => {
     );
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("prepares a uniquely scoped project master-data change without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const projectLookup = vi.spyOn(prisma.workPilotProject, "findMany").mockResolvedValueOnce([{ id: "project-1" }] as never);
+    mocks.createPersistedJarvisProjectMasterDataDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "project.manage", title: "Projektstammdaten kontrolliert ändern",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T03:00:00.000Z",
+      projectId: "project-1", fields: [], changes: [{ field: "title", label: "Projekttitel", before: "Glasreinigung", after: "Glasreinigung West" }],
+      reviewWillBeInvalidated: true, checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "PROJEKT ÄNDERN GLR-449" }, cancellation: { enabled: true },
+      execution: { enabled: false, reason: "requires_confirmation" },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Ändere Projekt GLR-449: Titel: Glasreinigung West; Laufzeit bis: 2026-11" }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.project-master-data", actionDraft: { actionId: "project.manage", state: "awaiting_confirmation" } });
+    expect(mocks.createPersistedJarvisProjectMasterDataDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1", sessionId: "session-1",
+      preview: expect.objectContaining({ actionId: "project.manage", payload: { projectId: "project-1", changes: { title: "Glasreinigung West", projectRuntimeUntil: "2026-11" } } }),
+    }));
+    projectLookup.mockRestore();
   });
 
   it("asks for a documented reason before preparing a project-status change", async () => {

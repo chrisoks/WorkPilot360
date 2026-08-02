@@ -19,6 +19,7 @@ import {
   cancelJarvisCommunicationDraft,
   cancelJarvisTaskDraft,
   cancelJarvisTaskLifecycleDraft,
+  cancelJarvisProjectMasterDataDraft,
   cancelJarvisProjectStatusDraft,
   cancelJarvisProjectLifecycleDraft,
   cancelJarvisTimeDraft,
@@ -55,6 +56,7 @@ import {
   confirmJarvisCommunicationDraft,
   confirmJarvisTaskDraft,
   confirmJarvisTaskLifecycleDraft,
+  confirmJarvisProjectMasterDataDraft,
   confirmJarvisProjectStatusDraft,
   confirmJarvisProjectLifecycleDraft,
   confirmJarvisTimeDraft,
@@ -197,6 +199,7 @@ export async function PATCH(
   try {
     const isPlanning = body.actionId === "planning.prepare";
     const isTaskLifecycle = body.actionId === "task.delete";
+    const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
     const isOffer = body.actionId === "offer.prepare";
@@ -220,7 +223,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isTaskLifecycle || isProjectStatus || isProjectLifecycle || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
+    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -411,6 +414,8 @@ export async function PATCH(
           ? "Die Angebotsvorschau ist fest an den aktuellen Entwurfs- und Kalkulationsstand gebunden. Änderungen erfordern eine neue Vorschau."
           : isTaskLifecycle
           ? "Die Aufgabenänderung ist fest an Status, Nachweisen, laufenden Zeiten und dokumentierten Grund gebunden. Änderungen erfordern eine neue Vorschau."
+          : isProjectMasterData
+          ? "Die Projektdatenänderung ist fest an Projektstand, Änderungsumfang und fachlichen Prüfstatus gebunden. Änderungen erfordern eine neue Vorschau."
           : isProjectLifecycle
           ? "Die Projektarchivierung ist fest an Projektstatus, verknüpfte Fachdaten und dokumentierten Grund gebunden. Änderungen erfordern eine neue Vorschau."
           : isProjectStatus
@@ -476,6 +481,7 @@ export async function POST(
   try {
     const isPlanning = body.actionId === "planning.prepare";
     const isTaskLifecycle = body.actionId === "task.delete";
+    const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
     const isOffer = body.actionId === "offer.prepare";
@@ -508,6 +514,12 @@ export async function POST(
           )
         : isTaskLifecycle
         ? await cancelJarvisTaskLifecycleDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isProjectMasterData
+        ? await cancelJarvisProjectMasterDataDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -636,6 +648,8 @@ export async function POST(
           ? "Die Angebotsfinalisierung wurde abgebrochen. Das Angebot blieb ein Entwurf."
           : isTaskLifecycle
           ? "Die Aufgabenänderung wurde abgebrochen. Aufgabe, Kommentare, Beteiligte, Links, Zeiten und Folgeaufgaben blieben unverändert."
+          : isProjectMasterData
+          ? "Die Projektdatenänderung wurde abgebrochen. Das Projekt blieb vollständig unverändert."
           : isProjectLifecycle
           ? "Die Projektarchivierung wurde abgebrochen. Projekt und sämtliche verknüpften Fachdaten blieben unverändert."
           : isProjectStatus
@@ -696,6 +710,13 @@ export async function POST(
         )
       : isTaskLifecycle
       ? await confirmJarvisTaskLifecycleDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isProjectMasterData
+      ? await confirmJarvisProjectMasterDataDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -867,6 +888,8 @@ export async function POST(
             ? "Das Angebot wurde nach deiner kritischen Bestätigung genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert."
             : isTaskLifecycle
             ? "Die Aufgabe wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten."
+            : isProjectMasterData
+            ? "Die angezeigten Projektstammdaten wurden nach deiner exakten Bestätigung genau einmal geändert. Logbuch, Audit und gegebenenfalls die Aufhebung der fachlichen Freigabe wurden gemeinsam geschrieben."
             : isProjectLifecycle
             ? "Das Projekt wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Timeline, Logbuch und Audit wurden gemeinsam geschrieben; alle Verknüpfungen blieben erhalten."
             : isProjectStatus
@@ -910,6 +933,8 @@ export async function POST(
             ? "Das Angebot wurde nicht finalisiert."
             : isTaskLifecycle
             ? "Die Aufgabe wurde nicht archiviert oder wiederhergestellt."
+            : isProjectMasterData
+            ? "Die Projektdaten wurden nicht geändert."
             : isProjectLifecycle
             ? "Das Projekt wurde nicht archiviert oder wiederhergestellt."
             : isProjectStatus
