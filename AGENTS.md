@@ -1,5 +1,29 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS eigener Terminwunsch-Rückzug 2026-08-02: Der Aktionsweg
+  `planning.request.manage` unterstützt jetzt zusätzlich `withdraw`. Ein
+  Mitarbeiter darf ausschließlich einen eigenen offenen Terminwunsch mit
+  Pflichtgrund und exakt `TERMINWUNSCH ZURÜCKZIEHEN <ID>` zurückziehen;
+  fremde Wünsche, Vertretung/Impersonation, falscher Status und ungenaue Phrase
+  sperren fail-closed. Führungskraft, Geschäftsführung und Admin behalten den
+  organisationsgebundenen Planungsweg. Normale Maske und JARVIS verwenden
+  denselben `src/lib/planning/planning-request-decision-service.ts`; der alte
+  direkte DELETE-Weg ist nun auch für offene Terminwünsche gesperrt. Nur der
+  einzelne Wunsch wird logisch entfernt, Serienfolgen bleiben unverändert.
+  Offene Freigabehinweise werden atomar aufgelöst; Historie, Projektlogbuch und
+  deterministische Benachrichtigungen entstehen exactly-once. Runtime-Commit
+  `f49f1551374fe64001165b520521ff6c7d7014f8`; verifiziertes Backup
+  `/var/backups/workpilot360/20260802T160051Z-before-jarvis-planning-request-withdraw`.
+  Lokal 187/187 Testdateien mit 1.845/1.845 Tests, TypeScript, Prisma,
+  90-Seiten-Build, isolierte QA, 110/110 Fragen und echter JARVIS-Klicktest.
+  Produktiv bestanden Eigen-/Fremdwunsch-, Rollen-, Mandanten-, Sitzungs-,
+  Phrasen-, Shared-Service-, Bypass- und Exactly-once-QA mit sieben
+  Fachausführungen sowie 110/110 Fragen mit 33 vorbereiteten und null
+  ausgeführten Korpusaktionen; Rückstände und Prisma-Diff leer,
+  Dashboard/Formular HTTP 200. WorkPilot PID `785414`, KlinikNavigator
+  unverändert PID `398228`. Keine Prismaänderung; `StoredFile`, privater
+  S3-Speicher und Online-Anfragen-Invarianten blieben unverändert.
+
 - JARVIS kontrollierte Terminabsage 2026-08-02: Der bestehende Aktionsweg
   `planning.request.manage` umfasst jetzt zusätzlich die reason-bound
   Entscheidung `cancel` für genau einen bestätigten Termin. JARVIS erkennt

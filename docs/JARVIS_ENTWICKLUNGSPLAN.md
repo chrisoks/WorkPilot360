@@ -3601,6 +3601,51 @@ HTTP 200. WorkPilot PID `769535`, KlinikNavigator unverändert PID `398228`.
 Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
 Online-Anfragen-Invarianten blieben erhalten.
 
+## 46. Eigenen offenen Terminwunsch kontrolliert zurückziehen
+
+Ein Mitarbeiter kann mit JARVIS ausschließlich einen eigenen offenen
+Terminwunsch zurückziehen. Er benötigt die vollständige sichtbare ID, einen
+nachvollziehbaren Rückzugsgrund und exakt
+`TERMINWUNSCH ZURÜCKZIEHEN <ID>`. Fremde Terminwünsche, bestätigte Termine,
+Vertretung oder Impersonation werden abgewiesen. Führungskraft,
+Geschäftsführung und Admin dürfen den organisationsgebundenen Planungsweg
+weiterhin nutzen.
+
+Normale Terminwunschmaske und JARVIS verwenden denselben Fachservice
+`src/lib/planning/planning-request-decision-service.ts`. Auch die normale
+Maske fragt den Grund ab, führt erst die aktuelle serverseitige Prüfung aus
+und bestätigt danach den fingerprintgebundenen Ausführungsvertrag. Der alte
+direkte DELETE-Weg ist für offene Wünsche gesperrt. Serien werden nicht still
+mit verändert; nur der ausdrücklich bezeichnete Wunsch wird logisch entfernt.
+
+Organisation, Sitzung, unveränderte eigene Session-/Effektividentität,
+Nicht-Impersonation, Rollen, Payload, Wunsch-/Projekt-/Person-/Serienstand,
+Revision, Ablauf und HMAC sind gebunden. Die serialisierbare Ausführung nutzt
+Advisory- und Zeilensperre. Ein vorhandener offener Freigabehinweis an die
+Planung wird atomar aufgelöst; Planungshistorie, Projektlogbuch und
+deterministische neue Hinweise entstehen exactly-once. Mail und Push folgen
+als sichere Zusatzkanäle.
+
+Lokal bestanden 187/187 Testdateien mit 1.845/1.845 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und 90-Seiten-Build.
+Die isolierte QA prüfte zusätzlich Eigen- und Fremdwunsch, Mitarbeiterrolle,
+Normalroute, alten DELETE-Bypass, Freigabehinweis-Auflösung und
+Exactly-once-Replay; sieben Fachfälle, null Rückstände. Der permanente Korpus
+blieb exakt 110 Fragen groß. Der echte JARVIS-Klicktest bestätigte Vorschau,
+Pflichtgrund, exakte Phrase, genau einen Rückzug und richtige
+Projektnavigation; alle Testdaten wurden entfernt.
+
+Produktiv abgenommen auf Runtime-Commit
+`f49f1551374fe64001165b520521ff6c7d7014f8`. Verifiziertes Backup:
+`/var/backups/workpilot360/20260802T160051Z-before-jarvis-planning-request-withdraw`.
+Produktiv bestanden die erweiterte Eigen-/Fremdwunsch-, Rollen-, Mandanten-,
+Shared-Service-, Bypass- und Exactly-once-QA sowie 110/110 permanente Fragen
+mit 33 nur vorbereiteten und null ausgeführten Korpusaktionen. Rückstände und
+Live-Prisma-Diff leer; Dashboard/Formular HTTP 200. WorkPilot PID `785414`,
+KlinikNavigator unverändert PID `398228`. Keine Prisma-Schemaänderung;
+`StoredFile`, privater S3-Speicher und alle Online-Anfragen-Invarianten blieben
+erhalten.
+
 ## 45. Bestätigte Planungstermine kontrolliert absagen
 
 JARVIS kann einen über seine vollständige sichtbare ID eindeutig bestimmten

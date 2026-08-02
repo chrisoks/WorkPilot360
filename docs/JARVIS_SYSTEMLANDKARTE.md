@@ -1024,3 +1024,30 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   vorbereiteten und null ausgeführten Aktionen, null Rückstände und leerer
   Prisma-Diff. Dashboard/Formular HTTP 200; WorkPilot PID `782943`,
   KlinikNavigator unverändert PID `398228`.
+
+## Eigenen offenen Terminwunsch kontrolliert zurückziehen
+
+- `planning.request.manage` unterstützt zusätzlich `decision=withdraw`.
+  Pflicht sind vollständige Terminwunsch-ID, Rückzugsgrund und exakt
+  `TERMINWUNSCH ZURÜCKZIEHEN <ID>`.
+- Mitarbeiter dürfen ausschließlich einen eigenen offenen Wunsch in einer
+  nicht vertretenen Sitzung zurückziehen. Fremdwunsch, Impersonation,
+  bestätigter Termin und falsche Rolle sperren. Planungsverantwortliche bleiben
+  organisationsgebunden berechtigt.
+- Normale Maske und JARVIS verwenden
+  `src/lib/planning/planning-request-decision-service.ts`; der direkte
+  DELETE-Weg ist auch für offene Wünsche gesperrt. Nur der Einzelwunsch wird
+  logisch entfernt, die übrige Serie bleibt bestehen.
+- Offene Freigabehinweise werden in derselben serialisierbaren Transaktion
+  aufgelöst. Advisory-/Zeilensperre, vollständiger Fingerprint, HMAC,
+  Historie, Projektlogbuch und Benachrichtigungen sichern Exactly-once.
+- Erweiterte QA: `scripts/qa-jarvis-planning-request-decision.mjs`; echter
+  Klicktest über das vorhandene Browser-Fixture. Permanenter Korpus exakt 110.
+- Produktivabnahme: Runtime
+  `f49f1551374fe64001165b520521ff6c7d7014f8`, Backup
+  `/var/backups/workpilot360/20260802T160051Z-before-jarvis-planning-request-withdraw`,
+  187/187 Testdateien mit 1.845/1.845 Tests, 90-Seiten-Build, Klicktest,
+  lokale/produktive QA, produktiv 110/110 mit 33 vorbereiteten und null
+  ausgeführten Aktionen, null Rückstände und leerer Prisma-Diff.
+  Dashboard/Formular HTTP 200; WorkPilot PID `785414`, KlinikNavigator
+  unverändert PID `398228`.
