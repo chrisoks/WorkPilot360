@@ -1,5 +1,33 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Kontakt-Massenänderung 2026-08-02: `bulk.update` ist
+  für die gemeinsame Änderung der Kontaktkategorie von 2 bis höchstens 25
+  ausdrücklich per Kundennummer genannten Kontakten produktiv freigegeben.
+  Freie oder dynamische Filter bleiben gesperrt. JARVIS und die normale
+  Kontaktmaske verwenden denselben Fachservice
+  `src/lib/contacts/contact-bulk-category-service.ts` und zeigen vorab die
+  vollständige Trefferliste, jeden Alt-/Neuwert sowie Ausschlüsse. Sitzung und
+  effektiver Akteur benötigen zugleich Benutzer- und Kontaktverwaltungsrecht.
+  Die Ausführung läuft serialisierbar vollständig oder gar nicht; HMAC,
+  Payload-/Kontexthash, SHA-256-Fachfingerprint, PostgreSQL-Advisory-Lock,
+  optimistisches `updatedAt` und Exactly-once-Historie blockieren Replay und
+  veraltete Vorschauen. Exakte Phrase: `MASSENÄNDERUNG AUSFÜHREN <Anzahl>
+  KONTAKTE`. Der protokollierte Ausgangsstand kann nur gemeinsam und nur bei
+  unverändertem Folgezustand mit `MASSENÄNDERUNG ZURÜCKROLLEN <ID>`
+  wiederhergestellt werden. Audits: `contact.bulk-category.changed` und
+  `contact.bulk-category.rolled-back`; Integrationsereignisse werden je Kontakt
+  erzeugt. Isolierte QA: `scripts/qa-jarvis-bulk-update.mjs`. Runtime-Commit
+  `bf5a367dd8d3f6299446417c3ab1124ce73c6faf`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T051315Z-before-jarvis-bulk-update`.
+  Lokal bestanden 169/169 Testdateien mit 1.687/1.687 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und 90-Seiten-Build.
+  Der echte UI-Klicktest deckte Dry-Run, Ausführung, Kontakt-Navigation und
+  exakte Rückrollung ab. Lokale und produktive isolierte QA sowie der feste
+  Korpus (110/110; produktiv 26 nur vorbereitete Aktionen) sind grün; alle
+  QA-Rückstände null. Dashboard und Anfrageformular HTTP 200, Live-Prisma-Diff
+  leer. WorkPilot PID `728456`, KlinikNavigator unverändert PID `398228`.
+  Prisma-, Storage- und Online-Anfragen-Invarianten blieben unverändert.
+
 - JARVIS Lohnkostenverwaltung 2026-08-02: `payroll.manage` ist für die
   kontrollierte Änderung bestehender aktiver Mitarbeiterkosten produktiv
   freigegeben. Änderbar sind Monatsgehalt, Vollkostenfaktor, Jahresstunden,

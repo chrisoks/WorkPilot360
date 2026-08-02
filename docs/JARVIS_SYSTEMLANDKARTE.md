@@ -478,3 +478,31 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   166/166 Testdateien, 1.671/1.671 Tests, echter UI-Klicktest, 110/110
   Produktionsfragen, 25 nur vorbereitete Aktionen, null Rückstände,
   Live-Prisma-Diff leer. WorkPilot PID `724824`, KlinikNavigator PID `398228`.
+
+## Kontaktkategorien kontrolliert massenhaft ändern
+
+- Kritische JARVIS-Aktion `bulk.update`; Zielmenge sind 2 bis maximal 25
+  ausdrücklich genannte organisationsgebundene Kundennummern. Dynamische oder
+  offene Filter sind nicht freigegeben.
+- Gemeinsamer Fachservice für JARVIS und normale Kontaktmaske:
+  `src/lib/contacts/contact-bulk-category-service.ts`; gemeinsamer UI-Endpunkt:
+  `/api/contacts/bulk-category`; Intake:
+  `src/lib/jarvis/bulk-update-intake.ts`.
+- Dry-Run und Aktionskarte zeigen vollständige Treffer, Alt-/Neuwerte und
+  Ausschlüsse. Nur Akteure mit Benutzer- und Kontaktverwaltungsrecht auf
+  Sitzungs- und Effektivebene dürfen vorbereiten oder ausführen.
+- Exakte Phrasen: `MASSENÄNDERUNG AUSFÜHREN <Anzahl> KONTAKTE` und für den
+  unveränderten protokollierten Folgezustand `MASSENÄNDERUNG ZURÜCKROLLEN
+  <Ausgangs-ID>`.
+- Serialisierbare Transaktion, Advisory-Lock, optimistisches `updatedAt`,
+  SHA-256-Fachfingerprint, HMAC, Revision, TTL und Exactly-once verbinden alle
+  Kontaktupdates, Integrationsereignisse, Audit und Aktionshistorie atomar.
+- Permanente Abnahme: exakt 110 Fragen in
+  `src/lib/jarvis/live-question-corpus.ts`; isolierte Ausführungs- und
+  Rückrollungs-QA in `scripts/qa-jarvis-bulk-update.mjs`.
+- Produktivabnahme: Runtime
+  `bf5a367dd8d3f6299446417c3ab1124ce73c6faf`, Backup
+  `/var/backups/workpilot360/20260802T051315Z-before-jarvis-bulk-update`,
+  169/169 Testdateien, 1.687/1.687 Tests, echter UI-Klicktest, 110/110
+  Produktionsfragen, 26 nur vorbereitete Aktionen, null Rückstände,
+  Live-Prisma-Diff leer. WorkPilot PID `728456`, KlinikNavigator PID `398228`.

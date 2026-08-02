@@ -3024,3 +3024,54 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `721496`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
+
+## 30. Kontaktkategorien kontrolliert massenhaft ändern
+
+`bulk.update` ändert die Kontaktkategorie für 2 bis höchstens 25 ausdrücklich
+per Kundennummer genannte, organisationsgebundene Kontakte. Der freigegebene
+erste Vertikalschnitt unterstützt `Kunde`, `Privatkunde`, `Lieferant`,
+`Partner`, `Ansprechpartner` und `Archiv`. Freie Texte wie „alle alten
+Kontakte“ oder dynamische Filter bleiben bewusst gesperrt, bis Auswahl,
+Folgewirkung und Rückrollung dafür gleichwertig beweisbar sind.
+
+JARVIS und die normale Kontakt-Massenmaske nutzen
+`src/lib/contacts/contact-bulk-category-service.ts`. Der reine Dry-Run zeigt
+die vollständige Trefferliste, Kundennummer, Bezeichnung und jeden
+Alt-/Neuwert; fehlende, fremde, doppelte oder bereits im Zielzustand befindliche
+Kontakte werden als Ausschluss ausgewiesen. Erst
+`MASSENÄNDERUNG AUSFÜHREN <Anzahl> KONTAKTE` darf schreiben. Sitzung und
+effektiver Akteur benötigen jeweils Benutzer- und Kontaktverwaltungsrecht,
+womit dieser kritische Weg auf Administration und Geschäftsführung begrenzt
+ist.
+
+Alle Kontaktänderungen, `ContactIntegrationEvent`-Einträge, Audit und
+JARVIS-Historie entstehen in einer serialisierbaren Transaktion oder gar nicht.
+Organisation, Modus, Zielmenge, Kundennummern, Kategorien und exakte
+`updatedAt`-Stände sind per SHA-256 gebunden. HMAC, Payload-/Kontexthash,
+Revision, TTL, PostgreSQL-Advisory-Lock, optimistische Updates und
+Exactly-once-Replay schützen vor Doppelklick, Parallelzugriff und Stale
+Context. Der Audit speichert den vollständigen Ausgangs- und Folgezustand. Eine
+Rückrollung mit `MASSENÄNDERUNG ZURÜCKROLLEN <Ausgangs-ID>` wird nur angeboten,
+wenn noch jeder Zielkontakt exakt im protokollierten Folgezustand steht; sie
+stellt alle Ausgangskategorien gemeinsam oder keine wieder her.
+
+Lokal bestanden 169 Testdateien mit 1.687 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, `db push`, leerer Schema-Diff
+und der 90-Seiten-Build. Die isolierte lokale und produktive QA bestätigte
+UI-/Service-Parität, Rollen- und Mandantengrenze, 25er-Limit,
+Alles-oder-nichts, Abbruch, falsche/exakte Phrase, Stale Context,
+Exactly-once-Replay, exakte Rückrollung und null Rückstände. Der echte
+UI-Klicktest führte von der natürlichen Anfrage über vollständigen Dry-Run,
+Ausführung und normale Kontaktansicht bis zur sichtbaren exakten Rückrollung.
+Der permanente Korpus blieb exakt 110 Fälle groß und bestand lokal sowie
+produktiv 110/110; produktiv wurden 26 Aktionsentwürfe nur vorbereitet und 0
+ausgeführt.
+
+Produktiv abgenommen auf Runtime-Commit
+`bf5a367dd8d3f6299446417c3ab1124ce73c6faf`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T051315Z-before-jarvis-bulk-update`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `728456`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.
