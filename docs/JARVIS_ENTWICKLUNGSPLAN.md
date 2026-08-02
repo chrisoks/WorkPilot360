@@ -3642,8 +3642,7 @@ Mandantentrennung, Rechnungsbindung, Abbruch, falsche Phrase, Sitzungsbindung,
 Korrektur und Soft-Delete exactly-once, Kosten-Snapshot, geschützte
 Identitätsfelder, normale API und rückstandsfreie Bereinigung ab. Der
 permanente Korpus bleibt exakt 110 Fragen groß und enthält einen
-ausschließlich vorbereitenden Korrekturfall. Die endgültigen lokalen und
-produktiven Release-Nachweise werden nach vollständiger Abnahme ergänzt.
+ausschließlich vorbereitenden Korrekturfall.
 
 Lokal bestanden 183 Testdateien mit 1.811 Tests, TypeScript,
 Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
@@ -3656,3 +3655,16 @@ und null ausgeführten Aktionen. Der echte Klicktest bestätigte die gesperrte
 Ausführung bei falscher Phrase, die Freigabe bei exakter Phrase, genau eine
 Korrektur, den korrigierten Beginn 08:15 im geöffneten Zeiteintrag und null
 Browserfehler; Klicktestdaten und Entwurf wurden vollständig entfernt.
+
+Produktiv abgenommen auf Runtime-Commit
+`4e8923252eaafd867b4e0c2daf7c77e4863f0786`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T135901Z-before-jarvis-time-entry-management`.
+Die isolierte Produktions-QA bestand vollständig mit zwei genau einmal
+ausgeführten Fachfällen und null Entwurfs-, Zeit-, Projekt-, Sitzungs- oder
+Mandantenrückständen. Der feste Live-Korpus bestand 110/110 mit 33 nur
+vorbereiteten, 0 ausgeführten Aktionen und null Rückständen. Live-Prisma-Diff
+leer, Dashboard und öffentliches Formular HTTP 200; WorkPilot PID `774010`,
+KlinikNavigator unverändert PID `398228`. Keine Prisma-Schemaänderung;
+`StoredFile`, privater S3-Speicher und alle Online-Anfragen-Invarianten blieben
+erhalten.

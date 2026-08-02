@@ -921,3 +921,11 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   `scripts/qa-jarvis-time-entry-management.mjs`. Keine Prisma-Schemaänderung;
   `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten bleiben
   unverändert.
+- Produktivabnahme: Runtime
+  `4e8923252eaafd867b4e0c2daf7c77e4863f0786`, verifiziertes Backup
+  `/var/backups/workpilot360/20260802T135901Z-before-jarvis-time-entry-management`,
+  183/183 lokale Testdateien mit 1.811/1.811 Tests, 90-Seiten-Build, echter
+  Klicktest, lokale und produktive isolierte QA, produktiv 110/110 Fragen mit
+  33 vorbereiteten und 0 ausgeführten Korpusaktionen, null QA-Rückstände und
+  leerer Live-Prisma-Diff. Dashboard/Formular HTTP 200; WorkPilot PID `774010`,
+  KlinikNavigator unverändert PID `398228`.

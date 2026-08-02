@@ -1,5 +1,22 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Zeiteintragsverwaltung 2026-08-02: `time.manage` korrigiert oder
+  löscht einen über seine vollständige ID bestimmten bestehenden Zeiteintrag
+  kontrolliert. Normale Zeitoberfläche und JARVIS verwenden denselben
+  organisationsgebundenen Fachservice; rechnungsgebundene Einträge sowie
+  Änderungen an Projekt, Mitarbeiter, Herkunft, Planung oder Marketingbezug
+  sperren fail-closed. Korrekturen bewahren den historischen Kostensatz,
+  Löschungen bleiben logisch, die Bearbeitungshistorie ist serverseitig und
+  Replays schreiben genau einmal. Runtime-Commit
+  `4e8923252eaafd867b4e0c2daf7c77e4863f0786`; verifiziertes Backup
+  `/var/backups/workpilot360/20260802T135901Z-before-jarvis-time-entry-management`.
+  Lokal 183/183 Testdateien, 1.811/1.811 Tests, 90-Seiten-Build, echte
+  Klickabnahme und 110/110 Fragen. Produktiv bestanden isolierte Rollen-,
+  Mandanten-, Rechnungs-, Sitzungs-, Sicherheits- und Exactly-once-QA sowie
+  110/110 Fragen mit 33 vorbereiteten und 0 ausgeführten Korpusaktionen; alle
+  QA-Rückstände und der Prisma-Diff sind leer. Dashboard/Formular HTTP 200;
+  WorkPilot PID `774010`, KlinikNavigator unverändert PID `398228`.
+
 - JARVIS persönlicher Stempelstopp 2026-08-02: `time.session.manage` beendet
   ausschließlich die eigene laufende Stempelung des angemeldeten internen
   Benutzers; Vertretung, Impersonation und Fremdstempelung sind ausgeschlossen.
