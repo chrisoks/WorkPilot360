@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisContactDeletionDraft: vi.fn(),
   cancelJarvisCatalogManagementDraft: vi.fn(),
   confirmJarvisCatalogManagementDraft: vi.fn(),
+  cancelJarvisPersonnelManagementDraft: vi.fn(),
+  confirmJarvisPersonnelManagementDraft: vi.fn(),
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
@@ -91,6 +93,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisContactDeletionDraft: mocks.confirmJarvisContactDeletionDraft,
   cancelJarvisCatalogManagementDraft: mocks.cancelJarvisCatalogManagementDraft,
   confirmJarvisCatalogManagementDraft: mocks.confirmJarvisCatalogManagementDraft,
+  cancelJarvisPersonnelManagementDraft: mocks.cancelJarvisPersonnelManagementDraft,
+  confirmJarvisPersonnelManagementDraft: mocks.confirmJarvisPersonnelManagementDraft,
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
@@ -1310,6 +1314,29 @@ describe("JARVIS action-draft API", () => {
     expect(response.status).toBe(200);
     expect(mocks.cancelJarvisCatalogManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 4);
     expect(mocks.confirmJarvisCatalogManagementDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact personnel phrase to the bound personnel draft", async () => {
+    mocks.confirmJarvisPersonnelManagementDraft.mockResolvedValueOnce({
+      actionId: "personnel.manage", state: "executed", result: { entityType: "user", entityId: "employee-2", label: "Mitarbeiter öffnen" },
+    });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "personnel.manage", command: "confirm", revision: 9,
+      confirmationText: "MITARBEITER ÄNDERN max@example.test", employeeId: "other-user", values: { role: "ADMIN" },
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisPersonnelManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 9, "MITARBEITER ÄNDERN max@example.test");
+    expect(mocks.confirmJarvisCatalogManagementDraft).not.toHaveBeenCalled();
+  });
+
+  it("cancels personnel management without confirming it", async () => {
+    mocks.cancelJarvisPersonnelManagementDraft.mockResolvedValueOnce({ actionId: "personnel.manage", state: "cancelled" });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "personnel.manage", command: "cancel", revision: 5,
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.cancelJarvisPersonnelManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 5);
+    expect(mocks.confirmJarvisPersonnelManagementDraft).not.toHaveBeenCalled();
   });
 
   it("passes only the exact project-status phrase to the bound status draft", async () => {

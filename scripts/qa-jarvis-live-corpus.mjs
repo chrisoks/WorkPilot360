@@ -277,6 +277,17 @@ async function main() {
     },
     select: { id: true, customerNumber: true },
   });
+  const personnelTarget = await prisma.user.create({
+    data: {
+      id: randomUUID(), organizationId: actor.organizationId,
+      firstName: "QA", lastName: "Personalvorschau",
+      email: `qa-jarvis-personnel-${Date.now()}@example.test`,
+      passwordHash: "qa-not-used", role: Role.MITARBEITER, isActive: true,
+      personalNumber: `QAP-${Date.now().toString().slice(-7)}`,
+      planningBoard: "OK solutions", planningGroup: "Marketing",
+    },
+    select: { id: true, firstName: true, email: true, role: true, updatedAt: true },
+  });
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -307,6 +318,7 @@ async function main() {
   let contactManagementDraftPrepared = false;
   let contactDeletionDraftPrepared = false;
   let catalogManagementDraftPrepared = false;
+  let personnelManagementDraftPrepared = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -331,6 +343,7 @@ async function main() {
         const isContactManagementCase = item.question.includes("QAC-400");
         const isContactDeletionCase = item.question.includes("QAD-500");
         const isCatalogManagementCase = item.question.includes("QAK-600");
+        const isPersonnelManagementCase = item.question.includes("QAP-700");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -367,6 +380,8 @@ async function main() {
               ? `Lösche Kontakt ${contactDeletionContact.customerNumber} endgültig. Grund: Versehentliche Doppelanlage.`
             : isCatalogManagementCase
               ? `Lege eine neue Leistung an: Bezeichnung: QA JARVIS Katalogleistung ${now.getTime()}; Einkaufspreis: 50; Verkaufspreis: 100; Umsatzsteuer: 19; Einheit: Std; Planungsrelevant: ja; Planminuten je Einheit: 60.`
+            : isPersonnelManagementCase
+              ? `Ändere Mitarbeiter ${personnelTarget.email}: Vorname: QA-Geprüft; Mobil: +49 171 1234567.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -477,6 +492,15 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Katalogfrage hat keine vollständig prüfbare, kalkulierte und unblockierte Anlagevorschau erzeugt." });
           } else {
             catalogManagementDraftPrepared = true;
+          }
+        }
+        if (isPersonnelManagementCase) {
+          if (payload.actionDraft?.actionId !== "personnel.manage") {
+            failures.push({ id: item.id, status: response.status, error: "Die Personalfrage hat keine kontrollierte personnel.manage-Vorschau erzeugt." });
+          } else if (payload.actionDraft.state !== "awaiting_confirmation" || payload.actionDraft.confirmation?.enabled !== true || payload.actionDraft.blockingIssues?.length || payload.actionDraft.employeeId !== personnelTarget.id || payload.actionDraft.changes?.length !== 2) {
+            failures.push({ id: item.id, status: response.status, error: "Die Personalfrage hat keine vollständig prüfbare, eindeutige und unblockierte Änderungsvorschau erzeugt." });
+          } else {
+            personnelManagementDraftPrepared = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -910,6 +934,11 @@ async function main() {
         error: "Die 110-Fragen-Prüfung hat unerwartet Projektstatus, Timeline, Logbuch oder Audit verändert.",
       });
     }
+    const currentPersonnelTarget = await prisma.user.findUnique({ where: { id: personnelTarget.id }, select: { firstName: true, email: true, role: true, updatedAt: true } });
+    const personnelAuditWrites = await prisma.auditLog.count({ where: { organizationId: actor.organizationId, entityType: "user", entityId: personnelTarget.id, action: "personnel.changed", createdAt: { gte: now } } });
+    if (!currentPersonnelTarget || currentPersonnelTarget.firstName !== personnelTarget.firstName || currentPersonnelTarget.email !== personnelTarget.email || currentPersonnelTarget.role !== personnelTarget.role || currentPersonnelTarget.updatedAt.toISOString() !== personnelTarget.updatedAt.toISOString() || personnelAuditWrites !== 0) {
+      failures.push({ id: "side-effect-personnel-management", status: 0, error: "Die 110-Fragen-Prüfung hat unerwartet Personalstammdaten, Rolle oder Audit verändert." });
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -944,6 +973,8 @@ async function main() {
     await prisma.contactIntegrationEvent.deleteMany({ where: { contactId: contactDeletionContact.id } });
     await prisma.auditLog.deleteMany({ where: { entityType: "contact", entityId: contactDeletionContact.id } });
     await prisma.contact.deleteMany({ where: { id: contactDeletionContact.id, organizationId: actor.organizationId } });
+    await prisma.auditLog.deleteMany({ where: { entityType: "user", entityId: personnelTarget.id } });
+    await prisma.user.deleteMany({ where: { id: personnelTarget.id, organizationId: actor.organizationId } });
     await prisma.authSession.deleteMany({ where: { id: sessionId } });
   }
 
@@ -970,6 +1001,7 @@ async function main() {
     contactManagementDraftPrepared,
     contactDeletionDraftPrepared,
     catalogManagementDraftPrepared,
+    personnelManagementDraftPrepared,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
@@ -987,6 +1019,7 @@ async function main() {
     qaLifecycleTaskRemaining: await prisma.task.count({ where: { id: lifecycleTask.id } }),
     qaProjectStatusProjectRemaining: await prisma.workPilotProject.count({ where: { id: projectStatusProject.id } }),
     qaContactDeletionContactRemaining: await prisma.contact.count({ where: { id: contactDeletionContact.id } }),
+    qaPersonnelTargetRemaining: await prisma.user.count({ where: { id: personnelTarget.id } }),
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

@@ -15,6 +15,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "contact.manage",
   "contact.delete",
   "catalog.manage",
+  "personnel.manage",
   "planning.prepare",
   "time.prepare",
   "project-logbook.prepare",
@@ -249,6 +250,22 @@ const catalogManagementPreviewPayloadSchema = z.object({
   if (Object.keys(payload.values).filter((key) => key !== "type" && key !== "number").length === 0) context.addIssue({ code: "custom", path: ["values"], message: "Mindestens ein Katalogfeld ist erforderlich." });
 });
 
+const personnelManagementValuesSchema = z.object({
+  firstName: z.string().trim().max(500).optional(), lastName: z.string().trim().max(500).optional(),
+  email: z.string().trim().max(320).optional(),
+  role: z.enum(["ADMIN", "GESCHAEFTSFUEHRER", "FUEHRUNGSKRAFT", "VERTRIEB", "BUCHHALTUNG", "MITARBEITER", "GAST"]).optional(),
+  personalNumber: z.string().trim().max(500).optional(), phone: z.string().trim().max(500).optional(), mobile: z.string().trim().max(500).optional(),
+  street: z.string().trim().max(500).optional(), postalCode: z.string().trim().max(500).optional(), city: z.string().trim().max(500).optional(),
+  planningBoard: z.string().trim().max(500).optional(), planningGroup: z.string().trim().max(500).optional(),
+}).strict();
+
+const personnelManagementPreviewPayloadSchema = z.object({
+  employeeId: boundedId,
+  values: personnelManagementValuesSchema,
+}).strict().superRefine((payload, context) => {
+  if (Object.keys(payload.values).length === 0) context.addIssue({ code: "custom", path: ["values"], message: "Mindestens ein Personalstammdatenfeld ist erforderlich." });
+});
+
 const offerPreviewLineSchema = z
   .object({
     catalogItemId: boundedId.optional(),
@@ -399,6 +416,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "contact.manage": contactManagementPreviewPayloadSchema,
   "contact.delete": contactDeletionPreviewPayloadSchema,
   "catalog.manage": catalogManagementPreviewPayloadSchema,
+  "personnel.manage": personnelManagementPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
@@ -427,6 +445,7 @@ export type JarvisActionPreviewPayloadMap = {
   "contact.manage": z.infer<typeof contactManagementPreviewPayloadSchema>;
   "contact.delete": z.infer<typeof contactDeletionPreviewPayloadSchema>;
   "catalog.manage": z.infer<typeof catalogManagementPreviewPayloadSchema>;
+  "personnel.manage": z.infer<typeof personnelManagementPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "project-logbook.prepare": z.infer<
@@ -1249,6 +1268,20 @@ export type JarvisCatalogManagementDraftView = Omit<
   calculation: { purchasePrice: number; salesPrice: number; grossProfit: number; marginPercent: number | null; vatRate: number };
   reviewWillBeInvalidated: boolean;
   result?: { entityType: "catalogItem"; entityId: string; label: string };
+};
+
+export type JarvisPersonnelManagementDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus" | "projectId" | "result"
+> & {
+  actionId: "personnel.manage";
+  title: "Personalstammdaten kontrolliert ändern";
+  employeeId: string;
+  employeeEmail: string;
+  changes: Array<{ field: string; label: string; before: string; after: string }>;
+  impacts: Array<{ key: string; label: string; count: number }>;
+  roleSessionsWillBeRevoked: boolean;
+  result?: { entityType: "user"; entityId: string; label: string };
 };
 
 export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView, "actionId" | "title" | "targetStatus"> & {

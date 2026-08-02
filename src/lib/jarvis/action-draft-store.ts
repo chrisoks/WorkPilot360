@@ -32,6 +32,7 @@ import {
   type JarvisContactManagementDraftView,
   type JarvisContactDeletionDraftView,
   type JarvisCatalogManagementDraftView,
+  type JarvisPersonnelManagementDraftView,
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
@@ -61,6 +62,7 @@ import {
   canManageContacts,
   canDeleteContacts,
   canManageCatalogItems,
+  canManageUsers,
   canManageOffers,
   canDeleteOffers,
   canDeleteInvoices,
@@ -215,6 +217,13 @@ import {
   getCatalogManagementConfirmationText,
   type CatalogManagementValues,
 } from "@/lib/catalog/catalog-management-service";
+import {
+  evaluatePersonnelChange,
+  executePersonnelChange,
+  getPersonnelManagementConfirmationText,
+  PersonnelManagementServiceError,
+  type PersonnelManagementValues,
+} from "@/lib/users/personnel-management-service";
 import {
   createConfirmedInvoiceDraft,
   evaluateInvoiceDraft,
@@ -961,6 +970,24 @@ const catalogManagementContextSchema = z.object({
   warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
 }).strict();
 
+const personnelManagementValuesSchema = z.object({
+  firstName: z.string().max(500).optional(), lastName: z.string().max(500).optional(), email: z.string().max(320).optional(),
+  role: z.enum(["ADMIN", "GESCHAEFTSFUEHRER", "FUEHRUNGSKRAFT", "VERTRIEB", "BUCHHALTUNG", "MITARBEITER", "GAST"]).optional(),
+  personalNumber: z.string().max(500).optional(), phone: z.string().max(500).optional(), mobile: z.string().max(500).optional(),
+  street: z.string().max(500).optional(), postalCode: z.string().max(500).optional(), city: z.string().max(500).optional(),
+  planningBoard: z.string().max(500).optional(), planningGroup: z.string().max(500).optional(),
+}).strict();
+const personnelManagementPayloadSchema = z.object({ employeeId: z.string().trim().min(1).max(120), values: personnelManagementValuesSchema }).strict();
+const personnelManagementContextSchema = z.object({
+  employee: z.object({ id: z.string(), label: z.string(), email: z.string(), role: z.nativeEnum(Role), isActive: z.boolean(), updatedAt: z.string() }).strict(),
+  values: personnelManagementValuesSchema.required(),
+  changes: z.array(z.object({ field: z.string(), label: z.string(), before: z.string(), after: z.string() }).strict()),
+  impacts: z.array(z.object({ key: z.string(), label: z.string(), count: z.number().int().min(0) }).strict()),
+  roleSessionsWillBeRevoked: z.boolean(),
+  checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string() }).strict()),
+  warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
+}).strict();
+
 const projectStatusContextSchema = z.object({
   reason: z.string(),
   targetStatus: z.string(),
@@ -1650,7 +1677,8 @@ async function appendAuditEvent(
         | "taskComment"
         | "project"
         | "contact"
-        | "catalogItem";
+        | "catalogItem"
+        | "user";
     };
   }
 ) {
@@ -4194,6 +4222,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "catalog.manage") {
     return getJarvisCatalogManagementDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "personnel.manage") {
+    return getJarvisPersonnelManagementDraft(previewId, binding, now);
   }
   if (draft?.actionId === "project.status.change") {
     return getJarvisProjectStatusDraft(previewId, binding, now);
@@ -10270,6 +10301,107 @@ export async function confirmJarvisCatalogManagementDraft(previewId: string, bin
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof CatalogManagementServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : error.code === "conflict" ? "conflict" : "invalid_input", error.message, error.code === "invalid_input" ? 400 : 409);
     throw new JarvisActionDraftError("execution_failed", "Die Katalogposition wurde nicht angelegt oder geändert; die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayManagePersonnel(binding: JarvisTaskDraftBinding) {
+  return canManageUsers(binding.profile.sessionActor) && canManageUsers(binding.profile.effectiveActor);
+}
+
+function getPersonnelRoleLabel(role: Role) {
+  return ({ ADMIN: "Admin", GESCHAEFTSFUEHRER: "Geschäftsführung", FUEHRUNGSKRAFT: "Führungskraft", VERTRIEB: "Vertrieb", BUCHHALTUNG: "Buchhaltung", MITARBEITER: "Mitarbeiter", GAST: "Gast" } as Record<Role, string>)[role];
+}
+
+function validatePersonnelManagementBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId || draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId || draft.impersonating !== binding.profile.isImpersonating) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Personaländerung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  }
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Personalprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  if (!integrityMatches(draft)) throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Personaländerung ist ungültig.", 409);
+  const payload = personnelManagementPayloadSchema.safeParse(draft.payload);
+  const context = personnelManagementContextSchema.safeParse(draft.context);
+  if (draft.actionId !== "personnel.manage" || !payload.success || !context.success || hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash) {
+    throw new JarvisActionDraftError("integrity_failed", "Personaländerung oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundPersonnelManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Personaländerung wurde nicht gefunden.", 404);
+  validatePersonnelManagementBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validatePersonnelManagementBinding(current, binding) };
+}
+
+function toJarvisPersonnelManagementDraftView(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding): JarvisPersonnelManagementDraftView {
+  const { context } = validatePersonnelManagementBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayManagePersonnel(binding);
+  const ready = state === "awaiting_confirmation" && permitted && context.blockingIssues.length === 0;
+  const reason: JarvisPersonnelManagementDraftView["confirmation"]["reason"] = state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" : state === "executing" ? "executing" : !permitted ? "not_permitted" : context.blockingIssues.length ? "blocked" : "ready";
+  return {
+    version: 2, previewId: draft.id, actionId: "personnel.manage", title: "Personalstammdaten kontrolliert ändern",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), employeeId: context.employee.id, employeeEmail: context.employee.email,
+    fields: [{ label: "Mitarbeiter", value: context.employee.label }, { label: "Dienstliche E-Mail", value: context.employee.email }, { label: "Rolle bisher", value: getPersonnelRoleLabel(context.employee.role) }],
+    changes: context.changes, impacts: context.impacts, roleSessionsWillBeRevoked: context.roleSessionsWillBeRevoked,
+    checks: context.checks, warnings: context.warnings,
+    blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Diese Rollenkombination darf Personalstammdaten nicht verwalten."] : [])],
+    confirmation: { enabled: ready, reason, requiredText: getPersonnelManagementConfirmationText(context.employee.email) },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "user" as const, entityId: draft.resultEntityId, label: "Mitarbeiter öffnen" } } : {}),
+  };
+}
+
+export async function createPersistedJarvisPersonnelManagementDraft(input: { preview: JarvisActionPreview<"personnel.manage">; organizationId: string; sessionId: string; profile: JarvisAccessProfile; now?: Date }) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Personaländerung ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayManagePersonnel(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Personalstammdaten nicht verwalten.", 403);
+  const now = input.now ?? new Date(); const payload = personnelManagementPayloadSchema.parse(input.preview.payload); const actorIds = getActorIds(input.profile);
+  const evaluation = await evaluatePersonnelChange({ organizationId: input.organizationId, employeeId: payload.employeeId, actorId: actorIds.effectiveActorId, actorRole: input.profile.effectiveActor.role, changes: payload.values as PersonnelManagementValues });
+  const context = personnelManagementContextSchema.parse(evaluation); const state = context.blockingIssues.length ? "awaiting_input" : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = { id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId, sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role, effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role, impersonating: input.profile.isImpersonating, actionId: "personnel.manage", state, revision: 1, payloadHash: hashJson(payload), contextHash: hashJson(context), expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null, executedAt: null, resultEntityType: null, resultEntityId: null, lastErrorCode: context.blockingIssues.length ? "personnel_validation" : null };
+  const created = await prisma.$transaction(async (tx) => { const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } }); await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked", reasonCode: context.blockingIssues.length ? "personnel_validation" : undefined }); return draft; });
+  return toJarvisPersonnelManagementDraftView(created, input);
+}
+
+export async function getJarvisPersonnelManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) { const { draft } = await loadBoundPersonnelManagementDraft(previewId, binding, now); return toJarvisPersonnelManagementDraftView(draft, binding); }
+
+export async function cancelJarvisPersonnelManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundPersonnelManagementDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisPersonnelManagementDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Personaländerung kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Personaländerung wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => { const changed = await tx.jarvisActionDraft.updateMany({ where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag }, data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) } }); if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Personaländerung wurde bereits verändert.", 409); const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } }); await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" }); return current; });
+  return toJarvisPersonnelManagementDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisPersonnelManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundPersonnelManagementDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisPersonnelManagementDraftView(loaded.draft, binding);
+  const requiredText = getPersonnelManagementConfirmationText(loaded.context.employee.email);
+  if (confirmationText.trim() !== requiredText) throw new JarvisActionDraftError("invalid_input", `Gib zur Bestätigung exakt „${requiredText}“ ein.`, 400);
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Personalvorschau darf bestätigt werden.", 409);
+  if (!mayManagePersonnel(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Personalstammdaten nicht verwalten.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } }); if (!current) throw new JarvisActionDraftError("not_found", "Die Personaländerung wurde nicht gefunden.", 404);
+      const parsed = validatePersonnelManagementBinding(current, binding); if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Personaländerung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true } });
+      if (!actor || !canManageUsers(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Personalberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null }; const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } }); if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Personaländerung wird bereits verarbeitet.", 409);
+      const employee = await executePersonnelChange({ tx, organizationId: binding.organizationId, employeeId: parsed.payload.employeeId, actorId: actor.id, actorRole: actor.role, changes: parsed.payload.values as PersonnelManagementValues, requestId: current.id, expectedFingerprint: parsed.context.fingerprint });
+      const executedAt = new Date(); const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "user", resultEntityId: employee.id }; const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "user", resultEntityId: employee.id, integrityTag: createIntegrityTag(executedData) } }); await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: employee.id, entityType: "user" } }); return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisPersonnelManagementDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") { const latest = await loadBoundPersonnelManagementDraft(previewId, binding, now); if (latest.draft.state === "executed") return toJarvisPersonnelManagementDraftView(latest.draft, binding); }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof PersonnelManagementServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : error.code === "conflict" ? "conflict" : "invalid_input", error.message, error.code === "invalid_input" ? 400 : 409);
+    throw new JarvisActionDraftError("execution_failed", "Die Personalstammdaten wurden nicht geändert; die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

@@ -107,6 +107,7 @@ import {
   createPersistedJarvisContactManagementDraft,
   createPersistedJarvisContactDeletionDraft,
   createPersistedJarvisCatalogManagementDraft,
+  createPersistedJarvisPersonnelManagementDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -186,6 +187,11 @@ import {
   extractCatalogManagementRequest,
   looksLikeCatalogManagementRequest,
 } from "@/lib/jarvis/catalog-management-intake";
+import {
+  extractPersonnelManagementRequest,
+  looksLikePersonnelManagementRequest,
+  looksLikeRestrictedPersonnelManagementRequest,
+} from "@/lib/jarvis/personnel-management-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -1066,6 +1072,26 @@ async function buildJarvisCatalogManagementDraft(input: {
     return { type: "answer" as const, topicId: "action.catalog-management", message: "Ich habe die Katalogposition serverseitig geprüft. Kontrolliere Nummer, Stammdaten, Einkauf/Selbstkosten, Verkaufspreis, Rohertrag, Marge, Umsatzsteuer, Planung und bestehende Verwendungen. Verwendende Pakete behalten ihre Snapshots; JARVIS ändert sie nicht automatisch. Erst die exakte Bestätigungsphrase legt die Position genau einmal an oder ändert sie.", actionDraft };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.catalog-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Katalogaktion konnte nicht sicher vorbereitet werden."} Es wurde nichts angelegt oder geändert.` };
+  }
+}
+
+async function buildJarvisPersonnelManagementDraft(input: {
+  question: string; organizationId: string; sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.personnel-management.session-required", message: "Für eine Personaländerung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts geändert." };
+  const details = extractPersonnelManagementRequest(input.question);
+  if (!details.employeeEmail) return { type: "clarification" as const, topicId: "action.personnel-management.employee-required", message: "Welcher bestehende Mitarbeiter soll geändert werden? Nenne bitte die eindeutige dienstliche E-Mail-Adresse. Es wurde nichts geändert." };
+  if (Object.keys(details.changes).length === 0) return { type: "clarification" as const, topicId: "action.personnel-management.changes-required", message: "Welche Personalstammdaten sollen geändert werden? Möglich sind Name, dienstliche E-Mail, Rolle, Personalnummer, Telefon, Mobiltelefon, Anschrift, Planungsboard und Planungsgruppe. Es wurde nichts geändert." };
+  const employees = await prisma.user.findMany({ where: { organizationId: input.organizationId, email: { equals: details.employeeEmail, mode: "insensitive" } }, take: 2, select: { id: true } });
+  if (employees.length !== 1) return { type: employees.length ? "clarification" as const : "refusal" as const, topicId: employees.length ? "action.personnel-management.ambiguous" : "action.personnel-management.not-found", message: employees.length ? `Die dienstliche E-Mail ${details.employeeEmail} ist nicht eindeutig. Es wurde nichts geändert.` : `Der Mitarbeiter ${details.employeeEmail} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts geändert.` };
+  const preview = createJarvisActionPreview({ previewId: randomUUID(), actionId: "personnel.manage", payload: { employeeId: employees[0].id, values: details.changes }, organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString() });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.personnel-management.refused", message: `${preview.message} Es wurde nichts geändert.` };
+  try {
+    const actionDraft = await createPersistedJarvisPersonnelManagementDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return { type: "answer" as const, topicId: "action.personnel-management", message: "Ich habe die Personaländerung serverseitig geprüft. Kontrolliere Zielmitarbeiter, Feldänderungen, Rolle, bestehende Aufgaben, Planungen, Zeiten und die mögliche Abmeldung vorhandener Sitzungen. Projekte, Aufgaben, Planungen, Zeiten und Dokumente werden nicht umverteilt. Erst die exakte Bestätigungsphrase ändert die Stammdaten genau einmal.", actionDraft };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.personnel-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Personaländerung konnte nicht sicher vorbereitet werden."} Es wurde nichts geändert.` };
   }
 }
 
@@ -3089,6 +3115,15 @@ export async function POST(req: Request) {
         sessionId: actorResult.sessionId,
         accessProfile,
       }),
+      "management"
+    );
+  }
+  if (looksLikeRestrictedPersonnelManagementRequest(message)) {
+    return respond({ type: "refusal" as const, topicId: "action.personnel-management.restricted", message: "Passwörter, Lohn- und Kostendaten, Aktivierung, Deaktivierung sowie das Anlegen oder Löschen von Mitarbeitern sind eigenständige kritische Vorgänge und in dieser Personalstammdatenaktion bewusst nicht freigegeben. Es wurde nichts geändert." }, "management");
+  }
+  if (looksLikePersonnelManagementRequest(message)) {
+    return respond(
+      await buildJarvisPersonnelManagementDraft({ question: message, organizationId: organization.id, sessionId: actorResult.sessionId, accessProfile }),
       "management"
     );
   }

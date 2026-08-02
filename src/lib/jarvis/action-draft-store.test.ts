@@ -118,6 +118,21 @@ const fake = vi.hoisted(() => {
     catalogChanges.push(row);
     return row;
   });
+  const personnelChanges: Array<Record<string, any>> = [];
+  const evaluatePersonnelChange = vi.fn(async ({ employeeId, changes }: { employeeId: string; changes: Record<string, any> }) => ({
+    employee: { id: employeeId, label: "Max Muster", email: "max@example.test", role: "MITARBEITER", isActive: true, updatedAt: "2026-08-02T04:00:00.000Z" },
+    values: { firstName: changes.firstName || "Max", lastName: "Muster", email: "max@example.test", role: changes.role || "MITARBEITER", personalNumber: "P-22", phone: "", mobile: changes.mobile || "", street: "", postalCode: "", city: "", planningBoard: "OK solutions", planningGroup: "Marketing" },
+    changes: Object.entries(changes).map(([field, after]) => ({ field, label: field, before: field === "role" ? "Mitarbeiter" : "", after: String(after) })),
+    impacts: [{ key: "sessions", label: "aktive Anmeldesitzungen", count: 1 }, { key: "tasks", label: "offene eigene Aufgaben", count: 2 }],
+    roleSessionsWillBeRevoked: Boolean(changes.role),
+    checks: [{ key: "identity", label: "Eindeutiger Mitarbeiter", status: "ok", detail: "Max Muster" }],
+    warnings: ["Operative Zuordnungen bleiben unverändert."], blockingIssues: [], fingerprint: "6".repeat(64),
+  }));
+  const executePersonnelChange = vi.fn(async (input: Record<string, any>) => {
+    const row = { id: input.employeeId, email: "max@example.test", ...input.changes };
+    personnelChanges.push(row);
+    return row;
+  });
   const projectLifecycleChanges: Array<Record<string, any>> = [];
   const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
     reason,
@@ -714,6 +729,7 @@ const fake = vi.hoisted(() => {
       contactChanges.length = 0;
       contactDeletions.length = 0;
       catalogChanges.length = 0;
+      personnelChanges.length = 0;
       projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
@@ -738,6 +754,8 @@ const fake = vi.hoisted(() => {
       evaluateCatalogCreation.mockClear();
       evaluateCatalogChange.mockClear();
       executeCatalogManagement.mockClear();
+      evaluatePersonnelChange.mockClear();
+      executePersonnelChange.mockClear();
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
       createProjectLogbookEntry.mockClear();
@@ -787,6 +805,9 @@ const fake = vi.hoisted(() => {
     evaluateCatalogCreation,
     evaluateCatalogChange,
     executeCatalogManagement,
+    personnelChanges,
+    evaluatePersonnelChange,
+    executePersonnelChange,
     evaluateProjectStatusChange,
     executeProjectStatusChange,
     projectLifecycleChanges,
@@ -830,6 +851,14 @@ vi.mock("@/lib/catalog/catalog-management-service", () => ({
   executeCatalogManagement: fake.executeCatalogManagement,
   getCatalogManagementConfirmationText: (mode: "create" | "update", number: string) => `KATALOGPOSITION ${mode === "create" ? "ANLEGEN" : "ÄNDERN"} ${number}`,
   CatalogManagementServiceError: class CatalogManagementServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
+vi.mock("@/lib/users/personnel-management-service", () => ({
+  evaluatePersonnelChange: fake.evaluatePersonnelChange,
+  executePersonnelChange: fake.executePersonnelChange,
+  getPersonnelManagementConfirmationText: (email: string) => `MITARBEITER ÄNDERN ${email.toLowerCase()}`,
+  PersonnelManagementServiceError: class PersonnelManagementServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
 }));
@@ -1023,6 +1052,9 @@ import {
   cancelJarvisCatalogManagementDraft,
   confirmJarvisCatalogManagementDraft,
   createPersistedJarvisCatalogManagementDraft,
+  cancelJarvisPersonnelManagementDraft,
+  confirmJarvisPersonnelManagementDraft,
+  createPersistedJarvisPersonnelManagementDraft,
   cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft,
   createPersistedJarvisProjectStatusDraft,
@@ -3038,6 +3070,36 @@ describe("persistent JARVIS catalog-management drafts", () => {
     const updatePreview = { ...preview("catalog-update"), payload: { mode: "update" as const, catalogItemId: "catalog-1", values: { salesPrice: 125 } } };
     const created = await createPersistedJarvisCatalogManagementDraft({ ...binding(), now: baseNow, preview: updatePreview });
     expect(created).toMatchObject({ catalogNumber: "L1001", impacts: [{ key: "packages", count: 1 }], reviewWillBeInvalidated: true, confirmation: { requiredText: "KATALOGPOSITION ÄNDERN L1001" } });
+  });
+});
+
+describe("persistent JARVIS personnel-management drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string) => ({
+    version: 1 as const, previewId, actionId: "personnel.manage" as const,
+    actionTitle: "Personalstammdaten kontrolliert ändern", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { employeeId: "user-2", values: { role: "FUEHRUNGSKRAFT" as const, mobile: "+491711234567" } },
+    execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("changes the bound employee exactly once after the exact phrase", async () => {
+    const created = await createPersistedJarvisPersonnelManagementDraft({ ...binding(), now: baseNow, preview: preview("personnel-manage-1") });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", employeeId: "user-2", roleSessionsWillBeRevoked: true, confirmation: { requiredText: "MITARBEITER ÄNDERN max@example.test" } });
+    const first = await confirmJarvisPersonnelManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisPersonnelManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("user-2");
+    expect(fake.personnelChanges).toHaveLength(1);
+    expect(fake.executePersonnelChange).toHaveBeenCalledWith(expect.objectContaining({ requestId: "personnel-manage-1", expectedFingerprint: "6".repeat(64), employeeId: "user-2" }));
+  });
+
+  it("rejects an inexact phrase and cancels without changing personnel", async () => {
+    const wrong = await createPersistedJarvisPersonnelManagementDraft({ ...binding(), now: baseNow, preview: preview("personnel-wrong") });
+    await expect(confirmJarvisPersonnelManagementDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisPersonnelManagementDraft({ ...binding(), now: baseNow, preview: preview("personnel-cancel") });
+    expect((await cancelJarvisPersonnelManagementDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    expect(fake.personnelChanges).toHaveLength(0);
   });
 });
 

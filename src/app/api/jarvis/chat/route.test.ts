@@ -63,6 +63,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisContactManagementDraft: vi.fn(),
   createPersistedJarvisContactDeletionDraft: vi.fn(),
   createPersistedJarvisCatalogManagementDraft: vi.fn(),
+  createPersistedJarvisPersonnelManagementDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -160,6 +161,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisContactDeletionDraft,
   createPersistedJarvisCatalogManagementDraft:
     mocks.createPersistedJarvisCatalogManagementDraft,
+  createPersistedJarvisPersonnelManagementDraft:
+    mocks.createPersistedJarvisPersonnelManagementDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3412,6 +3415,40 @@ describe("POST /api/jarvis/chat", () => {
     expect(await packageResponse.json()).toMatchObject({ type: "refusal", topicId: "action.catalog-management.package-not-supported" });
     expect(mocks.createPersistedJarvisCatalogManagementDraft).not.toHaveBeenCalled();
     lookup.mockRestore();
+  });
+
+  it("prepares a uniquely scoped personnel change without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const lookup = vi.spyOn(prisma.user, "findMany").mockResolvedValueOnce([{ id: "employee-2" }] as never);
+    mocks.createPersistedJarvisPersonnelManagementDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "personnel.manage", title: "Personalstammdaten kontrolliert ändern",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T07:00:00.000Z",
+      employeeId: "employee-2", employeeEmail: "max@example.test", fields: [], changes: [], impacts: [], roleSessionsWillBeRevoked: true,
+      checks: [], warnings: [], blockingIssues: [], confirmation: { enabled: true, reason: "ready", requiredText: "MITARBEITER ÄNDERN max@example.test" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Ändere Mitarbeiter max@example.test: Vorname: Maximilian; Rolle: Führungskraft; Mobil: +49 171 1234567" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.personnel-management", actionDraft: { actionId: "personnel.manage", employeeId: "employee-2" } });
+    expect(lookup).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "organization-1", email: { equals: "max@example.test", mode: "insensitive" } }, take: 2 }));
+    expect(mocks.createPersistedJarvisPersonnelManagementDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1", sessionId: "session-1",
+      preview: expect.objectContaining({ actionId: "personnel.manage", payload: { employeeId: "employee-2", values: expect.objectContaining({ firstName: "Maximilian", role: "FUEHRUNGSKRAFT", mobile: "+49 171 1234567" }) } }),
+    }));
+    lookup.mockRestore();
+  });
+
+  it("refuses restricted personnel operations deterministically", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Deaktiviere Mitarbeiter max@example.test" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "refusal", topicId: "action.personnel-management.restricted" });
+    expect(mocks.createPersistedJarvisPersonnelManagementDraft).not.toHaveBeenCalled();
   });
 
   it("asks for a documented reason before preparing a project-status change", async () => {

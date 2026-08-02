@@ -25,6 +25,7 @@ import {
   cancelJarvisContactManagementDraft,
   cancelJarvisContactDeletionDraft,
   cancelJarvisCatalogManagementDraft,
+  cancelJarvisPersonnelManagementDraft,
   cancelJarvisTimeDraft,
   cancelJarvisVehicleTripCalculationDraft,
   cancelJarvisWinterCalculationDraft,
@@ -65,6 +66,7 @@ import {
   confirmJarvisContactManagementDraft,
   confirmJarvisContactDeletionDraft,
   confirmJarvisCatalogManagementDraft,
+  confirmJarvisPersonnelManagementDraft,
   confirmJarvisTimeDraft,
   confirmJarvisVehicleTripCalculationDraft,
   confirmJarvisWinterCalculationDraft,
@@ -211,6 +213,7 @@ export async function PATCH(
     const isContactManagement = body.actionId === "contact.manage";
     const isContactDeletion = body.actionId === "contact.delete";
     const isCatalogManagement = body.actionId === "catalog.manage";
+    const isPersonnelManagement = body.actionId === "personnel.manage";
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
@@ -232,7 +235,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isContactManagement || isContactDeletion || isCatalogManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
+    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -496,6 +499,7 @@ export async function POST(
     const isContactManagement = body.actionId === "contact.manage";
     const isContactDeletion = body.actionId === "contact.delete";
     const isCatalogManagement = body.actionId === "catalog.manage";
+    const isPersonnelManagement = body.actionId === "personnel.manage";
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
@@ -550,6 +554,12 @@ export async function POST(
           )
         : isCatalogManagement
         ? await cancelJarvisCatalogManagementDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isPersonnelManagement
+        ? await cancelJarvisPersonnelManagementDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -686,6 +696,8 @@ export async function POST(
           ? "Die Kontaktlöschung wurde abgebrochen. Der Kontakt und sämtliche Verknüpfungen blieben unverändert."
           : isCatalogManagement
           ? "Die Katalogaktion wurde abgebrochen. Artikel, Leistungen, Preise, Planung und Paket-Snapshots blieben unverändert."
+          : isPersonnelManagement
+          ? "Die Personaländerung wurde abgebrochen. Mitarbeiter, Rolle, Sitzungen und sämtliche Zuordnungen blieben unverändert."
           : isProjectLifecycle
           ? "Die Projektarchivierung wurde abgebrochen. Projekt und sämtliche verknüpften Fachdaten blieben unverändert."
           : isProjectStatus
@@ -774,6 +786,13 @@ export async function POST(
         )
       : isCatalogManagement
       ? await confirmJarvisCatalogManagementDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isPersonnelManagement
+      ? await confirmJarvisPersonnelManagementDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -953,6 +972,8 @@ export async function POST(
             ? "Der vollständig unverknüpfte Kontakt wurde nach deiner exakten kritischen Bestätigung genau einmal endgültig gelöscht. Integrationsereignis, Aktionshistorie und Auditnachweis bleiben erhalten."
             : isCatalogManagement
             ? "Die Katalogposition wurde nach deiner exakten Bestätigung genau einmal angelegt oder geändert. Preiswirkung, Planung und Verwendungen wurden geprüft; Paket-Snapshots blieben unverändert."
+            : isPersonnelManagement
+            ? "Die Personalstammdaten wurden nach deiner exakten Bestätigung genau einmal geändert. Rolle, Zuordnungen und eine erforderliche Sitzungsabmeldung wurden kontrolliert verarbeitet."
             : isProjectLifecycle
             ? "Das Projekt wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Timeline, Logbuch und Audit wurden gemeinsam geschrieben; alle Verknüpfungen blieben erhalten."
             : isProjectStatus
@@ -1004,6 +1025,8 @@ export async function POST(
             ? "Der Kontakt wurde nicht gelöscht."
             : isCatalogManagement
             ? "Die Katalogposition wurde nicht angelegt oder geändert."
+            : isPersonnelManagement
+            ? "Die Personalstammdaten wurden nicht geändert."
             : isProjectLifecycle
             ? "Das Projekt wurde nicht archiviert oder wiederhergestellt."
             : isProjectStatus
