@@ -3212,3 +3212,42 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `736895`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
+
+## 34. Ausführungs- und Änderungsprotokoll der Projektstatus-Automation
+
+`automation.read` beantwortet nun auch natürliche Fragen nach
+Ausführungsprotokoll, Historie und Audit. JARVIS hält zwei fachlich
+unterschiedliche Quellen sichtbar auseinander: `AuditLog` mit Aktion
+`automation.project-status.changed` belegt eine Konfigurationsänderung;
+`StatusEscalationEvent` mit Regelpräfix `project-status-v1:` belegt eine
+tatsächlich erzeugte Zustellung. Ein Schalterwechsel darf daher niemals als
+versendete Eskalation formuliert werden.
+
+Die Antwort zeigt organisationsgebundene Gesamtzahlen und jeweils die letzten
+zehn Einträge. Bei Konfiguration stehen Zeitpunkt, Akteur, Regel oder Schalter
+und vollständiger Alt-/Neuzustand. Bei Zustellung stehen Zeitpunkt, Projekt,
+Status, Verantwortlichen- oder Geschäftsführungsstufe, Empfänger sowie
+offen/erledigt. Für beide Quellen gibt es verständliche Leerzustände. Zugriff
+haben nur Administration oder Geschäftsführung auf Sitzungs- und
+Effektivebene. Die Abfrage ist vollständig lesend: kein Schedulerlauf, keine
+Zustellung, keine Einstellung, kein Projektstatus und kein Aktionsentwurf
+werden verändert.
+
+Lokal bestanden 171 Testdateien mit 1.717 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, synchroner Datenbankstand und
+der 90-Seiten-Build. Der echte UI-Klicktest bestätigte Titel, beide getrennten
+Protokollbereiche, verständliche Leerstände, die bestehende Betriebsdiagnose
+und die Navigation zur Status-Automation ohne Browserfehler. Vorher/Nachher
+blieben Entwürfe, Automations-Audits, Notifications, Zustellereignisse und die
+Organisationseinstellung unverändert. Der feste Korpus blieb exakt 110 Fälle
+groß und bestand lokal sowie produktiv 110/110; produktiv 28 Schreibentwürfe
+nur vorbereitet, null ausgeführt und null Rückstände.
+
+Produktiv abgenommen auf Runtime-Commit
+`74e20506eb1612c339ea322415906bd4510f7baa`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T072000Z-before-jarvis-automation-history`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `739270`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.

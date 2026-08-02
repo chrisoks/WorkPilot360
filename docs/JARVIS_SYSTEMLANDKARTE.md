@@ -588,3 +588,29 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   171/171 Testdateien, 1.715/1.715 Tests, echter UI-Klicktest, 110/110
   Produktionsfragen, null Ausführungen/Rückstände und leerer Live-Prisma-Diff.
   WorkPilot PID `736895`, KlinikNavigator PID `398228`.
+
+## Projektstatus-Automation: Ausführung und Änderung getrennt protokollieren
+
+- Rein lesende Erweiterung von `automation.read` in
+  `src/lib/jarvis/automation-status-analysis.ts`; erkennt Protokoll-, Historie-
+  und Auditfragen deterministisch.
+- Konfigurationsquelle: organisationsgebundene `AuditLog`-Einträge mit Aktion
+  `automation.project-status.changed`; zeigt Akteur, Ziel, Alt-/Neuzustand und
+  Zeitpunkt.
+- Zustellquelle: organisationsgebundene `StatusEscalationEvent`-Einträge mit
+  Regelpräfix `project-status-v1:`; zeigt Projekt, Status, Stufe, Empfänger,
+  offen/erledigt und Zeitpunkt.
+- Es werden Gesamtzahlen und jeweils höchstens die letzten zehn Einträge
+  ausgegeben. Leere Quellen erhalten einen ausdrücklichen, verständlichen
+  Leerzustand. Eine Konfigurationsänderung wird nie als Zustellung bezeichnet.
+- Rollen: Administration/Geschäftsführung auf Sitzungs- und Effektivebene;
+  Führungskraft wird vor dem organisationsweiten Datenzugriff abgelehnt.
+- Keine Nebenwirkung: kein Schedulerlauf, keine Synchronisation, kein Entwurf,
+  keine Notification, keine E-Mail, keine Einstellung und kein Statuswechsel.
+- Produktivabnahme: Runtime
+  `74e20506eb1612c339ea322415906bd4510f7baa`, Backup
+  `/var/backups/workpilot360/20260802T072000Z-before-jarvis-automation-history`,
+  171/171 Testdateien, 1.717/1.717 Tests, echter UI-Klicktest, 110/110
+  Produktionsfragen, 28 nur vorbereitete Aktionen, null Ausführungen/
+  Rückstände und leerer Live-Prisma-Diff. WorkPilot PID `739270`,
+  KlinikNavigator PID `398228`.

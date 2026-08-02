@@ -1,5 +1,24 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projektstatus-Ausführungsprotokoll 2026-08-02: Die rein lesende
+  Aktion `automation.read` trennt nun dauerhaft Konfigurationsänderungen von
+  tatsächlich erzeugten Projektstatus-Zustellereignissen. Natürliche Fragen
+  nach Protokoll, Historie oder Audit zeigen organisationsgebundene Summen und
+  jeweils die letzten zehn Einträge. Konfigurationsänderungen enthalten
+  Zeitpunkt, Akteur, Ziel sowie Alt-/Neuzustand; Zustellereignisse enthalten
+  Projekt, Status, Eskalationsstufe, Empfänger und offen/erledigt. Leere
+  Protokolle werden ausdrücklich als leer erklärt. Administration oder
+  Geschäftsführung sind auf Sitzungs- und Effektivebene erforderlich; die
+  Abfrage startet keinen Scheduler und schreibt nichts. Runtime-Commit
+  `74e20506eb1612c339ea322415906bd4510f7baa`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T072000Z-before-jarvis-automation-history`.
+  Lokal bestanden 171/171 Testdateien mit 1.717/1.717 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und 90-Seiten-Build.
+  Echter UI-Klicktest sowie lokaler und produktiver 110er-Korpus sind grün;
+  produktiv 28 Schreibentwürfe nur vorbereitet, null Ausführungen und null
+  Rückstände. Dashboard und Anfrageformular HTTP 200, Live-Prisma-Diff leer.
+  WorkPilot PID `739270`, KlinikNavigator unverändert PID `398228`.
+
 - JARVIS Projektstatus-Automationsdiagnose 2026-08-02: Die neue rein lesende
   Aktion `automation.read` beantwortet organisationsweit, ob die
   Projektstatus-Automation tatsächlich betriebsbereit ist. Sie trennt sichtbar
