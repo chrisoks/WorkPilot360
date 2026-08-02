@@ -2884,3 +2884,44 @@ Datenintegritätsfälle mit null Rückständen. Der produktive permanente Korpus
 bestand 110/110 mit 20 vorbereiteten, null ausgeführten Aktionen und null
 Rückständen. Live-Prisma-Diff leer, Dashboard und öffentliches Formular HTTP
 200; WorkPilot PID `706450`, KlinikNavigator unverändert PID `398228`.
+
+## 27. Kontrollierte Katalogverwaltung
+
+`catalog.manage` legt Artikel und Leistungen kontrolliert an oder bearbeitet
+eine eindeutig organisationsgebunden aufgelöste A-/L-Katalognummer. Die
+Vorschau zeigt alte und neue Stammdaten, Einkauf/Selbstkosten, Verkaufspreis,
+Umsatzsteuer, Rohertrag, Marge, Planungsrelevanz, Planminuten und bestehende
+Verwendungen in Paketen, Angeboten, Rechnungen, Planung, Zeiten, Lager und
+Marketing. Pakete, Komponenten und Paket-Snapshots bleiben bewusst in der
+normalen Paketmaske und werden niemals automatisch verändert.
+
+Dubletten nach Nummer oder Bezeichnung, unpassende Nummernpräfixe, ungültige
+oder negative Werte, fehlende Planminuten und wirkungslose Änderungen
+blockieren fail-closed. Eine relevante Änderung an einer fachlich freigegebenen
+Position setzt den Prüfstatus nachvollziehbar auf `needs_review`. Erst die
+exakte Phrase `KATALOGPOSITION ANLEGEN <Nummer>` beziehungsweise
+`KATALOGPOSITION ÄNDERN <Nummer>` darf schreiben. Organisation, Sitzung,
+Session-/Effektivrolle, Impersonation, TTL, Revision, HMAC, Payload- und
+Kontexthash, SHA-256-Fachfingerprint, serialisierbare Transaktion,
+PostgreSQL-Advisory-Lock und optimistisches `updatedAt`-Update sichern die
+Ausführung und Exactly-once-Historie.
+
+Der Fachservice liegt in `src/lib/catalog/catalog-management-service.ts`, der
+isolierte Rollen-, Mandanten-, Dubletten-, Abbruch-, Stale-Context-, Replay-,
+Freigabe- und Paket-Snapshot-Test in
+`scripts/qa-jarvis-catalog-management.mjs`. Lokal bestanden 161 Testdateien
+mit 1.643 Tests, TypeScript, Mojibake-/Regressionschecks, Prisma-Validierung,
+leerer Schema-Diff und der 90-Seiten-Build. Der echte UI-Klicktest bestätigte
+Wirtschaftlichkeitsvorschau, exakte Bestätigung, Exactly-once-Anlage, sichtbare
+Katalogzeile und den korrekten Rücksprung in `Leistungen`; Rückstände null.
+Lokal und produktiv bestand der permanente Korpus 110/110, produktiv mit 23
+nur vorbereiteten und null ausgeführten Aktionen.
+
+Produktiv abgenommen auf Runtime-Commit
+`68898a07b5872f398f0d54f7e0d833554f136f75`. Das verifizierte Datenbank- und
+Git-Backup liegt unter
+`/var/backups/workpilot360/20260802T031300Z-before-jarvis-catalog-management`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `718512`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.

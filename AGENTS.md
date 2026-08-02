@@ -1,5 +1,31 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Katalogverwaltung 2026-08-02: `catalog.manage` ist für die kontrollierte
+  Anlage und Bearbeitung von Artikeln und Leistungen produktiv freigegeben.
+  JARVIS zeigt Stammdaten, EK/Selbstkosten, VK, Umsatzsteuer, Rohertrag, Marge,
+  Planungslogik und sämtliche bestehenden Verwendungszähler. Dubletten,
+  ungültige/negative Werte, unpassende A-/L-Nummern und wirkungslose Änderungen
+  blockieren fail-closed. Pakete und Komponenten bleiben in der Paketmaske;
+  bestehende Paket-Snapshots werden sichtbar gewarnt und niemals automatisch
+  geändert. Relevante Änderungen setzen eine fachliche Freigabe auf
+  `needs_review`. Exakte Phrasen sind `KATALOGPOSITION ANLEGEN <Nummer>` und
+  `KATALOGPOSITION ÄNDERN <Nummer>`. Sitzung, Organisation, Rollenpaar,
+  Impersonation, TTL, Revision, HMAC, Payload-/Kontexthash, SHA-256-Fingerprint,
+  serialisierbare Transaktion, PostgreSQL-Advisory-Lock und optimistisches
+  Update sichern Exactly-once und Stale-Context. Fachservice:
+  `src/lib/catalog/catalog-management-service.ts`; isolierte QA:
+  `scripts/qa-jarvis-catalog-management.mjs`. Runtime-Commit
+  `68898a07b5872f398f0d54f7e0d833554f136f75`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T031300Z-before-jarvis-catalog-management`.
+  Lokal bestanden 161/161 Testdateien mit 1.643/1.643 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und der
+  90-Seiten-Build. Lokale und produktive isolierte QA, echter UI-Klicktest mit
+  korrektem Rücksprung zu Leistungen und der permanente Korpus (110/110,
+  produktiv 23 nur vorbereitete Aktionen) sind grün; QA-Rückstände null.
+  Dashboard und Anfrageformular HTTP 200, Live-Prisma-Diff leer. WorkPilot PID
+  `718512`, KlinikNavigator unverändert PID `398228`. Keine Prisma-, Storage-
+  oder Online-Anfragen-Invariante wurde geändert.
+
 - JARVIS endgültige Kontaktlöschung 2026-08-02: `contact.delete` ist als
   irreversibler, fail-closed gesicherter Vertikalschnitt produktiv
   freigegeben. JARVIS löst den Kontakt ausschließlich über eine eindeutige,
