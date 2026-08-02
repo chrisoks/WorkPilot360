@@ -2863,7 +2863,7 @@ function parseJarvisPlanningRequestDecisionDraft(
   const candidate = value as Record<string, unknown>;
   if (
     candidate.version !== 2 || candidate.actionId !== "planning.request.manage" ||
-    (candidate.decision !== "approve" && candidate.decision !== "reject" && candidate.decision !== "cancel" && candidate.decision !== "withdraw") ||
+    (candidate.decision !== "approve" && candidate.decision !== "reject" && candidate.decision !== "cancel" && candidate.decision !== "withdraw" && candidate.decision !== "cancel_series" && candidate.decision !== "withdraw_series") ||
     typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
     typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
     typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
@@ -4508,13 +4508,14 @@ function JarvisOfferFinalizationCard({
 
   if (draft.actionId === "planning.request.manage") {
     const approving = draft.decision === "approve";
-    const cancelling = draft.decision === "cancel";
-    const withdrawing = draft.decision === "withdraw";
+    const wholeSeries = draft.decision === "cancel_series" || draft.decision === "withdraw_series";
+    const cancelling = draft.decision === "cancel" || draft.decision === "cancel_series";
+    const withdrawing = draft.decision === "withdraw" || draft.decision === "withdraw_series";
     const footer = draft.state === "executed"
       ? cancelling
-        ? "Der einzelne bestätigte Termin wurde genau einmal abgesagt. Weitere Serieneinträge und alle übrigen Planungsdaten blieben unverändert."
+        ? wholeSeries ? "Die vollständig angezeigte bestätigte Terminserie wurde atomar und genau einmal abgesagt." : "Der einzelne bestätigte Termin wurde genau einmal abgesagt. Weitere Serieneinträge und alle übrigen Planungsdaten blieben unverändert."
         : withdrawing
-          ? "Der einzelne offene Terminwunsch wurde genau einmal zurückgezogen. Weitere Serieneinträge und alle übrigen Planungsdaten blieben unverändert."
+          ? wholeSeries ? "Die vollständig angezeigte offene Terminwunschserie wurde atomar und genau einmal zurückgezogen." : "Der einzelne offene Terminwunsch wurde genau einmal zurückgezogen. Weitere Serieneinträge und alle übrigen Planungsdaten blieben unverändert."
         : approving
         ? "Der einzelne Terminwunsch wurde genau einmal freigegeben. Weitere Serieneinträge und alle übrigen Planungsdaten blieben unverändert."
         : "Der einzelne Terminwunsch wurde genau einmal mit dem gezeigten Grund abgelehnt. Weitere Serieneinträge blieben unverändert."
@@ -4525,7 +4526,7 @@ function JarvisOfferFinalizationCard({
           : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung und den geprüften ${cancelling ? "Terminstand" : "Wunschstand"} gebunden.`;
     return (
       <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
-        <header><div><span>{cancelling ? "Action Center · Kritische Terminabsage" : withdrawing ? "Action Center · Terminwunsch zurückziehen" : "Action Center · Kritische Terminwunschentscheidung"}</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+        <header><div><span>{cancelling ? `Action Center · Kritische ${wholeSeries ? "Terminserienabsage" : "Terminabsage"}` : withdrawing ? `Action Center · ${wholeSeries ? "Terminwunschserie" : "Terminwunsch"} zurückziehen` : "Action Center · Kritische Terminwunschentscheidung"}</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
         <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
         <div className={styles.jarvisPlanningChecks}><strong>{cancelling ? "Aktuelle Terminprüfung" : "Aktuelle Wunschprüfung"}</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
         {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
@@ -4533,7 +4534,7 @@ function JarvisOfferFinalizationCard({
         {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
         {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
         <div className={styles.jarvisActionDraftActions}>
-          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{cancelling ? "Termin jetzt absagen" : withdrawing ? "Terminwunsch jetzt zurückziehen" : approving ? "Terminwunsch jetzt freigeben" : "Terminwunsch jetzt ablehnen"}</button> : null}
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{cancelling ? wholeSeries ? "Gesamte Terminserie jetzt absagen" : "Termin jetzt absagen" : withdrawing ? wholeSeries ? "Gesamte Terminwunschserie jetzt zurückziehen" : "Terminwunsch jetzt zurückziehen" : approving ? "Terminwunsch jetzt freigeben" : "Terminwunsch jetzt ablehnen"}</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>{cancelling ? "Terminabsage abbrechen" : withdrawing ? "Zurückziehen abbrechen" : "Entscheidung abbrechen"}</button> : null}
           {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
         </div>
@@ -25876,6 +25877,75 @@ export function DashboardPage() {
     const executeData = await executeResponse.json().catch(() => null);
     if (!executeResponse.ok) {
       setErrorMessage(executeData?.error ?? "Der Terminwunsch konnte nicht sicher zurückgezogen werden.");
+      return;
+    }
+    setIsPlanningEntryModalOpen(false);
+    resetPlanningEntryForm();
+    await loadPlanningEntries();
+    await loadNotifications(true);
+  }
+
+  async function deletePlanningSeriesByEntryId(entryId: string) {
+    if (!entryId) return;
+    const targetEntry = planningEntries.find((entry) => entry.id === entryId);
+    if (!targetEntry?.recurrenceId) {
+      setErrorMessage("Dieser Planungseintrag gehört keiner gespeicherten Terminserie an.");
+      return;
+    }
+    if (!canModifyPlanningEntry(targetEntry)) {
+      setErrorMessage("Diese Terminserie darf mit der aktuellen Rolle nicht verändert werden.");
+      return;
+    }
+    const cancellation = targetEntry.approvalStatus === "confirmed";
+    const decision = cancellation ? "cancel_series" : "withdraw_series";
+    const reason = window.prompt(
+      cancellation
+        ? "Warum soll die gesamte bestätigte Terminserie abgesagt werden?"
+        : "Warum soll die gesamte offene Terminwunschserie zurückgezogen werden?",
+      ""
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setErrorMessage(`Bitte einen nachvollziehbaren ${cancellation ? "Absage" : "Rückzugs"}grund mit mindestens drei Zeichen angeben.`);
+      return;
+    }
+    const preflightResponse = await fetch("/api/planning-entries", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ command: "decision-preflight", actorUserId: activeUserId, entryId, decision, reason: reason.trim() }),
+    });
+    const preflightData = await preflightResponse.json().catch(() => null);
+    if (!preflightResponse.ok) {
+      setErrorMessage(preflightData?.error ?? `Die ${cancellation ? "Terminserienabsage" : "Terminwunschserien-Rücknahme"} konnte nicht sicher geprüft werden.`);
+      return;
+    }
+    const series = preflightData?.evaluation?.series;
+    if (!series?.count || !Array.isArray(series.entryIds)) {
+      setErrorMessage("Der vollständige Serienumfang konnte nicht sicher bestimmt werden.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `${cancellation ? "Gesamte Terminserie absagen" : "Gesamte Terminwunschserie zurückziehen"}?\n\nUmfang: ${series.count} Termine\nZeitraum: ${series.fromDate} bis ${series.toDate}\nGrund: ${reason.trim()}\n\nDie gesamte angezeigte Serie wird atomar verändert.`
+    );
+    if (!confirmed) return;
+    const executeResponse = await fetch("/api/planning-entries", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        command: "decision-execute",
+        requestId: crypto.randomUUID(),
+        expectedFingerprint: preflightData.evaluation.fingerprint,
+        actorUserId: activeUserId,
+        entryId,
+        decision,
+        reason: reason.trim(),
+      }),
+    });
+    const executeData = await executeResponse.json().catch(() => null);
+    if (!executeResponse.ok) {
+      setErrorMessage(executeData?.error ?? "Die Terminserie konnte nicht sicher verändert werden.");
       return;
     }
     setIsPlanningEntryModalOpen(false);
@@ -55216,6 +55286,15 @@ await addProjectLogbookEntry(
                                   >
                                     Löschen
                                   </button>
+                                  {entry.recurrenceId ? (
+                                    <button
+                                      type="button"
+                                      className={styles.dangerButton}
+                                      onClick={() => void deletePlanningSeriesByEntryId(entry.id)}
+                                    >
+                                      {entry.approvalStatus === "confirmed" ? "Serie absagen" : "Wunschserie zurückziehen"}
+                                    </button>
+                                  ) : null}
                                 </div>
                               ) : (
                                 <span className={styles.metaLine}>Keine Rechte</span>
@@ -73151,6 +73230,15 @@ await addProjectLogbookEntry(
                       : "Löschen"}
                   </button>
                 )}
+                {editingPlanningEntryId && planningEntries.some((entry) => entry.id === editingPlanningEntryId && Boolean(entry.recurrenceId)) ? (
+                  <button
+                    type="button"
+                    className={styles.dangerButton}
+                    onClick={() => void deletePlanningSeriesByEntryId(editingPlanningEntryId)}
+                  >
+                    {planningEntryApprovalStatus === "confirmed" ? "Gesamte Terminserie absagen" : "Gesamte Terminwunschserie zurückziehen"}
+                  </button>
+                ) : null}
                 {editingPlanningEntryId && planningEntryApprovalStatus === "requested" && (
                   <button
                     type="button"

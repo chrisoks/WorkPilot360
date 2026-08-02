@@ -42,4 +42,24 @@ describe("planning request decision intake", () => {
       reason: "Eigener Einsatz nicht mehr möglich",
     });
   });
+
+  it("distinguishes the explicit cancellation of an entire appointment series", () => {
+    const question = "Gesamte Terminserie Termin-ID request-123 absagen. Grund: Kunde hat alle Termine abgesagt";
+    expect(looksLikePlanningRequestDecision(question)).toBe(true);
+    expect(extractPlanningRequestDecision(question)).toEqual({
+      entryId: "request-123",
+      decision: "cancel_series",
+      reason: "Kunde hat alle Termine abgesagt",
+    });
+  });
+
+  it("distinguishes withdrawal of an entire appointment request series", () => {
+    const question = "Komplette Terminwunschserie request-123 zurückziehen. Grund: Einsatzserie nicht mehr möglich";
+    expect(looksLikePlanningRequestDecision(question)).toBe(true);
+    expect(extractPlanningRequestDecision(question)).toEqual({
+      entryId: "request-123",
+      decision: "withdraw_series",
+      reason: "Einsatzserie nicht mehr möglich",
+    });
+  });
 });

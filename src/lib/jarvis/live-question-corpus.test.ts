@@ -23,6 +23,6 @@ describe("JARVIS permanent 110-question regression corpus", () => {
     expect(text).toContain("Archiviere Projekt QA-200");
     expect(text).toContain("Korrigiere einen Zeiteintrag");
     expect(text).toContain("Verschiebe einen Termin auf morgen");
-    expect(text).toContain("Ziehe einen eigenen Terminwunsch zurück oder sage einen bestätigten Termin ab");
+    expect(text).toContain("Ziehe eine eigene Terminwunschserie zurück oder sage eine bestätigte Terminserie ab");
   });
 });

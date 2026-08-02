@@ -1,6 +1,6 @@
 export type PlanningRequestDecisionIntake = {
   entryId: string;
-  decision: "approve" | "reject" | "cancel" | "withdraw" | null;
+  decision: "approve" | "reject" | "cancel" | "withdraw" | "cancel_series" | "withdraw_series" | null;
   reason: string;
 };
 
@@ -10,14 +10,19 @@ function clean(value: string) {
 
 export function looksLikePlanningRequestDecision(question: string) {
   return (
-    /terminwunsch/i.test(question) && /(freigeb|gib[\s\S]{0,80}\bfrei\b|genehmig|bestätig|bestaetig|ablehn|zurückweis|zurueckweis|zurückzieh|zurueckzieh)/i.test(question)
+    /terminwunsch(?:serie)?/i.test(question) && /(freigeb|gib[\s\S]{0,80}\bfrei\b|genehmig|bestätig|bestaetig|ablehn|zurückweis|zurueckweis|zurückzieh|zurueckzieh)/i.test(question)
   ) || (
-    /\btermin\b/i.test(question) && /(absag|streich|löschen|loeschen)/i.test(question)
+    /\btermin(?:serie)?\b/i.test(question) && /(absag|streich|löschen|loeschen)/i.test(question)
   );
 }
 
 export function extractPlanningRequestDecision(question: string): PlanningRequestDecisionIntake {
-  const decision = /terminwunsch/i.test(question) && /(zurückzieh|zurueckzieh)/i.test(question)
+  const wholeSeries = /\b(?:gesamte[nrsm]?|ganze[nrsm]?|komplette[nrsm]?|vollständige[nrsm]?|alle)\b/i.test(question) || /termin(?:wunsch)?-?serie/i.test(question);
+  const decision = wholeSeries && /terminwunsch/i.test(question) && /(zurückzieh|zurueckzieh)/i.test(question)
+    ? "withdraw_series"
+    : wholeSeries && /\btermin(?:serie)?\b/i.test(question) && /(absag|streich|löschen|loeschen)/i.test(question)
+      ? "cancel_series"
+    : /terminwunsch/i.test(question) && /(zurückzieh|zurueckzieh)/i.test(question)
     ? "withdraw"
     : /\btermin\b/i.test(question) && /(absag|streich|löschen|loeschen)/i.test(question)
     ? "cancel"
@@ -26,7 +31,9 @@ export function extractPlanningRequestDecision(question: string): PlanningReques
       : /(freigeb|gib[\s\S]{0,80}\bfrei\b|genehmig|bestätig|bestaetig)/i.test(question)
         ? "approve"
         : null;
-  const explicitCandidate = question.match(/(?:terminwunsch(?:-id)?|eintrag(?:s-id)?|id)\s*[:#]?\s*([a-z0-9][a-z0-9-]{7,119})/i)?.[1] ?? "";
+  const explicitCandidate = question.match(/(?:terminwunsch-id|termin-id|eintrags-id|eintrag-id|id)\s*[:#]?\s*([a-z0-9][a-z0-9-]{7,119})/i)?.[1]
+    ?? question.match(/(?:terminwunsch(?:serie)?|terminserie|termin|eintrag)\s*[:#]?\s*([a-z0-9][a-z0-9-]{7,119})/i)?.[1]
+    ?? "";
   const explicitId = /^(?:freigeben|genehmigen|bestätigen|bestaetigen|ablehnen|zurückweisen|zurueckweisen|zurückziehen|zurueckziehen|absagen|streichen|löschen|loeschen)$/i.test(explicitCandidate)
     ? ""
     : explicitCandidate;

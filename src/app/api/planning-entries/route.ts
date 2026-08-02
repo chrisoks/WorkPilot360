@@ -1381,7 +1381,7 @@ export async function PATCH(req: Request) {
   const actor = actorResult.actor;
   const command = cleanString(body.command);
   if (command === "decision-preflight" || command === "decision-execute") {
-    const decision = cleanString(body.decision) as "approve" | "reject" | "cancel" | "withdraw";
+    const decision = cleanString(body.decision) as "approve" | "reject" | "cancel" | "withdraw" | "cancel_series" | "withdraw_series";
     const decisionInput = {
       organizationId: organization.id,
       actor,
@@ -1405,6 +1405,7 @@ export async function PATCH(req: Request) {
           requestId,
           entryId: result.entryId,
           actorUserId: actor.id,
+          decision,
         }).catch((error) => console.error("Planning request decision notification delivery failed", error));
       }
       return NextResponse.json({ result });

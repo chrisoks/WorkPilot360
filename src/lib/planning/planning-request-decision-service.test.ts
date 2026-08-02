@@ -67,12 +67,60 @@ function fakeDb(...results: unknown[]) {
 }
 
 describe("planning request decision service", () => {
-  it("binds approval, rejection and cancellation to exact entry-specific phrases", () => {
+  it("binds single and whole-series decisions to exact entry-specific phrases", () => {
     expect(getPlanningRequestDecisionConfirmationText(" request-1 ", "approve")).toBe("TERMINWUNSCH FREIGEBEN request-1");
     expect(getPlanningRequestDecisionConfirmationText("request-1", "reject")).toBe("TERMINWUNSCH ABLEHNEN request-1");
     expect(getPlanningRequestDecisionConfirmationText("request-1", "cancel")).toBe("TERMIN ABSAGEN request-1");
+    expect(getPlanningRequestDecisionConfirmationText("request-1", "cancel_series")).toBe("TERMIN-SERIE ABSAGEN request-1");
+    expect(getPlanningRequestDecisionConfirmationText("request-1", "withdraw_series")).toBe("TERMINWUNSCH-SERIE ZURÜCKZIEHEN request-1");
     expect(matchesPlanningRequestDecisionConfirmation("request-1", "approve", "TERMINWUNSCH FREIGEBEN request-1")).toBe(true);
     expect(matchesPlanningRequestDecisionConfirmation("request-1", "approve", "terminwunsch freigeben request-1")).toBe(false);
+  });
+
+  it("binds the complete active confirmed series and exposes its exact scope", async () => {
+    const first = entry({ approvalStatus: "confirmed", recurrenceId: "series-1", recurrenceRule: "weekly" });
+    const second = entry({ id: "request-2", approvalStatus: "confirmed", recurrenceId: "series-1", recurrenceRule: "weekly", date: "2026-08-12" });
+    const db = fakeDb([first], [first, second], [assignee], [project]);
+    const evaluation = await evaluatePlanningRequestDecision({
+      db: db as never,
+      organizationId: "org-1",
+      actor,
+      entryId: "request-1",
+      decision: "cancel_series",
+      reason: "Kunde hat die gesamte Serie abgesagt",
+    });
+    expect(evaluation).toMatchObject({
+      decision: "cancel_series",
+      warnings: [],
+      series: { recurrenceId: "series-1", count: 2, fromDate: "2026-08-05", toDate: "2026-08-12", entryIds: ["request-1", "request-2"] },
+    });
+    expect(evaluation.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("fails closed when a requested series contains mixed statuses", async () => {
+    const first = entry({ recurrenceId: "series-1", recurrenceRule: "weekly" });
+    const second = entry({ id: "request-2", recurrenceId: "series-1", recurrenceRule: "weekly", approvalStatus: "confirmed", date: "2026-08-12" });
+    await expect(evaluatePlanningRequestDecision({
+      db: fakeDb([first], [first, second]) as never,
+      organizationId: "org-1",
+      actor,
+      entryId: "request-1",
+      decision: "withdraw_series",
+      reason: "Serie ist nicht mehr erforderlich",
+    })).rejects.toMatchObject({ code: "mixed_series_status", status: 409 } satisfies Partial<PlanningRequestDecisionError>);
+  });
+
+  it("blocks an employee when one request in the series belongs to somebody else", async () => {
+    const first = entry({ recurrenceId: "series-1", recurrenceRule: "weekly" });
+    const foreign = entry({ id: "request-2", recurrenceId: "series-1", recurrenceRule: "weekly", userId: "employee-2", requestedByUserId: "employee-2", date: "2026-08-12" });
+    await expect(evaluatePlanningRequestDecision({
+      db: fakeDb([first], [first, foreign]) as never,
+      organizationId: "org-1",
+      actor: { ...actor, id: "employee-1", role: Role.MITARBEITER },
+      entryId: "request-1",
+      decision: "withdraw_series",
+      reason: "Serie ist nicht mehr möglich",
+    })).rejects.toMatchObject({ code: "forbidden", status: 403 } satisfies Partial<PlanningRequestDecisionError>);
   });
 
   it("evaluates cancellation of one confirmed recurring appointment with a bound reason", async () => {

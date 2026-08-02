@@ -1198,12 +1198,12 @@ const planningMoveContextSchema = z.object({
 
 const planningRequestDecisionPayloadSchema = z.object({
   entryId: z.string().trim().min(1).max(120),
-  decision: z.enum(["approve", "reject", "cancel", "withdraw"]),
+  decision: z.enum(["approve", "reject", "cancel", "withdraw", "cancel_series", "withdraw_series"]),
   reason: z.string().trim().max(500).optional(),
 }).strict();
 
 const planningRequestDecisionContextSchema = z.object({
-  decision: z.enum(["approve", "reject", "cancel", "withdraw"]),
+  decision: z.enum(["approve", "reject", "cancel", "withdraw", "cancel_series", "withdraw_series"]),
   reason: z.string(),
   entry: z.object({
     id: z.string(), title: z.string(), projectId: z.string(), projectLabel: z.string(),
@@ -1211,6 +1211,7 @@ const planningRequestDecisionContextSchema = z.object({
     endTime: z.string(), durationMinutes: z.number().int(), recurrenceRule: z.string(), approvalStatus: z.string(),
   }).strict(),
   warnings: z.array(z.object({ code: z.string(), message: z.string() }).strict()),
+  series: z.object({ recurrenceId: z.string(), count: z.number().int().positive(), fromDate: z.string(), toDate: z.string(), entryIds: z.array(z.string()).min(1) }).strict().nullable(),
   fingerprint: z.string().length(64),
 }).strict();
 
@@ -11542,9 +11543,9 @@ function mayMovePlanningEntry(binding: JarvisTaskDraftBinding) {
 
 function mayDecidePlanningEntry(
   binding: JarvisTaskDraftBinding,
-  decision: "approve" | "reject" | "cancel" | "withdraw",
+  decision: "approve" | "reject" | "cancel" | "withdraw" | "cancel_series" | "withdraw_series",
 ) {
-  if (decision !== "withdraw") return mayMovePlanningEntry(binding);
+  if (decision !== "withdraw" && decision !== "withdraw_series") return mayMovePlanningEntry(binding);
   const actorIds = getActorIds(binding.profile);
   return !binding.profile.isImpersonating &&
     Boolean(actorIds.sessionActorId) &&
@@ -11754,18 +11755,22 @@ function toJarvisPlanningRequestDecisionDraftView(
     entryId: context.entry.id,
     projectId: context.entry.projectId,
     fields: [
-      { label: "Entscheidung", value: payload.decision === "approve" ? "Terminwunsch freigeben" : payload.decision === "reject" ? "Terminwunsch ablehnen" : payload.decision === "cancel" ? "Planungstermin absagen" : "Terminwunsch zurückziehen" },
-      { label: payload.decision === "cancel" ? "Termin-ID" : "Terminwunsch-ID", value: context.entry.id },
+      { label: "Entscheidung", value: payload.decision === "approve" ? "Terminwunsch freigeben" : payload.decision === "reject" ? "Terminwunsch ablehnen" : payload.decision === "cancel" ? "Planungstermin absagen" : payload.decision === "withdraw" ? "Terminwunsch zurückziehen" : payload.decision === "cancel_series" ? "Gesamte Terminserie absagen" : "Gesamte Terminwunschserie zurückziehen" },
+      { label: payload.decision === "cancel" || payload.decision === "cancel_series" ? "Termin-ID" : "Terminwunsch-ID", value: context.entry.id },
       { label: "Titel", value: context.entry.title },
       { label: "Projekt", value: context.entry.projectLabel || "Ohne Projekt" },
       { label: "Mitarbeitend", value: context.entry.employee },
-      ...(payload.decision === "cancel" ? [] : [{ label: "Beantragt von", value: context.entry.requester }]),
+      ...(payload.decision === "cancel" || payload.decision === "cancel_series" ? [] : [{ label: "Beantragt von", value: context.entry.requester }]),
       { label: "Zeitraum", value: `${context.entry.date} · ${context.entry.startTime}-${context.entry.endTime}` },
-      ...(payload.decision === "reject" ? [{ label: "Ablehnungsgrund", value: context.reason }] : payload.decision === "cancel" ? [{ label: "Absagegrund", value: context.reason }] : payload.decision === "withdraw" ? [{ label: "Rückzugsgrund", value: context.reason }] : []),
+      ...(context.series ? [
+        { label: "Serienumfang", value: `${context.series.count} Termine` },
+        { label: "Serienzeitraum", value: `${context.series.fromDate} bis ${context.series.toDate}` },
+      ] : []),
+      ...(payload.decision === "reject" ? [{ label: "Ablehnungsgrund", value: context.reason }] : payload.decision === "cancel" || payload.decision === "cancel_series" ? [{ label: "Absagegrund", value: context.reason }] : payload.decision === "withdraw" || payload.decision === "withdraw_series" ? [{ label: "Rückzugsgrund", value: context.reason }] : []),
     ],
     checks: [
-      { key: "scope", label: "Organisation, Sitzung und Rolle", status: permitted ? "ok" : "blocked", detail: permitted ? payload.decision === "withdraw" ? "Das Zurückziehen ist an die eigene, nicht vertretene Identität und den geprüften Terminwunsch gebunden." : "Die Entscheidung ist an die aktuelle Planungsverantwortung gebunden." : "Diese Rollenkombination darf den Planungseintrag nicht entscheiden." },
-      { key: "freshness", label: payload.decision === "cancel" ? "Aktueller Terminstand" : "Aktueller Terminwunschstand", status: "ok", detail: payload.decision === "approve" ? "Offener Wunsch, Person, Abwesenheit, Überschneidungen und Projektstand sind gebunden." : payload.decision === "cancel" ? "Bestätigter Termin, Person, Projekt- und Serienbezug sind vollständig gebunden." : "Offener Wunsch, Person und Projektstand sind gebunden." },
+      { key: "scope", label: "Organisation, Sitzung und Rolle", status: permitted ? "ok" : "blocked", detail: permitted ? payload.decision === "withdraw" || payload.decision === "withdraw_series" ? "Das Zurückziehen ist an die eigene, nicht vertretene Identität und alle geprüften Terminwünsche gebunden." : "Die Entscheidung ist an die aktuelle Planungsverantwortung gebunden." : "Diese Rollenkombination darf den Planungseintrag nicht entscheiden." },
+      { key: "freshness", label: payload.decision === "cancel" || payload.decision === "cancel_series" ? "Aktueller Terminstand" : "Aktueller Terminwunschstand", status: "ok", detail: payload.decision === "approve" ? "Offener Wunsch, Person, Abwesenheit, Überschneidungen und Projektstand sind gebunden." : payload.decision === "cancel_series" || payload.decision === "withdraw_series" ? "Alle aktiven Serieneinträge, Personen, Status, Projekte und der vollständige Serienumfang sind gebunden." : payload.decision === "cancel" ? "Bestätigter Termin, Person, Projekt- und Serienbezug sind vollständig gebunden." : "Offener Wunsch, Person und Projektstand sind gebunden." },
     ],
     warnings: context.warnings.map((warning) => warning.message),
     blockingIssues: permitted ? [] : ["Diese Rollenkombination darf den Planungseintrag nicht entscheiden."],
@@ -11843,7 +11848,7 @@ export async function confirmJarvisPlanningRequestDecisionDraft(previewId: strin
       if (current.state === "executed") return current;
       if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Terminwunschentscheidung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
       const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, organizationId: true } });
-      if (!actor || (parsed.payload.decision !== "withdraw" && !canManagePlanningEntries(actor))) throw new JarvisActionDraftError("role_changed", "Akteur oder Planungsberechtigung sind nicht mehr aktuell.", 409);
+      if (!actor || (parsed.payload.decision !== "withdraw" && parsed.payload.decision !== "withdraw_series" && !canManagePlanningEntries(actor))) throw new JarvisActionDraftError("role_changed", "Akteur oder Planungsberechtigung sind nicht mehr aktuell.", 409);
       const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
       const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
       if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Der Terminwunsch wird bereits entschieden.", 409);
@@ -11854,7 +11859,7 @@ export async function confirmJarvisPlanningRequestDecisionDraft(previewId: strin
       await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: result.entryId, entityType: "planning" } });
       return finalDraft;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    if (executed.resultEntityId) await deliverPlanningRequestDecisionNotifications({ organizationId: binding.organizationId, requestId: executed.id, entryId: executed.resultEntityId, actorUserId: executed.effectiveActorId }).catch((error) => console.error("Planning request decision notification delivery failed", error));
+    if (executed.resultEntityId) await deliverPlanningRequestDecisionNotifications({ organizationId: binding.organizationId, requestId: executed.id, entryId: executed.resultEntityId, actorUserId: executed.effectiveActorId, decision: loaded.payload.decision }).catch((error) => console.error("Planning request decision notification delivery failed", error));
     return toJarvisPlanningRequestDecisionDraftView(executed, binding);
   } catch (error) {
     if (error instanceof JarvisActionDraftError && error.code === "conflict") {

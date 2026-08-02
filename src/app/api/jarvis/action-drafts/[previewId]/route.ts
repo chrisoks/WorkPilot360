@@ -1107,6 +1107,7 @@ export async function POST(
           resolved.binding,
           body.revision
         );
+    const planningRequestDecision = actionDraft.actionId === "planning.request.manage" ? actionDraft.decision : null;
     return NextResponse.json({
       message:
         actionDraft.state === "executed"
@@ -1129,7 +1130,17 @@ export async function POST(
             : isPlanningMove
             ? "Der einzelne Termin wurde nach deiner exakten Bestätigung genau einmal verschoben. Projekt, Mitarbeiter, Terminart, Abrechnungsbezug und übrige Serie blieben unverändert; Historie und Projektlogbuch wurden gemeinsam geschrieben."
             : isPlanningRequestDecision
-            ? "Der einzelne Terminwunsch wurde nach deiner exakten Bestätigung genau einmal freigegeben oder begründet abgelehnt. Historie, Projektlogbuch und Hinweise wurden gemeinsam geschrieben; weitere Serieneinträge blieben unverändert."
+            ? planningRequestDecision === "cancel_series"
+              ? "Die vollständig angezeigte bestätigte Terminserie wurde nach deiner exakten Bestätigung atomar und genau einmal abgesagt. Historie, Projektlogbuch und Hinweise wurden für alle Serientermine gemeinsam geschrieben."
+              : planningRequestDecision === "withdraw_series"
+                ? "Die vollständig angezeigte offene Terminwunschserie wurde nach deiner exakten Bestätigung atomar und genau einmal zurückgezogen. Historie, Projektlogbuch und Hinweise wurden für alle Serienwünsche gemeinsam geschrieben."
+                : planningRequestDecision === "cancel"
+                  ? "Der einzelne bestätigte Termin wurde nach deiner exakten Bestätigung genau einmal abgesagt. Weitere Serientermine blieben unverändert."
+                  : planningRequestDecision === "withdraw"
+                    ? "Der einzelne offene Terminwunsch wurde nach deiner exakten Bestätigung genau einmal zurückgezogen. Weitere Serienwünsche blieben unverändert."
+                    : planningRequestDecision === "approve"
+                      ? "Der einzelne Terminwunsch wurde nach deiner exakten Bestätigung genau einmal freigegeben. Historie, Projektlogbuch und Hinweise wurden gemeinsam geschrieben; weitere Serieneinträge blieben unverändert."
+                      : "Der einzelne Terminwunsch wurde nach deiner exakten Bestätigung genau einmal begründet abgelehnt. Historie, Projektlogbuch und Hinweise wurden gemeinsam geschrieben; weitere Serieneinträge blieben unverändert."
             : isProjectMasterData
             ? "Die angezeigten Projektstammdaten wurden nach deiner exakten Bestätigung genau einmal geändert. Logbuch, Audit und gegebenenfalls die Aufhebung der fachlichen Freigabe wurden gemeinsam geschrieben."
             : isContactManagement

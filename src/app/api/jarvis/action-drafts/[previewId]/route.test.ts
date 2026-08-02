@@ -1358,7 +1358,22 @@ describe("JARVIS action-draft API", () => {
     expect(mocks.confirmJarvisPlanningRequestDecisionDraft).toHaveBeenCalledWith(
       "preview-1", expect.anything(), 7, "TERMINWUNSCH ABLEHNEN request-1"
     );
+    expect((await response.json()).message).toContain("begründet abgelehnt");
     expect(mocks.confirmJarvisPlanningMoveDraft).not.toHaveBeenCalled();
+  });
+
+  it("reports execution of a complete appointment series without an incorrect single-entry claim", async () => {
+    mocks.confirmJarvisPlanningRequestDecisionDraft.mockResolvedValueOnce({
+      actionId: "planning.request.manage", state: "executed", decision: "cancel_series",
+    });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "planning.request.manage", command: "confirm", revision: 8,
+      confirmationText: "TERMIN-SERIE ABSAGEN request-1",
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.message).toContain("vollständig angezeigte bestätigte Terminserie");
+    expect(payload.message).not.toContain("weitere Serieneinträge blieben unverändert");
   });
 
   it("passes only the exact contact phrase to the bound contact draft", async () => {

@@ -29,8 +29,10 @@ async function main() {
   const ids = {
     project: randomUUID(), foreignProject: randomUUID(), session: randomUUID(), employeeSession: randomUUID(),
     approve: randomUUID(), reject: randomUUID(), normal: randomUUID(), cancel: randomUUID(), cancelNormal: randomUUID(), withdraw: randomUUID(), withdrawNormal: randomUUID(), withdrawBypass: randomUUID(), deleteBypass: randomUUID(), bypass: randomUUID(), foreign: randomUUID(),
+    cancelSeriesA: randomUUID(), cancelSeriesB: randomUUID(), withdrawSeriesA: randomUUID(), withdrawSeriesB: randomUUID(),
+    normalSeriesA: randomUUID(), normalSeriesB: randomUUID(), mixedSeriesA: randomUUID(), mixedSeriesB: randomUUID(),
   };
-  const entryIds = [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal, ids.withdraw, ids.withdrawNormal, ids.withdrawBypass, ids.deleteBypass, ids.bypass, ids.foreign];
+  const entryIds = [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal, ids.withdraw, ids.withdrawNormal, ids.withdrawBypass, ids.deleteBypass, ids.bypass, ids.foreign, ids.cancelSeriesA, ids.cancelSeriesB, ids.withdrawSeriesA, ids.withdrawSeriesB, ids.normalSeriesA, ids.normalSeriesB, ids.mixedSeriesA, ids.mixedSeriesB];
   const sessionIds = [ids.session, ids.employeeSession];
   const projectIds = [ids.project, ids.foreignProject];
   const draftIds = new Set();
@@ -54,6 +56,14 @@ async function main() {
       { ...baseEntry, id: ids.deleteBypass, title: "QA Terminabsage Altroute", approvalStatus: "confirmed", startTime: "14:00", endTime: "15:00" },
       { ...baseEntry, id: ids.bypass, title: "QA Altroute", startTime: "11:00", endTime: "12:00" },
       { ...baseEntry, id: ids.foreign, organizationId: foreignOrganization.id, projectId: ids.foreignProject, projectLabel: `QPF-${suffix} | QA fremd`, userId: null, requestedByUserId: null, title: "QA Fremdmandant" },
+      { ...baseEntry, id: ids.cancelSeriesA, title: "QA Terminserie A", approvalStatus: "confirmed", date: "2026-09-01", recurrenceId: `qa-cancel-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.cancelSeriesB, title: "QA Terminserie B", approvalStatus: "confirmed", date: "2026-09-08", recurrenceId: `qa-cancel-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.withdrawSeriesA, title: "QA Wunschserie A", date: "2026-09-02", recurrenceId: `qa-withdraw-whole-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.withdrawSeriesB, title: "QA Wunschserie B", date: "2026-09-09", recurrenceId: `qa-withdraw-whole-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.normalSeriesA, title: "QA Normalserie A", approvalStatus: "confirmed", date: "2026-09-03", recurrenceId: `qa-normal-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.normalSeriesB, title: "QA Normalserie B", approvalStatus: "confirmed", date: "2026-09-10", recurrenceId: `qa-normal-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.mixedSeriesA, title: "QA Mischserie A", date: "2026-09-04", recurrenceId: `qa-mixed-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.mixedSeriesB, title: "QA Mischserie B", approvalStatus: "confirmed", date: "2026-09-11", recurrenceId: `qa-mixed-series-${suffix}`, recurrenceRule: "weekly" },
     ] });
     await prisma.notification.create({ data: { id: randomUUID(), organizationId: actor.organizationId, userId: actor.id, channel: "app", subject: "Terminwunsch freigeben", body: "QA offener Freigabehinweis", linkTarget: "planning-entry", linkTargetId: ids.withdraw, linkLabel: "Termin öffnen" } });
 
@@ -99,6 +109,26 @@ async function main() {
     const withdrawReplay = await requestJson(`/api/jarvis/action-drafts/${withdrawDraft.previewId}`, employeeCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: employee.id, actionId: "planning.request.manage", command: "confirm", revision: withdrawDraft.revision, confirmationText: withdrawDraft.confirmation.requiredText }) });
     assert(withdrawReplay.response.ok && withdrawReplay.payload?.actionDraft?.state === "executed", "Exactly-once-Replay des Rückzugs fehlgeschlagen.");
 
+    const cancelSeriesPrepared = await requestJson("/api/jarvis/chat", managerCookie, { method: "POST", body: JSON.stringify({ actorId: actor.id, message: `Gesamte Terminserie Termin-ID ${ids.cancelSeriesA} absagen. Grund: Kunde hat die komplette Einsatzserie abgesagt` }) });
+    assert(cancelSeriesPrepared.response.ok && cancelSeriesPrepared.payload?.actionDraft?.decision === "cancel_series", `Terminserienentwurf wurde nicht erzeugt: ${JSON.stringify(cancelSeriesPrepared.payload)}`);
+    const cancelSeriesDraft = cancelSeriesPrepared.payload.actionDraft; draftIds.add(cancelSeriesDraft.previewId);
+    assert(cancelSeriesDraft.confirmation.requiredText === `TERMIN-SERIE ABSAGEN ${ids.cancelSeriesA}`, "Exakte Terminserienphrase ist falsch.");
+    assert(cancelSeriesDraft.fields?.some((field) => field.label === "Serienumfang" && field.value === "2 Termine"), "Vollständiger Terminserienumfang fehlt in der Vorschau.");
+    const cancelSeriesResult = await requestJson(`/api/jarvis/action-drafts/${cancelSeriesDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: cancelSeriesDraft.revision, confirmationText: cancelSeriesDraft.confirmation.requiredText }) });
+    assert(cancelSeriesResult.response.ok && cancelSeriesResult.payload?.actionDraft?.state === "executed", "Gesamte Terminserie wurde nicht abgesagt.");
+    const cancelSeriesReplay = await requestJson(`/api/jarvis/action-drafts/${cancelSeriesDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: cancelSeriesDraft.revision, confirmationText: cancelSeriesDraft.confirmation.requiredText }) });
+    assert(cancelSeriesReplay.response.ok && cancelSeriesReplay.payload?.actionDraft?.state === "executed", "Exactly-once-Replay der Terminserienabsage fehlgeschlagen.");
+
+    const withdrawSeriesPrepared = await requestJson("/api/jarvis/chat", employeeCookie, { method: "POST", body: JSON.stringify({ actorId: employee.id, message: `Komplette Terminwunschserie ${ids.withdrawSeriesA} zurückziehen. Grund: Eigene Einsatzserie ist nicht mehr möglich` }) });
+    assert(withdrawSeriesPrepared.response.ok && withdrawSeriesPrepared.payload?.actionDraft?.decision === "withdraw_series", `Terminwunschserienentwurf wurde nicht erzeugt: ${JSON.stringify(withdrawSeriesPrepared.payload)}`);
+    const withdrawSeriesDraft = withdrawSeriesPrepared.payload.actionDraft; draftIds.add(withdrawSeriesDraft.previewId);
+    assert(withdrawSeriesDraft.confirmation.requiredText === `TERMINWUNSCH-SERIE ZURÜCKZIEHEN ${ids.withdrawSeriesA}`, "Exakte Terminwunschserienphrase ist falsch.");
+    const withdrawSeriesResult = await requestJson(`/api/jarvis/action-drafts/${withdrawSeriesDraft.previewId}`, employeeCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: employee.id, actionId: "planning.request.manage", command: "confirm", revision: withdrawSeriesDraft.revision, confirmationText: withdrawSeriesDraft.confirmation.requiredText }) });
+    assert(withdrawSeriesResult.response.ok && withdrawSeriesResult.payload?.actionDraft?.state === "executed", `Gesamte eigene Terminwunschserie wurde nicht zurückgezogen: ${JSON.stringify(withdrawSeriesResult.payload)}`);
+
+    const mixedSeries = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: actor.id, entryId: ids.mixedSeriesA, decision: "withdraw_series", reason: "Mischstatus muss sicher sperren" }) });
+    assert(mixedSeries.response.status === 409 && mixedSeries.payload?.code === "mixed_series_status", "Gemischter Serienstatus wurde nicht fail-closed gesperrt.");
+
     const bypass = await requestJson("/api/planning-entries", managerCookie, { method: "POST", body: JSON.stringify({ actorUserId: actor.id, id: ids.bypass, approvalStatus: "confirmed" }) });
     assert(bypass.response.status === 409, "Der alte POST-Weg konnte einen Terminwunsch bestätigen.");
     const preflight = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: actor.id, entryId: ids.normal, decision: "approve" }) });
@@ -118,6 +148,13 @@ async function main() {
     const withdrawNormalRequestId = randomUUID();
     const withdrawNormal = await requestJson("/api/planning-entries", employeeCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-execute", requestId: withdrawNormalRequestId, expectedFingerprint: withdrawPreflight.payload.evaluation.fingerprint, actorUserId: employee.id, entryId: ids.withdrawNormal, decision: "withdraw", reason: "Eigener Einsatz ist nicht mehr möglich" }) });
     assert(withdrawNormal.response.ok && withdrawNormal.payload?.result?.approvalStatus === "withdrawn", "Gemeinsame Normalroute hat den Terminwunsch nicht zurückgezogen.");
+    const normalSeriesPreflight = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: actor.id, entryId: ids.normalSeriesA, decision: "cancel_series", reason: "Normaloberfläche sagt komplette Serie ab" }) });
+    assert(normalSeriesPreflight.response.ok && normalSeriesPreflight.payload?.evaluation?.series?.count === 2, "Normalrouten-Serienprüfung fehlt.");
+    const normalSeriesRequestId = randomUUID();
+    const normalSeriesResult = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-execute", requestId: normalSeriesRequestId, expectedFingerprint: normalSeriesPreflight.payload.evaluation.fingerprint, actorUserId: actor.id, entryId: ids.normalSeriesA, decision: "cancel_series", reason: "Normaloberfläche sagt komplette Serie ab" }) });
+    assert(normalSeriesResult.response.ok && normalSeriesResult.payload?.result?.affectedEntryIds?.length === 2, "Gemeinsame Normalroute hat nicht die komplette Serie abgesagt.");
+    const normalSeriesReplay = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-execute", requestId: normalSeriesRequestId, expectedFingerprint: normalSeriesPreflight.payload.evaluation.fingerprint, actorUserId: actor.id, entryId: ids.normalSeriesA, decision: "cancel_series", reason: "Normaloberfläche sagt komplette Serie ab" }) });
+    assert(normalSeriesReplay.response.ok && normalSeriesReplay.payload?.result?.replayed === true, "Service-Replay der normalen Terminserienabsage fehlgeschlagen.");
     const withdrawDeleteBypass = await requestJson(`/api/planning-entries?id=${encodeURIComponent(ids.withdrawBypass)}&actorUserId=${encodeURIComponent(employee.id)}`, employeeCookie, { method: "DELETE" });
     assert(withdrawDeleteBypass.response.status === 409, "Der alte DELETE-Weg konnte einen offenen Terminwunsch zurückziehen.");
 
@@ -130,8 +167,10 @@ async function main() {
     assert(Boolean(rows.find((row) => row.id === ids.withdraw)?.deletedAt), "JARVIS-Rückzug wurde nicht logisch markiert.");
     assert(Boolean(rows.find((row) => row.id === ids.withdrawNormal)?.deletedAt), "Normalrouten-Rückzug wurde nicht logisch markiert.");
     assert(!rows.find((row) => row.id === ids.withdrawBypass)?.deletedAt, "Alte DELETE-Route hat den offenen Wunsch verändert.");
+    for (const id of [ids.cancelSeriesA, ids.cancelSeriesB, ids.withdrawSeriesA, ids.withdrawSeriesB, ids.normalSeriesA, ids.normalSeriesB]) assert(Boolean(rows.find((row) => row.id === id)?.deletedAt), `Serieneintrag ${id} wurde nicht logisch entfernt.`);
+    assert(!rows.find((row) => row.id === ids.mixedSeriesA)?.deletedAt && !rows.find((row) => row.id === ids.mixedSeriesB)?.deletedAt, "Gemischte Serie wurde trotz Sperre verändert.");
     assert(rows.find((row) => row.id === ids.bypass)?.approvalStatus === "requested", "Altrouten-Sperre hat den Wunsch verändert.");
-    const histories = await prisma.planningEntryHistory.findMany({ where: { planningEntryId: { in: [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal, ids.withdraw, ids.withdrawNormal] } } });
+    const histories = await prisma.planningEntryHistory.findMany({ where: { planningEntryId: { in: entryIds } } });
     assert(histories.filter((item) => item.planningEntryId === ids.approve && item.eventType === "approved").length === 1, "Freigabehistorie ist nicht exactly-once.");
     assert(histories.filter((item) => item.planningEntryId === ids.reject && item.eventType === "rejected").length === 1, "Ablehnungshistorie ist nicht exactly-once.");
     assert(histories.filter((item) => item.planningEntryId === ids.cancel && item.eventType === "cancelled").length === 1, `JARVIS-Absagehistorie ist nicht exactly-once: ${JSON.stringify(histories.filter((item) => item.planningEntryId === ids.cancel))}`);
@@ -142,7 +181,9 @@ async function main() {
     assert(Boolean(resolvedRequestNotice?.resolvedAt), "Offener Freigabehinweis wurde beim Rückzug nicht aufgelöst.");
     const notificationCount = await prisma.notification.count({ where: { linkTargetId: { in: [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal] }, subject: { in: ["Terminwunsch bestätigt", "Terminwunsch abgelehnt", "Planungstermin abgesagt"] } } });
     assert(notificationCount >= 5, "Mitarbeiterhinweise fehlen.");
-    result = { ok: true, baseUrl, actorRole: actor.role, roleBoundary: "verified", tenantBoundary: "verified", selfWithdrawal: true, exactPhrase: true, exactlyOnce: true, normalApiSharedService: true, oldRouteBypassBlocked: true, oldDeleteBypassBlocked: true, employeeNotifications: notificationCount, executions: histories.length };
+    for (const id of [ids.cancelSeriesA, ids.cancelSeriesB, ids.normalSeriesA, ids.normalSeriesB]) assert(histories.filter((item) => item.planningEntryId === id && item.eventType === "series_cancelled").length === 1, `Serienabsagehistorie für ${id} ist nicht exactly-once.`);
+    for (const id of [ids.withdrawSeriesA, ids.withdrawSeriesB]) assert(histories.filter((item) => item.planningEntryId === id && item.eventType === "series_withdrawn").length === 1, `Serienrückzugshistorie für ${id} ist nicht exactly-once.`);
+    result = { ok: true, baseUrl, actorRole: actor.role, roleBoundary: "verified", tenantBoundary: "verified", selfWithdrawal: true, wholeSeriesCancellation: true, wholeSeriesWithdrawal: true, mixedSeriesFailClosed: true, exactPhrase: true, exactlyOnce: true, normalApiSharedService: true, oldRouteBypassBlocked: true, oldDeleteBypassBlocked: true, employeeNotifications: notificationCount, executions: histories.length };
   } finally {
     await prisma.notification.deleteMany({ where: { linkTargetId: { in: entryIds } } });
     await prisma.projectLogbookEntry.deleteMany({ where: { projectId: { in: projectIds }, source: "planning-request-decision" } });
