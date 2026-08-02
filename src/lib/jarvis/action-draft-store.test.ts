@@ -133,6 +133,18 @@ const fake = vi.hoisted(() => {
     personnelChanges.push(row);
     return row;
   });
+  const employeeCostChanges: Array<Record<string, any>> = [];
+  const evaluateEmployeeCostChange = vi.fn(async ({ userId, changes }: { userId: string; changes: Record<string, number> }) => ({
+    employee: { id: userId, label: "Zweite Person", email: "zweite@example.test", isActive: true },
+    cost: { id: "cost-2", updatedAt: "2026-08-02T04:00:00.000Z", exists: true },
+    values: { monthlySalary: changes.monthlySalary ?? 3000, fullCostFactor: changes.fullCostFactor ?? 1.35, annualHours: changes.annualHours ?? 2080, vacationDays: changes.vacationDays ?? 30, trainingDays: changes.trainingDays ?? 0, sickDays: changes.sickDays ?? 10, hoursPerDay: changes.hoursPerDay ?? 8 },
+    changes: Object.entries(changes).map(([field, after]) => ({ field, label: field, before: field === "monthlySalary" ? 3000 : 1.35, after })),
+    metrics: { annualFullCost: 51840, monthlyFullCost: 4320, deductionDays: 40, deductionHours: 320, sellableAnnualHours: 1760, sellableMonthlyHours: 146.67, hourlyCost: 29.45 },
+    impacts: [{ key: "historicalSnapshots", label: "historische Zeiten mit Kostensnapshot", count: 4 }, { key: "unratedTimes", label: "historische Zeiten ohne Kostensnapshot", count: 0 }, { key: "activeStamps", label: "laufende Stempelungen", count: 1 }],
+    checks: [{ key: "calculation", label: "Interner Kostensatz", status: "ok", detail: "29,45 €" }],
+    warnings: ["Historische Kostensnapshots bleiben unverändert."], blockingIssues: [], fingerprint: "5".repeat(64),
+  }));
+  const executeEmployeeCostChange = vi.fn(async (input: Record<string, any>) => { employeeCostChanges.push(input); return { id: "cost-2", userId: input.userId }; });
   const projectLifecycleChanges: Array<Record<string, any>> = [];
   const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
     reason,
@@ -730,6 +742,7 @@ const fake = vi.hoisted(() => {
       contactDeletions.length = 0;
       catalogChanges.length = 0;
       personnelChanges.length = 0;
+      employeeCostChanges.length = 0;
       projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
@@ -756,6 +769,8 @@ const fake = vi.hoisted(() => {
       executeCatalogManagement.mockClear();
       evaluatePersonnelChange.mockClear();
       executePersonnelChange.mockClear();
+      evaluateEmployeeCostChange.mockClear();
+      executeEmployeeCostChange.mockClear();
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
       createProjectLogbookEntry.mockClear();
@@ -808,6 +823,9 @@ const fake = vi.hoisted(() => {
     personnelChanges,
     evaluatePersonnelChange,
     executePersonnelChange,
+    employeeCostChanges,
+    evaluateEmployeeCostChange,
+    executeEmployeeCostChange,
     evaluateProjectStatusChange,
     executeProjectStatusChange,
     projectLifecycleChanges,
@@ -859,6 +877,14 @@ vi.mock("@/lib/users/personnel-management-service", () => ({
   executePersonnelChange: fake.executePersonnelChange,
   getPersonnelManagementConfirmationText: (email: string) => `MITARBEITER ÄNDERN ${email.toLowerCase()}`,
   PersonnelManagementServiceError: class PersonnelManagementServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
+vi.mock("@/lib/employee-costs/employee-cost-management-service", () => ({
+  evaluateEmployeeCostChange: fake.evaluateEmployeeCostChange,
+  executeEmployeeCostChange: fake.executeEmployeeCostChange,
+  getEmployeeCostConfirmationText: (email: string) => `LOHNKOSTEN ÄNDERN ${email.toLowerCase()}`,
+  EmployeeCostManagementServiceError: class EmployeeCostManagementServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
 }));
@@ -1055,6 +1081,9 @@ import {
   cancelJarvisPersonnelManagementDraft,
   confirmJarvisPersonnelManagementDraft,
   createPersistedJarvisPersonnelManagementDraft,
+  cancelJarvisEmployeeCostManagementDraft,
+  confirmJarvisEmployeeCostManagementDraft,
+  createPersistedJarvisEmployeeCostManagementDraft,
   cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft,
   createPersistedJarvisProjectStatusDraft,
@@ -3100,6 +3129,36 @@ describe("persistent JARVIS personnel-management drafts", () => {
     const cancellable = await createPersistedJarvisPersonnelManagementDraft({ ...binding(), now: baseNow, preview: preview("personnel-cancel") });
     expect((await cancelJarvisPersonnelManagementDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
     expect(fake.personnelChanges).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS employee-cost-management drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string) => ({
+    version: 1 as const, previewId, actionId: "payroll.manage" as const,
+    actionTitle: "Lohn- und Mitarbeiterkosten kontrolliert ändern", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { userId: "user-2", values: { monthlySalary: 3200 } },
+    execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("changes the bound employee costs exactly once after the exact phrase", async () => {
+    const created = await createPersistedJarvisEmployeeCostManagementDraft({ ...binding(), now: baseNow, preview: preview("employee-cost-1") });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", employeeId: "user-2", metrics: { hourlyCost: 29.45 }, confirmation: { requiredText: "LOHNKOSTEN ÄNDERN zweite@example.test" } });
+    const first = await confirmJarvisEmployeeCostManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisEmployeeCostManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("user-2");
+    expect(fake.employeeCostChanges).toHaveLength(1);
+    expect(fake.executeEmployeeCostChange).toHaveBeenCalledWith(expect.objectContaining({ requestId: "employee-cost-1", expectedFingerprint: "5".repeat(64), userId: "user-2", source: "jarvis" }));
+  });
+
+  it("rejects an inexact phrase and cancels without changing costs", async () => {
+    const wrong = await createPersistedJarvisEmployeeCostManagementDraft({ ...binding(), now: baseNow, preview: preview("employee-cost-wrong") });
+    await expect(confirmJarvisEmployeeCostManagementDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisEmployeeCostManagementDraft({ ...binding(), now: baseNow, preview: preview("employee-cost-cancel") });
+    expect((await cancelJarvisEmployeeCostManagementDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    expect(fake.employeeCostChanges).toHaveLength(0);
   });
 });
 

@@ -108,6 +108,7 @@ import {
   createPersistedJarvisContactDeletionDraft,
   createPersistedJarvisCatalogManagementDraft,
   createPersistedJarvisPersonnelManagementDraft,
+  createPersistedJarvisEmployeeCostManagementDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -192,6 +193,10 @@ import {
   looksLikePersonnelManagementRequest,
   looksLikeRestrictedPersonnelManagementRequest,
 } from "@/lib/jarvis/personnel-management-intake";
+import {
+  extractEmployeeCostManagementRequest,
+  looksLikeEmployeeCostManagementRequest,
+} from "@/lib/jarvis/employee-cost-management-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -1092,6 +1097,30 @@ async function buildJarvisPersonnelManagementDraft(input: {
     return { type: "answer" as const, topicId: "action.personnel-management", message: "Ich habe die Personaländerung serverseitig geprüft. Kontrolliere Zielmitarbeiter, Feldänderungen, Rolle, bestehende Aufgaben, Planungen, Zeiten und die mögliche Abmeldung vorhandener Sitzungen. Projekte, Aufgaben, Planungen, Zeiten und Dokumente werden nicht umverteilt. Erst die exakte Bestätigungsphrase ändert die Stammdaten genau einmal.", actionDraft };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.personnel-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Personaländerung konnte nicht sicher vorbereitet werden."} Es wurde nichts geändert.` };
+  }
+}
+
+async function buildJarvisEmployeeCostManagementDraft(input: {
+  question: string; organizationId: string; sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.employee-cost-management.session-required", message: "Für eine Lohnkostenänderung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts geändert." };
+  const details = extractEmployeeCostManagementRequest(input.question);
+  if (!details.employeeEmail) return { type: "clarification" as const, topicId: "action.employee-cost-management.employee-required", message: "Für welchen bestehenden Mitarbeiter sollen die Lohn- und Mitarbeiterkosten geändert werden? Nenne bitte die eindeutige dienstliche E-Mail-Adresse. Es wurde nichts geändert." };
+  if (Object.keys(details.changes).length === 0) return { type: "clarification" as const, topicId: "action.employee-cost-management.changes-required", message: "Welche Kostenwerte sollen geändert werden? Möglich sind Monatsgehalt, Vollkostenfaktor, Jahresstunden, Urlaubs-, Schulungs- und Krankheitstage sowie Stunden pro Arbeitstag. Es wurde nichts geändert." };
+  const permissionProbe = createJarvisActionPreview({ previewId: randomUUID(), actionId: "payroll.manage", payload: { userId: "permission-check", values: details.changes }, organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString() });
+  if (!permissionProbe.ok) return permissionProbe.code === "not_permitted"
+    ? { type: "refusal" as const, topicId: "action.employee-cost-management.refused", message: "Die aktuelle Rollenkombination darf vertrauliche Lohn- und Mitarbeiterkosten nicht anzeigen oder ändern. Es wurden keine Werte offengelegt und nichts geändert." }
+    : { type: "refusal" as const, topicId: `action.employee-cost-management.preview-${permissionProbe.code}`, message: `${permissionProbe.message} Es wurden keine vertraulichen Werte offengelegt und nichts geändert.` };
+  const employees = await prisma.user.findMany({ where: { organizationId: input.organizationId, email: { equals: details.employeeEmail, mode: "insensitive" } }, take: 2, select: { id: true } });
+  if (employees.length !== 1) return { type: employees.length ? "clarification" as const : "refusal" as const, topicId: employees.length ? "action.employee-cost-management.ambiguous" : "action.employee-cost-management.not-found", message: employees.length ? `Die dienstliche E-Mail ${details.employeeEmail} ist nicht eindeutig. Es wurde nichts geändert.` : `Der Mitarbeiter ${details.employeeEmail} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts geändert.` };
+  const preview = createJarvisActionPreview({ previewId: randomUUID(), actionId: "payroll.manage", payload: { userId: employees[0].id, values: details.changes }, organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString() });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.employee-cost-management.refused", message: `${preview.message} Es wurden keine vertraulichen Werte offengelegt und nichts geändert.` };
+  try {
+    const actionDraft = await createPersistedJarvisEmployeeCostManagementDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return { type: "answer" as const, topicId: "action.employee-cost-management", message: "Ich habe die Lohnkostenänderung serverseitig geprüft. Kontrolliere alte und neue Werte, Vollkosten, verkaufbare Stunden, internen Stundensatz und die Wirkung auf laufende sowie historische Zeiten. Historische Kostensnapshots werden niemals rückwirkend verändert. Erst die exakte Bestätigungsphrase ändert die Kostenwerte genau einmal.", actionDraft };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.employee-cost-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Lohnkostenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts geändert.` };
   }
 }
 
@@ -3115,6 +3144,12 @@ export async function POST(req: Request) {
         sessionId: actorResult.sessionId,
         accessProfile,
       }),
+      "management"
+    );
+  }
+  if (looksLikeEmployeeCostManagementRequest(message)) {
+    return respond(
+      await buildJarvisEmployeeCostManagementDraft({ question: message, organizationId: organization.id, sessionId: actorResult.sessionId, accessProfile }),
       "management"
     );
   }

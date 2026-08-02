@@ -288,6 +288,15 @@ async function main() {
     },
     select: { id: true, firstName: true, email: true, role: true, updatedAt: true },
   });
+  const employeeCostTarget = await prisma.employeeCostCalculation.create({
+    data: {
+      id: randomUUID(), organizationId: actor.organizationId, userId: personnelTarget.id,
+      monthlySalary: 3000, fullCostFactor: 1.35, annualHours: 2080,
+      vacationDays: 30, trainingDays: 0, sickDays: 10, hoursPerDay: 8,
+      updatedByUserId: actor.id, updatedByName: "QA Ausgangsstand",
+    },
+    select: { id: true, monthlySalary: true, fullCostFactor: true, annualHours: true, vacationDays: true, trainingDays: true, sickDays: true, hoursPerDay: true, updatedAt: true },
+  });
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -319,6 +328,7 @@ async function main() {
   let contactDeletionDraftPrepared = false;
   let catalogManagementDraftPrepared = false;
   let personnelManagementDraftPrepared = false;
+  let employeeCostManagementDraftPrepared = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -344,6 +354,7 @@ async function main() {
         const isContactDeletionCase = item.question.includes("QAD-500");
         const isCatalogManagementCase = item.question.includes("QAK-600");
         const isPersonnelManagementCase = item.question.includes("QAP-700");
+        const isEmployeeCostManagementCase = item.question.includes("QAL-800");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -382,6 +393,8 @@ async function main() {
               ? `Lege eine neue Leistung an: Bezeichnung: QA JARVIS Katalogleistung ${now.getTime()}; Einkaufspreis: 50; Verkaufspreis: 100; Umsatzsteuer: 19; Einheit: Std; Planungsrelevant: ja; Planminuten je Einheit: 60.`
             : isPersonnelManagementCase
               ? `Ändere Mitarbeiter ${personnelTarget.email}: Vorname: QA-Geprüft; Mobil: +49 171 1234567.`
+            : isEmployeeCostManagementCase
+              ? `Ändere Lohnkosten für ${personnelTarget.email}: Monatsgehalt: 3.200; Vollkostenfaktor: 1,4.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -501,6 +514,15 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Personalfrage hat keine vollständig prüfbare, eindeutige und unblockierte Änderungsvorschau erzeugt." });
           } else {
             personnelManagementDraftPrepared = true;
+          }
+        }
+        if (isEmployeeCostManagementCase) {
+          if (payload.actionDraft?.actionId !== "payroll.manage") {
+            failures.push({ id: item.id, status: response.status, error: "Die Lohnkostenfrage hat keine kontrollierte payroll.manage-Vorschau erzeugt." });
+          } else if (payload.actionDraft.state !== "awaiting_confirmation" || payload.actionDraft.confirmation?.enabled !== true || payload.actionDraft.blockingIssues?.length || payload.actionDraft.employeeId !== personnelTarget.id || payload.actionDraft.changes?.length !== 2 || payload.actionDraft.metrics?.hourlyCost <= 0) {
+            failures.push({ id: item.id, status: response.status, error: "Die Lohnkostenfrage hat keine vollständig berechnete, eindeutige und unblockierte Änderungsvorschau erzeugt." });
+          } else {
+            employeeCostManagementDraftPrepared = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -939,6 +961,11 @@ async function main() {
     if (!currentPersonnelTarget || currentPersonnelTarget.firstName !== personnelTarget.firstName || currentPersonnelTarget.email !== personnelTarget.email || currentPersonnelTarget.role !== personnelTarget.role || currentPersonnelTarget.updatedAt.toISOString() !== personnelTarget.updatedAt.toISOString() || personnelAuditWrites !== 0) {
       failures.push({ id: "side-effect-personnel-management", status: 0, error: "Die 110-Fragen-Prüfung hat unerwartet Personalstammdaten, Rolle oder Audit verändert." });
     }
+    const currentEmployeeCost = await prisma.employeeCostCalculation.findUnique({ where: { id: employeeCostTarget.id } });
+    const employeeCostAuditWrites = await prisma.auditLog.count({ where: { organizationId: actor.organizationId, entityType: "employeeCostCalculation", entityId: employeeCostTarget.id, action: "employee-cost.changed", createdAt: { gte: now } } });
+    if (!currentEmployeeCost || currentEmployeeCost.monthlySalary !== employeeCostTarget.monthlySalary || currentEmployeeCost.fullCostFactor !== employeeCostTarget.fullCostFactor || currentEmployeeCost.updatedAt.toISOString() !== employeeCostTarget.updatedAt.toISOString() || employeeCostAuditWrites !== 0) {
+      failures.push({ id: "side-effect-employee-cost-management", status: 0, error: "Die 110-Fragen-Prüfung hat unerwartet Lohnkosten oder Kosten-Audit verändert." });
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -974,6 +1001,8 @@ async function main() {
     await prisma.auditLog.deleteMany({ where: { entityType: "contact", entityId: contactDeletionContact.id } });
     await prisma.contact.deleteMany({ where: { id: contactDeletionContact.id, organizationId: actor.organizationId } });
     await prisma.auditLog.deleteMany({ where: { entityType: "user", entityId: personnelTarget.id } });
+    await prisma.auditLog.deleteMany({ where: { entityType: "employeeCostCalculation", entityId: employeeCostTarget.id } });
+    await prisma.employeeCostCalculation.deleteMany({ where: { id: employeeCostTarget.id, organizationId: actor.organizationId } });
     await prisma.user.deleteMany({ where: { id: personnelTarget.id, organizationId: actor.organizationId } });
     await prisma.authSession.deleteMany({ where: { id: sessionId } });
   }
@@ -1002,6 +1031,7 @@ async function main() {
     contactDeletionDraftPrepared,
     catalogManagementDraftPrepared,
     personnelManagementDraftPrepared,
+    employeeCostManagementDraftPrepared,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
@@ -1020,6 +1050,7 @@ async function main() {
     qaProjectStatusProjectRemaining: await prisma.workPilotProject.count({ where: { id: projectStatusProject.id } }),
     qaContactDeletionContactRemaining: await prisma.contact.count({ where: { id: contactDeletionContact.id } }),
     qaPersonnelTargetRemaining: await prisma.user.count({ where: { id: personnelTarget.id } }),
+    qaEmployeeCostTargetRemaining: await prisma.employeeCostCalculation.count({ where: { id: employeeCostTarget.id } }),
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

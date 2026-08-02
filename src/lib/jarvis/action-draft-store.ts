@@ -33,6 +33,7 @@ import {
   type JarvisContactDeletionDraftView,
   type JarvisCatalogManagementDraftView,
   type JarvisPersonnelManagementDraftView,
+  type JarvisEmployeeCostManagementDraftView,
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
@@ -63,6 +64,7 @@ import {
   canDeleteContacts,
   canManageCatalogItems,
   canManageUsers,
+  canAccessEmployeeCosts,
   canManageOffers,
   canDeleteOffers,
   canDeleteInvoices,
@@ -224,6 +226,13 @@ import {
   PersonnelManagementServiceError,
   type PersonnelManagementValues,
 } from "@/lib/users/personnel-management-service";
+import {
+  EmployeeCostManagementServiceError,
+  evaluateEmployeeCostChange,
+  executeEmployeeCostChange,
+  getEmployeeCostConfirmationText,
+  type EmployeeCostValues,
+} from "@/lib/employee-costs/employee-cost-management-service";
 import {
   createConfirmedInvoiceDraft,
   evaluateInvoiceDraft,
@@ -984,6 +993,22 @@ const personnelManagementContextSchema = z.object({
   changes: z.array(z.object({ field: z.string(), label: z.string(), before: z.string(), after: z.string() }).strict()),
   impacts: z.array(z.object({ key: z.string(), label: z.string(), count: z.number().int().min(0) }).strict()),
   roleSessionsWillBeRevoked: z.boolean(),
+  checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string() }).strict()),
+  warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
+}).strict();
+
+const employeeCostValuesSchema = z.object({
+  monthlySalary: z.number().optional(), fullCostFactor: z.number().optional(), annualHours: z.number().optional(),
+  vacationDays: z.number().optional(), trainingDays: z.number().optional(), sickDays: z.number().optional(), hoursPerDay: z.number().optional(),
+}).strict();
+const employeeCostPayloadSchema = z.object({ userId: z.string().trim().min(1).max(120), values: employeeCostValuesSchema }).strict();
+const employeeCostContextSchema = z.object({
+  employee: z.object({ id: z.string(), label: z.string(), email: z.string(), isActive: z.boolean() }).strict(),
+  cost: z.object({ id: z.string(), updatedAt: z.string(), exists: z.boolean() }).strict(),
+  values: employeeCostValuesSchema.required(),
+  changes: z.array(z.object({ field: z.string(), label: z.string(), before: z.number(), after: z.number() }).strict()),
+  metrics: z.object({ annualFullCost: z.number(), monthlyFullCost: z.number(), deductionDays: z.number(), deductionHours: z.number(), sellableAnnualHours: z.number(), sellableMonthlyHours: z.number(), hourlyCost: z.number() }).strict(),
+  impacts: z.array(z.object({ key: z.string(), label: z.string(), count: z.number().int().min(0) }).strict()),
   checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string() }).strict()),
   warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
 }).strict();
@@ -4225,6 +4250,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "personnel.manage") {
     return getJarvisPersonnelManagementDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "payroll.manage") {
+    return getJarvisEmployeeCostManagementDraft(previewId, binding, now);
   }
   if (draft?.actionId === "project.status.change") {
     return getJarvisProjectStatusDraft(previewId, binding, now);
@@ -10402,6 +10430,101 @@ export async function confirmJarvisPersonnelManagementDraft(previewId: string, b
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof PersonnelManagementServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : error.code === "conflict" ? "conflict" : "invalid_input", error.message, error.code === "invalid_input" ? 400 : 409);
     throw new JarvisActionDraftError("execution_failed", "Die Personalstammdaten wurden nicht geändert; die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayManageEmployeeCosts(binding: JarvisTaskDraftBinding) {
+  return canManageUsers(binding.profile.sessionActor) && canAccessEmployeeCosts(binding.profile.sessionActor) && canManageUsers(binding.profile.effectiveActor) && canAccessEmployeeCosts(binding.profile.effectiveActor);
+}
+
+function validateEmployeeCostManagementBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId || draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId || draft.impersonating !== binding.profile.isImpersonating) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Lohnkostenänderung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  }
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Lohnkostenprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  if (!integrityMatches(draft)) throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Lohnkostenänderung ist ungültig.", 409);
+  const payload = employeeCostPayloadSchema.safeParse(draft.payload);
+  const context = employeeCostContextSchema.safeParse(draft.context);
+  if (draft.actionId !== "payroll.manage" || !payload.success || !context.success || hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash) throw new JarvisActionDraftError("integrity_failed", "Lohnkostenänderung oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundEmployeeCostManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Lohnkostenänderung wurde nicht gefunden.", 404);
+  validateEmployeeCostManagementBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validateEmployeeCostManagementBinding(current, binding) };
+}
+
+function toJarvisEmployeeCostManagementDraftView(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding): JarvisEmployeeCostManagementDraftView {
+  const { context } = validateEmployeeCostManagementBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayManageEmployeeCosts(binding);
+  const ready = state === "awaiting_confirmation" && permitted && context.blockingIssues.length === 0;
+  const reason: JarvisEmployeeCostManagementDraftView["confirmation"]["reason"] = state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" : state === "executing" ? "executing" : !permitted ? "not_permitted" : context.blockingIssues.length ? "blocked" : "ready";
+  return {
+    version: 2, previewId: draft.id, actionId: "payroll.manage", title: "Lohn- und Mitarbeiterkosten kontrolliert ändern",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), employeeId: context.employee.id, employeeEmail: context.employee.email,
+    fields: [{ label: "Mitarbeiter", value: context.employee.label }, { label: "Dienstliche E-Mail", value: context.employee.email }, { label: "Kostenstand", value: context.cost.exists ? "vorhanden" : "Standardwerte" }],
+    changes: context.changes, metrics: context.metrics, impacts: context.impacts, checks: context.checks, warnings: context.warnings,
+    blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Diese Rollenkombination darf Lohn- und Mitarbeiterkosten nicht verwalten."] : [])],
+    confirmation: { enabled: ready, reason, requiredText: getEmployeeCostConfirmationText(context.employee.email) },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "user" as const, entityId: draft.resultEntityId, label: "Mitarbeiterkosten öffnen" } } : {}),
+  };
+}
+
+export async function createPersistedJarvisEmployeeCostManagementDraft(input: { preview: JarvisActionPreview<"payroll.manage">; organizationId: string; sessionId: string; profile: JarvisAccessProfile; now?: Date }) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Lohnkostenänderung ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayManageEmployeeCosts(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Lohn- und Mitarbeiterkosten nicht verwalten.", 403);
+  const now = input.now ?? new Date(); const payload = employeeCostPayloadSchema.parse(input.preview.payload); const actorIds = getActorIds(input.profile);
+  const evaluation = await evaluateEmployeeCostChange({ organizationId: input.organizationId, userId: payload.userId, changes: payload.values as EmployeeCostValues });
+  const context = employeeCostContextSchema.parse(evaluation); const state = context.blockingIssues.length ? "awaiting_input" : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = { id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId, sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role, effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role, impersonating: input.profile.isImpersonating, actionId: "payroll.manage", state, revision: 1, payloadHash: hashJson(payload), contextHash: hashJson(context), expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null, executedAt: null, resultEntityType: null, resultEntityId: null, lastErrorCode: context.blockingIssues.length ? "employee_cost_validation" : null };
+  const created = await prisma.$transaction(async (tx) => { const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } }); await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked", reasonCode: context.blockingIssues.length ? "employee_cost_validation" : undefined }); return draft; });
+  return toJarvisEmployeeCostManagementDraftView(created, input);
+}
+
+export async function getJarvisEmployeeCostManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) { const { draft } = await loadBoundEmployeeCostManagementDraft(previewId, binding, now); return toJarvisEmployeeCostManagementDraftView(draft, binding); }
+
+export async function cancelJarvisEmployeeCostManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundEmployeeCostManagementDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisEmployeeCostManagementDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Lohnkostenänderung kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Lohnkostenänderung wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => { const changed = await tx.jarvisActionDraft.updateMany({ where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag }, data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) } }); if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Lohnkostenänderung wurde bereits verändert.", 409); const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } }); await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" }); return current; });
+  return toJarvisEmployeeCostManagementDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisEmployeeCostManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundEmployeeCostManagementDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisEmployeeCostManagementDraftView(loaded.draft, binding);
+  const requiredText = getEmployeeCostConfirmationText(loaded.context.employee.email);
+  if (confirmationText.trim() !== requiredText) throw new JarvisActionDraftError("invalid_input", `Gib zur Bestätigung exakt „${requiredText}“ ein.`, 400);
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Lohnkostenvorschau darf bestätigt werden.", 409);
+  if (!mayManageEmployeeCosts(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Lohn- und Mitarbeiterkosten nicht verwalten.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } }); if (!current) throw new JarvisActionDraftError("not_found", "Die Lohnkostenänderung wurde nicht gefunden.", 404);
+      const parsed = validateEmployeeCostManagementBinding(current, binding); if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Lohnkostenänderung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true, firstName: true, lastName: true, email: true } });
+      if (!actor || !canManageUsers(actor) || !canAccessEmployeeCosts(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Lohnkostenberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null }; const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } }); if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Lohnkostenänderung wird bereits verarbeitet.", 409);
+      const actorName = [actor.firstName, actor.lastName].map((value) => String(value ?? "").trim()).filter(Boolean).join(" ") || actor.email;
+      await executeEmployeeCostChange({ tx, organizationId: binding.organizationId, userId: parsed.payload.userId, actorId: actor.id, actorName, changes: parsed.payload.values as EmployeeCostValues, requestId: current.id, expectedFingerprint: parsed.context.fingerprint, source: "jarvis" });
+      const executedAt = new Date(); const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "user", resultEntityId: parsed.payload.userId }; const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "user", resultEntityId: parsed.payload.userId, integrityTag: createIntegrityTag(executedData) } }); await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: parsed.payload.userId, entityType: "user" } }); return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisEmployeeCostManagementDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") { const latest = await loadBoundEmployeeCostManagementDraft(previewId, binding, now); if (latest.draft.state === "executed") return toJarvisEmployeeCostManagementDraftView(latest.draft, binding); }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof EmployeeCostManagementServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : error.code === "conflict" ? "conflict" : "invalid_input", error.message, error.code === "invalid_input" ? 400 : 409);
+    throw new JarvisActionDraftError("execution_failed", "Die Lohn- und Mitarbeiterkosten wurden nicht geändert; die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

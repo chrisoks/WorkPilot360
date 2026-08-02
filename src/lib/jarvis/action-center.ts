@@ -16,6 +16,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "contact.delete",
   "catalog.manage",
   "personnel.manage",
+  "payroll.manage",
   "planning.prepare",
   "time.prepare",
   "project-logbook.prepare",
@@ -266,6 +267,18 @@ const personnelManagementPreviewPayloadSchema = z.object({
   if (Object.keys(payload.values).length === 0) context.addIssue({ code: "custom", path: ["values"], message: "Mindestens ein Personalstammdatenfeld ist erforderlich." });
 });
 
+const employeeCostManagementValuesSchema = z.object({
+  monthlySalary: z.number().optional(), fullCostFactor: z.number().optional(), annualHours: z.number().optional(),
+  vacationDays: z.number().optional(), trainingDays: z.number().optional(), sickDays: z.number().optional(), hoursPerDay: z.number().optional(),
+}).strict();
+
+const employeeCostManagementPreviewPayloadSchema = z.object({
+  userId: boundedId,
+  values: employeeCostManagementValuesSchema,
+}).strict().superRefine((payload, context) => {
+  if (Object.keys(payload.values).length === 0) context.addIssue({ code: "custom", path: ["values"], message: "Mindestens ein Mitarbeiterkostenfeld ist erforderlich." });
+});
+
 const offerPreviewLineSchema = z
   .object({
     catalogItemId: boundedId.optional(),
@@ -417,6 +430,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "contact.delete": contactDeletionPreviewPayloadSchema,
   "catalog.manage": catalogManagementPreviewPayloadSchema,
   "personnel.manage": personnelManagementPreviewPayloadSchema,
+  "payroll.manage": employeeCostManagementPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
@@ -446,6 +460,7 @@ export type JarvisActionPreviewPayloadMap = {
   "contact.delete": z.infer<typeof contactDeletionPreviewPayloadSchema>;
   "catalog.manage": z.infer<typeof catalogManagementPreviewPayloadSchema>;
   "personnel.manage": z.infer<typeof personnelManagementPreviewPayloadSchema>;
+  "payroll.manage": z.infer<typeof employeeCostManagementPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "project-logbook.prepare": z.infer<
@@ -1281,6 +1296,20 @@ export type JarvisPersonnelManagementDraftView = Omit<
   changes: Array<{ field: string; label: string; before: string; after: string }>;
   impacts: Array<{ key: string; label: string; count: number }>;
   roleSessionsWillBeRevoked: boolean;
+  result?: { entityType: "user"; entityId: string; label: string };
+};
+
+export type JarvisEmployeeCostManagementDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus" | "projectId" | "result"
+> & {
+  actionId: "payroll.manage";
+  title: "Lohn- und Mitarbeiterkosten kontrolliert ändern";
+  employeeId: string;
+  employeeEmail: string;
+  changes: Array<{ field: string; label: string; before: number; after: number }>;
+  metrics: { annualFullCost: number; monthlyFullCost: number; deductionDays: number; deductionHours: number; sellableAnnualHours: number; sellableMonthlyHours: number; hourlyCost: number };
+  impacts: Array<{ key: string; label: string; count: number }>;
   result?: { entityType: "user"; entityId: string; label: string };
 };
 

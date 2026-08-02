@@ -1,9 +1,18 @@
 import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canAccessEmployeeCosts } from "@/lib/permissions";
+import {
+  employeeCostDefaults,
+  EmployeeCostManagementServiceError,
+  type EmployeeCostField,
+  type EmployeeCostValues,
+  evaluateEmployeeCostChange,
+  executeEmployeeCostChange,
+} from "@/lib/employee-costs/employee-cost-management-service";
 
 type EmployeeCostRow = {
   id: string;
@@ -22,20 +31,7 @@ type EmployeeCostRow = {
   updatedAt: Date;
 };
 
-const defaultCost = {
-  monthlySalary: 0,
-  fullCostFactor: 1.35,
-  annualHours: 2080,
-  vacationDays: 30,
-  trainingDays: 0,
-  sickDays: 10,
-  hoursPerDay: 8,
-};
-
-function parseNumber(value: unknown, fallback: number) {
-  const number = Number(value);
-  return Number.isFinite(number) && number >= 0 ? number : fallback;
-}
+const defaultCost = employeeCostDefaults;
 
 function formatCost(row: EmployeeCostRow | null, userId: string) {
   return {
@@ -165,60 +161,34 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Mitarbeiter nicht gefunden." }, { status: 404 });
   }
 
-  const monthlySalary = parseNumber(body.monthlySalary, defaultCost.monthlySalary);
-  const fullCostFactor = parseNumber(body.fullCostFactor, defaultCost.fullCostFactor);
-  const annualHours = parseNumber(body.annualHours, defaultCost.annualHours);
-  const vacationDays = parseNumber(body.vacationDays, defaultCost.vacationDays);
-  const trainingDays = parseNumber(body.trainingDays, defaultCost.trainingDays);
-  const sickDays = parseNumber(body.sickDays, defaultCost.sickDays);
-  const hoursPerDay = parseNumber(body.hoursPerDay, defaultCost.hoursPerDay);
+  const changes: EmployeeCostValues = {};
+  for (const field of Object.keys(employeeCostDefaults) as EmployeeCostField[]) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) changes[field] = body[field];
+  }
 
-  const rows = await prisma.$queryRaw<EmployeeCostRow[]>`
-    INSERT INTO "EmployeeCostCalculation" (
-      id,
-      "organizationId",
-      "userId",
-      "monthlySalary",
-      "fullCostFactor",
-      "annualHours",
-      "vacationDays",
-      "trainingDays",
-      "sickDays",
-      "hoursPerDay",
-      "updatedByUserId",
-      "updatedByName",
-      "createdAt",
-      "updatedAt"
-    )
-    VALUES (
-      ${randomUUID()},
-      ${organization.id},
-      ${userId},
-      ${monthlySalary},
-      ${fullCostFactor},
-      ${annualHours},
-      ${vacationDays},
-      ${trainingDays},
-      ${sickDays},
-      ${hoursPerDay},
-      ${actor.id},
-      ${getActorName(actor)},
-      CURRENT_TIMESTAMP,
-      CURRENT_TIMESTAMP
-    )
-    ON CONFLICT ("organizationId", "userId") DO UPDATE SET
-      "monthlySalary" = EXCLUDED."monthlySalary",
-      "fullCostFactor" = EXCLUDED."fullCostFactor",
-      "annualHours" = EXCLUDED."annualHours",
-      "vacationDays" = EXCLUDED."vacationDays",
-      "trainingDays" = EXCLUDED."trainingDays",
-      "sickDays" = EXCLUDED."sickDays",
-      "hoursPerDay" = EXCLUDED."hoursPerDay",
-      "updatedByUserId" = EXCLUDED."updatedByUserId",
-      "updatedByName" = EXCLUDED."updatedByName",
-      "updatedAt" = CURRENT_TIMESTAMP
-    RETURNING *
-  `;
-
-  return NextResponse.json(formatCost(rows[0], userId));
+  try {
+    const evaluation = await evaluateEmployeeCostChange({ organizationId: organization.id, userId, changes });
+    if (evaluation.blockingIssues.length) return NextResponse.json({ error: evaluation.blockingIssues.join(" · "), evaluation }, { status: 400 });
+    const row = await prisma.$transaction(
+      (tx) => executeEmployeeCostChange({
+        tx,
+        organizationId: organization.id,
+        userId,
+        changes,
+        actorId: actor.id,
+        actorName: getActorName(actor),
+        requestId: `employee-cost-ui:${randomUUID()}`,
+        expectedFingerprint: evaluation.fingerprint,
+        source: "employee-cost-ui",
+      }),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    return NextResponse.json(formatCost(row, userId));
+  } catch (error) {
+    if (error instanceof EmployeeCostManagementServiceError) {
+      const status = error.code === "not_found" ? 404 : error.code === "stale_context" ? 409 : 400;
+      return NextResponse.json({ error: error.message }, { status });
+    }
+    throw error;
+  }
 }

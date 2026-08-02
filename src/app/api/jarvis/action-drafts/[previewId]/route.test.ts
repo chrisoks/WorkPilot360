@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisCatalogManagementDraft: vi.fn(),
   cancelJarvisPersonnelManagementDraft: vi.fn(),
   confirmJarvisPersonnelManagementDraft: vi.fn(),
+  cancelJarvisEmployeeCostManagementDraft: vi.fn(),
+  confirmJarvisEmployeeCostManagementDraft: vi.fn(),
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
@@ -95,6 +97,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisCatalogManagementDraft: mocks.confirmJarvisCatalogManagementDraft,
   cancelJarvisPersonnelManagementDraft: mocks.cancelJarvisPersonnelManagementDraft,
   confirmJarvisPersonnelManagementDraft: mocks.confirmJarvisPersonnelManagementDraft,
+  cancelJarvisEmployeeCostManagementDraft: mocks.cancelJarvisEmployeeCostManagementDraft,
+  confirmJarvisEmployeeCostManagementDraft: mocks.confirmJarvisEmployeeCostManagementDraft,
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
@@ -1337,6 +1341,23 @@ describe("JARVIS action-draft API", () => {
     expect(response.status).toBe(200);
     expect(mocks.cancelJarvisPersonnelManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 5);
     expect(mocks.confirmJarvisPersonnelManagementDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact employee-cost phrase to the bound draft", async () => {
+    mocks.confirmJarvisEmployeeCostManagementDraft.mockResolvedValueOnce({ actionId: "payroll.manage", state: "executed", result: { entityType: "user", entityId: "employee-2", label: "Mitarbeiterkosten öffnen" } });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "payroll.manage", command: "confirm", revision: 10,
+      confirmationText: "LOHNKOSTEN ÄNDERN max@example.test", userId: "other-user", values: { monthlySalary: 1 },
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisEmployeeCostManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 10, "LOHNKOSTEN ÄNDERN max@example.test");
+  });
+
+  it("cancels employee-cost management without confirming it", async () => {
+    mocks.cancelJarvisEmployeeCostManagementDraft.mockResolvedValueOnce({ actionId: "payroll.manage", state: "cancelled" });
+    const response = (await POST(request("POST", { actorId: "user-1", actionId: "payroll.manage", command: "cancel", revision: 6 }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.cancelJarvisEmployeeCostManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 6);
   });
 
   it("passes only the exact project-status phrase to the bound status draft", async () => {

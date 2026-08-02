@@ -64,6 +64,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisContactDeletionDraft: vi.fn(),
   createPersistedJarvisCatalogManagementDraft: vi.fn(),
   createPersistedJarvisPersonnelManagementDraft: vi.fn(),
+  createPersistedJarvisEmployeeCostManagementDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -163,6 +164,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisCatalogManagementDraft,
   createPersistedJarvisPersonnelManagementDraft:
     mocks.createPersistedJarvisPersonnelManagementDraft,
+  createPersistedJarvisEmployeeCostManagementDraft:
+    mocks.createPersistedJarvisEmployeeCostManagementDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3449,6 +3452,44 @@ describe("POST /api/jarvis/chat", () => {
     }));
     expect(await response.json()).toMatchObject({ type: "refusal", topicId: "action.personnel-management.restricted" });
     expect(mocks.createPersistedJarvisPersonnelManagementDraft).not.toHaveBeenCalled();
+  });
+
+  it("prepares a uniquely scoped employee-cost change without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const lookup = vi.spyOn(prisma.user, "findMany").mockResolvedValueOnce([{ id: "employee-2" }] as never);
+    mocks.createPersistedJarvisEmployeeCostManagementDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "payroll.manage", title: "Lohn- und Mitarbeiterkosten kontrolliert ändern",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T07:00:00.000Z",
+      employeeId: "employee-2", employeeEmail: "max@example.test", fields: [], changes: [], impacts: [],
+      metrics: { annualFullCost: 51840, monthlyFullCost: 4320, deductionDays: 40, deductionHours: 320, sellableAnnualHours: 1760, sellableMonthlyHours: 146.67, hourlyCost: 29.45 },
+      checks: [], warnings: [], blockingIssues: [], confirmation: { enabled: true, reason: "ready", requiredText: "LOHNKOSTEN ÄNDERN max@example.test" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Ändere Lohnkosten für max@example.test: Monatsgehalt: 3.200; Vollkostenfaktor: 1,4" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.employee-cost-management", actionDraft: { actionId: "payroll.manage", employeeId: "employee-2" } });
+    expect(mocks.createPersistedJarvisEmployeeCostManagementDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1", sessionId: "session-1",
+      preview: expect.objectContaining({ actionId: "payroll.manage", payload: { userId: "employee-2", values: { monthlySalary: 3200, fullCostFactor: 1.4 } } }),
+    }));
+    lookup.mockRestore();
+  });
+
+  it("refuses employee-cost changes before resolving the target for an unauthorized role", async () => {
+    const actor = { id: "employee-1", isActive: true, role: "MITARBEITER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const lookup = vi.spyOn(prisma.user, "findMany");
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "employee-1", message: "Ändere Lohnkosten für geheim@example.test: Monatsgehalt: 9.999" }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "refusal", topicId: "action.employee-cost-management.refused" });
+    expect(payload.message).not.toContain("9.999");
+    expect(lookup).not.toHaveBeenCalled();
+    lookup.mockRestore();
   });
 
   it("asks for a documented reason before preparing a project-status change", async () => {

@@ -82,6 +82,7 @@ import type {
   JarvisContactDeletionDraftView,
   JarvisCatalogManagementDraftView,
   JarvisPersonnelManagementDraftView,
+  JarvisEmployeeCostManagementDraftView,
   JarvisProjectStatusDraftView,
   JarvisProjectLifecycleDraftView,
   JarvisInvoiceDraftView,
@@ -773,6 +774,7 @@ type ManagementAiChatMessage = {
     | JarvisContactDeletionDraftView
     | JarvisCatalogManagementDraftView
     | JarvisPersonnelManagementDraftView
+    | JarvisEmployeeCostManagementDraftView
     | JarvisProjectStatusDraftView
     | JarvisProjectLifecycleDraftView
     | JarvisInvoiceDraftView
@@ -2359,6 +2361,7 @@ function parseJarvisActionDraft(
   | JarvisContactDeletionDraftView
   | JarvisCatalogManagementDraftView
   | JarvisPersonnelManagementDraftView
+  | JarvisEmployeeCostManagementDraftView
   | JarvisProjectStatusDraftView
   | JarvisProjectLifecycleDraftView
   | JarvisInvoiceDraftView
@@ -2388,6 +2391,7 @@ function parseJarvisActionDraft(
     parseJarvisContactDeletionDraft(value) ??
     parseJarvisCatalogManagementDraft(value) ??
     parseJarvisPersonnelManagementDraft(value) ??
+    parseJarvisEmployeeCostManagementDraft(value) ??
     parseJarvisProjectStatusDraft(value) ??
     parseJarvisProjectLifecycleDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
@@ -2912,6 +2916,29 @@ function parseJarvisPersonnelManagementDraft(value: unknown): JarvisPersonnelMan
   const cancellation = candidate.cancellation as Record<string, unknown>;
   if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
   return candidate as unknown as JarvisPersonnelManagementDraftView;
+}
+
+function parseJarvisEmployeeCostManagementDraft(value: unknown): JarvisEmployeeCostManagementDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 || candidate.actionId !== "payroll.manage" ||
+    typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
+    typeof candidate.employeeId !== "string" || typeof candidate.employeeEmail !== "string" ||
+    !Array.isArray(candidate.changes) || !Array.isArray(candidate.impacts) ||
+    !candidate.metrics || typeof candidate.metrics !== "object" ||
+    !Array.isArray(candidate.fields) || !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) || !Array.isArray(candidate.blockingIssues) ||
+    !candidate.confirmation || typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation || typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const metrics = candidate.metrics as Record<string, unknown>;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (["annualFullCost", "monthlyFullCost", "deductionDays", "deductionHours", "sellableAnnualHours", "sellableMonthlyHours", "hourlyCost"].some((key) => typeof metrics[key] !== "number") || typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
+  return candidate as unknown as JarvisEmployeeCostManagementDraftView;
 }
 
 function parseJarvisProjectLifecycleDraft(value: unknown): JarvisProjectLifecycleDraftView | undefined {
@@ -3842,11 +3869,11 @@ function JarvisOfferFinalizationCard({
   onChange,
   onOpenOffer,
 }: {
-  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView;
+  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView;
   actorId: string;
   disabled: boolean;
-  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView, message?: string) => void;
-  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView) => void;
+  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView) => void;
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -3888,6 +3915,8 @@ function JarvisOfferFinalizationCard({
           ? parseJarvisCatalogManagementDraft(data?.actionDraft)
         : draft.actionId === "personnel.manage"
           ? parseJarvisPersonnelManagementDraft(data?.actionDraft)
+        : draft.actionId === "payroll.manage"
+          ? parseJarvisEmployeeCostManagementDraft(data?.actionDraft)
         : draft.actionId === "project.status.change"
           ? parseJarvisProjectStatusDraft(data?.actionDraft)
         : draft.actionId === "project.archive"
@@ -3898,12 +3927,12 @@ function JarvisOfferFinalizationCard({
             ? parseJarvisInvoiceLifecycleDraft(data?.actionDraft)
             : parseJarvisOfferFinalizationDraft(data?.actionDraft);
       if (!response.ok || !next) {
-        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.manage" ? "Die Projektdaten konnten nicht sicher geändert werden." : draft.actionId === "contact.manage" ? "Der Kontakt konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "contact.delete" ? "Der Kontakt konnte nicht sicher endgültig gelöscht werden." : draft.actionId === "catalog.manage" ? "Die Katalogposition konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "personnel.manage" ? "Die Personalstammdaten konnten nicht sicher geändert werden." : draft.actionId === "project.archive" ? "Das Projekt konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
+        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.manage" ? "Die Projektdaten konnten nicht sicher geändert werden." : draft.actionId === "contact.manage" ? "Der Kontakt konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "contact.delete" ? "Der Kontakt konnte nicht sicher endgültig gelöscht werden." : draft.actionId === "catalog.manage" ? "Die Katalogposition konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "personnel.manage" ? "Die Personalstammdaten konnten nicht sicher geändert werden." : draft.actionId === "payroll.manage" ? "Die Lohn- und Mitarbeiterkosten konnten nicht sicher geändert werden." : draft.actionId === "project.archive" ? "Das Projekt konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
         return;
       }
       onChange(next, typeof data?.message === "string" ? data.message : undefined);
     } catch {
-      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Projektdaten blieben unverändert." : draft.actionId === "contact.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde kein Kontakt angelegt oder geändert." : draft.actionId === "contact.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Kontakt blieb erhalten." : draft.actionId === "catalog.manage" ? "Das Action Center ist gerade nicht erreichbar. Der Katalog blieb unverändert." : draft.actionId === "personnel.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Personalstammdaten blieben unverändert." : draft.actionId === "project.archive" ? "Das Action Center ist gerade nicht erreichbar. Das Projekt blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
+      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Projektdaten blieben unverändert." : draft.actionId === "contact.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde kein Kontakt angelegt oder geändert." : draft.actionId === "contact.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Kontakt blieb erhalten." : draft.actionId === "catalog.manage" ? "Das Action Center ist gerade nicht erreichbar. Der Katalog blieb unverändert." : draft.actionId === "personnel.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Personalstammdaten blieben unverändert." : draft.actionId === "payroll.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Lohn- und Mitarbeiterkosten blieben unverändert." : draft.actionId === "project.archive" ? "Das Action Center ist gerade nicht erreichbar. Das Projekt blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
     } finally {
       setIsWorking(false);
     }
@@ -3987,6 +4016,42 @@ function JarvisOfferFinalizationCard({
         <div className={styles.jarvisActionDraftActions}>
           {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>Personalstammdaten jetzt ändern</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Personaländerung abbrechen</button> : null}
+          {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
+        </div>
+        <footer>{footer}</footer>
+      </section>
+    );
+  }
+
+  if (draft.actionId === "payroll.manage") {
+    const money = (value: number) => value.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+    const number = (value: number) => value.toLocaleString("de-DE", { maximumFractionDigits: 2 });
+    const footer = draft.state === "executed"
+      ? "Die Lohn- und Mitarbeiterkosten wurden genau einmal geändert. Historische Kostensnapshots blieben unverändert; der neue Satz gilt für künftige Abschlüsse und Kalkulationen."
+      : draft.state === "cancelled"
+        ? "Die Lohnkostenänderung wurde beendet. Mitarbeiterkosten und historische Kostensnapshots blieben unverändert."
+        : draft.state === "expired"
+          ? "Die Lohnkostenänderung ist abgelaufen und muss neu geprüft werden."
+          : `Die vertrauliche Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`;
+    return (
+      <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
+        <header><div><span>Action Center · Vertrauliche kritische Aktion</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+        <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+        <div className={styles.jarvisPlanningChecks}><strong>Alte und neue Kostenwerte</strong>{draft.changes.map((change) => <div key={change.field} data-status="ok"><span>→</span><p><b>{change.label}</b><small>{change.field === "monthlySalary" ? `${money(change.before)} → ${money(change.after)}` : `${number(change.before)} → ${number(change.after)}`}</small></p></div>)}</div>
+        <div className={styles.jarvisPlanningChecks}><strong>Neu berechnete Vollkosten und Kapazität</strong>
+          <div data-status="ok"><span>✓</span><p><b>Vollkosten pro Jahr / Monat</b><small>{money(draft.metrics.annualFullCost)} / {money(draft.metrics.monthlyFullCost)}</small></p></div>
+          <div data-status="ok"><span>✓</span><p><b>Verkaufbare Stunden pro Jahr / Monat</b><small>{number(draft.metrics.sellableAnnualHours)} / {number(draft.metrics.sellableMonthlyHours)}</small></p></div>
+          <div data-status={draft.metrics.hourlyCost > 0 ? "ok" : "warning"}><span>{draft.metrics.hourlyCost > 0 ? "✓" : "!"}</span><p><b>Interner Kostensatz</b><small>{money(draft.metrics.hourlyCost)} je verkaufbarer Stunde</small></p></div>
+        </div>
+        <div className={styles.jarvisPlanningChecks}><strong>Zeit- und Snapshotwirkung</strong>{draft.impacts.map((impact) => <div key={impact.key} data-status={impact.count === 0 || impact.key === "historicalSnapshots" ? "ok" : "warning"}><span>{impact.count === 0 || impact.key === "historicalSnapshots" ? "✓" : "!"}</span><p><b>{impact.label}</b><small>{impact.count.toLocaleString("de-DE")} Datensatz/Datensätze; historische Werte bleiben unverändert</small></p></div>)}</div>
+        <div className={styles.jarvisPlanningChecks}><strong>Aktuelle Kostenprüfung</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
+        {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
+        {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Lohnkostenänderung ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+        {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
+        {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
+        <div className={styles.jarvisActionDraftActions}>
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>Lohnkosten jetzt ändern</button> : null}
+          {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Lohnkostenänderung abbrechen</button> : null}
           {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
         </div>
         <footer>{footer}</footer>
@@ -40090,6 +40155,7 @@ await addProjectLogbookEntry(
       | JarvisContactDeletionDraftView
       | JarvisCatalogManagementDraftView
       | JarvisPersonnelManagementDraftView
+      | JarvisEmployeeCostManagementDraftView
       | JarvisProjectStatusDraftView
       | JarvisProjectLifecycleDraftView
       | JarvisOfferDeliveryDraftView
@@ -40140,6 +40206,8 @@ await addProjectLogbookEntry(
         void loadCatalogItems();
       } else if (nextDraft.actionId === "personnel.manage") {
         void loadUsers();
+      } else if (nextDraft.actionId === "payroll.manage") {
+        void loadEmployeeCost(nextDraft.employeeId);
       } else if (nextDraft.actionId === "project.status.change") {
         void loadHeroProjects();
         void loadProjectLogbookEntries();
@@ -76920,6 +76988,7 @@ await addProjectLogbookEntry(
                       message.actionDraft?.actionId === "contact.delete" ||
                       message.actionDraft?.actionId === "catalog.manage" ||
                       message.actionDraft?.actionId === "personnel.manage" ||
+                      message.actionDraft?.actionId === "payroll.manage" ||
                       message.actionDraft?.actionId === "project.status.change" ||
                       message.actionDraft?.actionId === "project.archive" ||
                       message.actionDraft?.actionId === "offer.delete" ||
@@ -76956,6 +77025,19 @@ await addProjectLogbookEntry(
                             setActiveTab("employees");
                             setOpenSidebarMenus({ employees: true });
                             openEmployeeFile(employee);
+                            return;
+                          }
+                          if (offerDraft.actionId === "payroll.manage") {
+                            const employee = users.find((candidate) => candidate.id === offerDraft.employeeId);
+                            if (!employee) {
+                              setManagementAiError("Der Mitarbeiter ist in der aktuellen Mitarbeiteransicht nicht sichtbar. Lade die Mitarbeiter neu.");
+                              return;
+                            }
+                            setActiveTab("employees");
+                            setOpenSidebarMenus({ employees: true });
+                            openEmployeeFile(employee);
+                            setEmployeeTopTab("costs");
+                            void loadEmployeeCost(employee.id);
                             return;
                           }
                           if (offerDraft.actionId === "task.delete") {

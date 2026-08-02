@@ -555,7 +555,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["payroll"],
-    implementation: "planned",
+    implementation: "available",
     canUse: (actor) => canManageUsers(actor) && canAccessEmployeeCosts(actor),
   },
   {

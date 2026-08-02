@@ -105,6 +105,18 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     });
   });
 
+  it("creates a confidential employee-cost preview only for the intended numeric fields", () => {
+    const result = createJarvisActionPreview({
+      previewId: "preview-employee-cost",
+      actionId: "payroll.manage",
+      payload: { userId: "employee-2", values: { monthlySalary: 3200 } },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-02T04:00:00.000Z",
+    });
+    expect(result).toMatchObject({ ok: true, value: { actionId: "payroll.manage", payload: { userId: "employee-2", values: { monthlySalary: 3200 } }, execution: { enabled: false } } });
+  });
+
   it("creates a non-executing, strictly typed task lifecycle preview", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-task-lifecycle",
