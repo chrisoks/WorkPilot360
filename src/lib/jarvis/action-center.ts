@@ -12,6 +12,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "project.manage",
   "project.status.change",
   "project.archive",
+  "online-request.convert",
   "contact.manage",
   "contact.delete",
   "catalog.manage",
@@ -197,6 +198,12 @@ const projectLifecyclePreviewPayloadSchema = z
     projectId: boundedId,
     lifecycleAction: z.enum(["archive", "restore"]),
     reason: boundedText(500),
+  })
+  .strict();
+
+const onlineRequestConversionPreviewPayloadSchema = z
+  .object({
+    requestId: boundedId,
   })
   .strict();
 
@@ -451,6 +458,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "project.manage": projectMasterDataPreviewPayloadSchema,
   "project.status.change": projectStatusPreviewPayloadSchema,
   "project.archive": projectLifecyclePreviewPayloadSchema,
+  "online-request.convert": onlineRequestConversionPreviewPayloadSchema,
   "contact.manage": contactManagementPreviewPayloadSchema,
   "contact.delete": contactDeletionPreviewPayloadSchema,
   "catalog.manage": catalogManagementPreviewPayloadSchema,
@@ -483,6 +491,9 @@ export type JarvisActionPreviewPayloadMap = {
   "project.manage": z.infer<typeof projectMasterDataPreviewPayloadSchema>;
   "project.status.change": z.infer<typeof projectStatusPreviewPayloadSchema>;
   "project.archive": z.infer<typeof projectLifecyclePreviewPayloadSchema>;
+  "online-request.convert": z.infer<
+    typeof onlineRequestConversionPreviewPayloadSchema
+  >;
   "contact.manage": z.infer<typeof contactManagementPreviewPayloadSchema>;
   "contact.delete": z.infer<typeof contactDeletionPreviewPayloadSchema>;
   "catalog.manage": z.infer<typeof catalogManagementPreviewPayloadSchema>;
@@ -1394,6 +1405,18 @@ export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView,
   title: "Projekt kontrolliert archivieren oder wiederherstellen";
   lifecycleAction: "archive" | "restore";
   targetStatus: string;
+};
+
+export type JarvisOnlineRequestConversionDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus" | "projectId" | "result"
+> & {
+  actionId: "online-request.convert";
+  title: "Online-Anfrage kontrolliert umwandeln";
+  requestId: string;
+  referenceNumber: string;
+  taskTitles: string[];
+  result?: { entityType: "project"; entityId: string; label: string };
 };
 
 export type JarvisInvoicePaymentDraftView = {

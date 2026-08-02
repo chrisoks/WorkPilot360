@@ -172,6 +172,32 @@ describe("JARVIS action registry", () => {
     expect(getJarvisActionDecision("project.archive", employee)).toMatchObject({ permitted: false, executable: false });
   });
 
+  it("releases online request conversion only as a critical project-authorized action", () => {
+    const leadership = createJarvisAccessProfile({
+      id: "leader",
+      role: Role.FUEHRUNGSKRAFT,
+    });
+    const employee = createJarvisAccessProfile({
+      id: "employee",
+      role: Role.MITARBEITER,
+    });
+    expect(
+      getJarvisActionDecision("online-request.convert", leadership)
+    ).toMatchObject({
+      permitted: true,
+      executable: true,
+      requiresConfirmation: true,
+      action: {
+        risk: "critical",
+        confirmation: "critical",
+        implementation: "available",
+      },
+    });
+    expect(
+      getJarvisActionDecision("online-request.convert", employee)
+    ).toMatchObject({ permitted: false, executable: false });
+  });
+
   it("releases invoice delivery only as a critical confirmed action", () => {
     const profile = createJarvisAccessProfile({
       id: "gf",

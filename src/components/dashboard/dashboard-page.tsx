@@ -87,6 +87,7 @@ import type {
   JarvisAutomationManagementDraftView,
   JarvisProjectStatusDraftView,
   JarvisProjectLifecycleDraftView,
+  JarvisOnlineRequestConversionDraftView,
   JarvisInvoiceDraftView,
   JarvisInvoiceDeliveryDraftView,
   JarvisInvoiceFinalizationDraftView,
@@ -781,6 +782,7 @@ type ManagementAiChatMessage = {
     | JarvisAutomationManagementDraftView
     | JarvisProjectStatusDraftView
     | JarvisProjectLifecycleDraftView
+    | JarvisOnlineRequestConversionDraftView
     | JarvisInvoiceDraftView
     | JarvisInvoiceDeliveryDraftView
     | JarvisInvoiceFinalizationDraftView
@@ -809,6 +811,7 @@ const jarvisPreviewActionIds = new Set([
   "project.manage",
   "project.status.change",
   "project.archive",
+  "online-request.convert",
   "contact.manage",
   "contact.delete",
   "planning.prepare",
@@ -2370,6 +2373,7 @@ function parseJarvisActionDraft(
   | JarvisAutomationManagementDraftView
   | JarvisProjectStatusDraftView
   | JarvisProjectLifecycleDraftView
+  | JarvisOnlineRequestConversionDraftView
   | JarvisInvoiceDraftView
   | JarvisInvoiceDeliveryDraftView
   | JarvisInvoiceFinalizationDraftView
@@ -2402,6 +2406,7 @@ function parseJarvisActionDraft(
     parseJarvisAutomationManagementDraft(value) ??
     parseJarvisProjectStatusDraft(value) ??
     parseJarvisProjectLifecycleDraft(value) ??
+    parseJarvisOnlineRequestConversionDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
     parseJarvisInvoiceDeliveryDraft(value) ??
     parseJarvisInvoicePaymentDraft(value) ??
@@ -3016,6 +3021,46 @@ function parseJarvisProjectLifecycleDraft(value: unknown): JarvisProjectLifecycl
   const cancellation = candidate.cancellation as Record<string, unknown>;
   if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
   return candidate as unknown as JarvisProjectLifecycleDraftView;
+}
+
+function parseJarvisOnlineRequestConversionDraft(
+  value: unknown
+): JarvisOnlineRequestConversionDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "online-request.convert" ||
+    typeof candidate.previewId !== "string" ||
+    typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" ||
+    typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" ||
+    typeof candidate.expiresAt !== "string" ||
+    typeof candidate.requestId !== "string" ||
+    typeof candidate.referenceNumber !== "string" ||
+    !Array.isArray(candidate.taskTitles) ||
+    !Array.isArray(candidate.fields) ||
+    !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) ||
+    !Array.isArray(candidate.blockingIssues) ||
+    !candidate.confirmation ||
+    typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation ||
+    typeof candidate.cancellation !== "object"
+  ) {
+    return undefined;
+  }
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (
+    typeof confirmation.enabled !== "boolean" ||
+    typeof confirmation.requiredText !== "string" ||
+    typeof cancellation.enabled !== "boolean"
+  ) {
+    return undefined;
+  }
+  return candidate as unknown as JarvisOnlineRequestConversionDraftView;
 }
 
 function parseJarvisInvoiceFinalizationDraft(
@@ -3925,11 +3970,11 @@ function JarvisOfferFinalizationCard({
   onChange,
   onOpenOffer,
 }: {
-  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView;
+  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView;
   actorId: string;
   disabled: boolean;
-  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView, message?: string) => void;
-  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView) => void;
+  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView) => void;
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -3981,17 +4026,27 @@ function JarvisOfferFinalizationCard({
           ? parseJarvisProjectStatusDraft(data?.actionDraft)
         : draft.actionId === "project.archive"
           ? parseJarvisProjectLifecycleDraft(data?.actionDraft)
+        : draft.actionId === "online-request.convert"
+          ? parseJarvisOnlineRequestConversionDraft(data?.actionDraft)
         : draft.actionId === "offer.delete"
           ? parseJarvisOfferLifecycleDraft(data?.actionDraft)
           : draft.actionId === "invoice.delete"
             ? parseJarvisInvoiceLifecycleDraft(data?.actionDraft)
             : parseJarvisOfferFinalizationDraft(data?.actionDraft);
       if (!response.ok || !next) {
+        if (draft.actionId === "online-request.convert") {
+          setError(data?.error ?? "Die Online-Anfrage konnte nicht sicher in ein neues Projekt umgewandelt werden.");
+          return;
+        }
         setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.manage" ? "Die Projektdaten konnten nicht sicher geändert werden." : draft.actionId === "contact.manage" ? "Der Kontakt konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "contact.delete" ? "Der Kontakt konnte nicht sicher endgültig gelöscht werden." : draft.actionId === "catalog.manage" ? "Die Katalogposition konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "personnel.manage" ? "Die Personalstammdaten konnten nicht sicher geändert werden." : draft.actionId === "payroll.manage" ? "Die Lohn- und Mitarbeiterkosten konnten nicht sicher geändert werden." : draft.actionId === "bulk.update" ? "Die Kontakt-Massenänderung konnte nicht sicher ausgeführt werden." : draft.actionId === "automation.manage" ? "Die Projektstatus-Automation konnte nicht sicher geändert werden." : draft.actionId === "project.archive" ? "Das Projekt konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
         return;
       }
       onChange(next, typeof data?.message === "string" ? data.message : undefined);
     } catch {
+      if (draft.actionId === "online-request.convert") {
+        setError("Das Action Center ist gerade nicht erreichbar. Die Online-Anfrage und alle Projekte blieben unverändert.");
+        return;
+      }
       setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Projektdaten blieben unverändert." : draft.actionId === "contact.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde kein Kontakt angelegt oder geändert." : draft.actionId === "contact.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Kontakt blieb erhalten." : draft.actionId === "catalog.manage" ? "Das Action Center ist gerade nicht erreichbar. Der Katalog blieb unverändert." : draft.actionId === "personnel.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Personalstammdaten blieben unverändert." : draft.actionId === "payroll.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Lohn- und Mitarbeiterkosten blieben unverändert." : draft.actionId === "bulk.update" ? "Das Action Center ist gerade nicht erreichbar. Alle Kontakte blieben unverändert." : draft.actionId === "automation.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Automation blieb unverändert." : draft.actionId === "project.archive" ? "Das Action Center ist gerade nicht erreichbar. Das Projekt blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
     } finally {
       setIsWorking(false);
@@ -4225,17 +4280,45 @@ function JarvisOfferFinalizationCard({
     );
   }
 
+  const isOnlineRequestConversion = () => draft.actionId === "online-request.convert";
+  if (isOnlineRequestConversion()) {
+    const footer = draft.state === "executed"
+      ? "Die Online-Anfrage wurde genau einmal in ein neues Projekt umgewandelt. Sie wurde keinem bestehenden Projekt zugeordnet."
+      : draft.state === "cancelled"
+        ? "Die Umwandlung wurde beendet. Die Online-Anfrage, Kontakte und Projekte blieben unverändert."
+        : draft.state === "expired"
+          ? "Die Umwandlungsprüfung ist abgelaufen und muss mit dem aktuellen Stand neu erstellt werden."
+          : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung und den geprüften Anfragestand gebunden.`;
+    return (
+      <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
+        <header><div><span>Action Center · Kritische Online-Anfragen-Umwandlung</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+        <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+        <div className={styles.jarvisPlanningChecks}><strong>Aktuelle Übernahmeprüfung</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
+        {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
+        {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Online-Anfragen-Umwandlung ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+        {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
+        {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
+        <div className={styles.jarvisActionDraftActions}>
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>Online-Anfrage jetzt umwandeln</button> : null}
+          {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Umwandlung abbrechen</button> : null}
+          {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
+        </div>
+        <footer>{footer}</footer>
+      </section>
+    );
+  }
+
   return (
     <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
       <header><div><span>{draft.actionId === "project.manage" ? "Action Center · Kontrollierte Aktion" : "Action Center · Kritische Aktion"}</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
       <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
       {draft.actionId === "project.manage" ? <div className={styles.jarvisPlanningChecks}><strong>Alte und neue Werte</strong>{draft.changes.map((change) => <div key={change.field} data-status="ok"><span>→</span><p><b>{change.label}</b><small>„{change.before || "–"}“ → „{change.after || "–"}“</small></p></div>)}</div> : null}
       <div className={styles.jarvisPlanningChecks}>
-        <strong>{draft.actionId === "task.delete" ? "Aktuelle Aufgabenprüfung" : draft.actionId === "project.manage" ? "Aktuelle Projektdatenprüfung" : draft.actionId === "project.archive" ? "Aktuelle Projektarchivierungsprüfung" : draft.actionId === "project.status.change" ? "Aktuelle Projektstatusprüfung" : draft.actionId === "invoice.delete" ? "Aktuelle Rechnungsprüfung" : "Aktuelle Angebotsprüfung"}</strong>
+        <strong>{draft.actionId === "task.delete" ? "Aktuelle Aufgabenprüfung" : draft.actionId === "project.manage" ? "Aktuelle Projektdatenprüfung" : draft.actionId === "project.archive" ? "Aktuelle Projektarchivierungsprüfung" : draft.actionId === "online-request.convert" ? "Aktuelle Online-Anfragen-Übernahmeprüfung" : draft.actionId === "project.status.change" ? "Aktuelle Projektstatusprüfung" : draft.actionId === "invoice.delete" ? "Aktuelle Rechnungsprüfung" : "Aktuelle Angebotsprüfung"}</strong>
         {draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}
       </div>
       {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
-      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>{draft.actionId === "offer.manage" ? "Entscheidung" : draft.actionId === "task.delete" ? "Aufgabenänderung" : draft.actionId === "project.manage" ? "Projektdatenänderung" : draft.actionId === "project.archive" ? "Projektarchivierung" : draft.actionId === "project.status.change" ? "Projektstatusänderung" : draft.actionId === "offer.delete" ? "Angebotsänderung" : draft.actionId === "invoice.delete" ? "Rechnungsänderung" : "Finalisierung"} ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>{draft.actionId === "offer.manage" ? "Entscheidung" : draft.actionId === "task.delete" ? "Aufgabenänderung" : draft.actionId === "project.manage" ? "Projektdatenänderung" : draft.actionId === "project.archive" ? "Projektarchivierung" : draft.actionId === "online-request.convert" ? "Online-Anfragen-Umwandlung" : draft.actionId === "project.status.change" ? "Projektstatusänderung" : draft.actionId === "offer.delete" ? "Angebotsänderung" : draft.actionId === "invoice.delete" ? "Rechnungsänderung" : "Finalisierung"} ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
       {draft.confirmation.enabled && isOpen ? (
         <div className={styles.jarvisActionDraftEditor}>
           <label><span>Zur {draft.actionId === "project.manage" ? "bewussten" : "kritischen"} Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label>
@@ -4243,8 +4326,8 @@ function JarvisOfferFinalizationCard({
       ) : null}
       {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
       <div className={styles.jarvisActionDraftActions}>
-        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.actionId === "offer.manage" ? `Angebot als ${draft.decision === "won" ? "gewonnen" : "verloren"} markieren` : draft.actionId === "task.delete" ? (draft.lifecycleAction === "archive" ? "Aufgabe jetzt archivieren" : "Aufgabe jetzt wiederherstellen") : draft.actionId === "project.manage" ? "Projektdaten jetzt ändern" : draft.actionId === "project.archive" ? (draft.lifecycleAction === "archive" ? "Projekt jetzt archivieren" : "Projekt jetzt wiederherstellen") : draft.actionId === "project.status.change" ? `Projektstatus auf ${draft.targetStatus} setzen` : draft.actionId === "offer.delete" ? (draft.lifecycleAction === "delete" ? "Angebot jetzt löschen" : "Angebot jetzt wiederherstellen") : draft.actionId === "invoice.delete" ? (draft.lifecycleAction === "delete" ? "Rechnungsentwurf jetzt löschen" : "Rechnungsentwurf jetzt wiederherstellen") : "Angebot jetzt finalisieren"}</button> : null}
-        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>{draft.actionId === "offer.manage" ? "Entscheidung abbrechen" : draft.actionId === "task.delete" ? "Aufgabenänderung abbrechen" : draft.actionId === "project.manage" ? "Projektdatenänderung abbrechen" : draft.actionId === "project.archive" ? "Projektarchivierung abbrechen" : draft.actionId === "project.status.change" ? "Projektstatusänderung abbrechen" : draft.actionId === "offer.delete" ? "Angebotsänderung abbrechen" : draft.actionId === "invoice.delete" ? "Rechnungsänderung abbrechen" : "Finalisierung abbrechen"}</button> : null}
+        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.actionId === "offer.manage" ? `Angebot als ${draft.decision === "won" ? "gewonnen" : "verloren"} markieren` : draft.actionId === "task.delete" ? (draft.lifecycleAction === "archive" ? "Aufgabe jetzt archivieren" : "Aufgabe jetzt wiederherstellen") : draft.actionId === "project.manage" ? "Projektdaten jetzt ändern" : draft.actionId === "project.archive" ? (draft.lifecycleAction === "archive" ? "Projekt jetzt archivieren" : "Projekt jetzt wiederherstellen") : draft.actionId === "online-request.convert" ? "Online-Anfrage jetzt umwandeln" : draft.actionId === "project.status.change" ? `Projektstatus auf ${draft.targetStatus} setzen` : draft.actionId === "offer.delete" ? (draft.lifecycleAction === "delete" ? "Angebot jetzt löschen" : "Angebot jetzt wiederherstellen") : draft.actionId === "invoice.delete" ? (draft.lifecycleAction === "delete" ? "Rechnungsentwurf jetzt löschen" : "Rechnungsentwurf jetzt wiederherstellen") : "Angebot jetzt finalisieren"}</button> : null}
+        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>{draft.actionId === "offer.manage" ? "Entscheidung abbrechen" : draft.actionId === "task.delete" ? "Aufgabenänderung abbrechen" : draft.actionId === "project.manage" ? "Projektdatenänderung abbrechen" : draft.actionId === "project.archive" ? "Projektarchivierung abbrechen" : draft.actionId === "online-request.convert" ? "Umwandlung abbrechen" : draft.actionId === "project.status.change" ? "Projektstatusänderung abbrechen" : draft.actionId === "offer.delete" ? "Angebotsänderung abbrechen" : draft.actionId === "invoice.delete" ? "Rechnungsänderung abbrechen" : "Finalisierung abbrechen"}</button> : null}
         {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
       </div>
       <footer>{draft.actionId === "project.manage" ? (draft.state === "executed" ? "Die angezeigten Projektstammdaten wurden genau einmal geändert. Alle übrigen Projekt- und Fachdaten blieben unverändert." : draft.state === "cancelled" ? "Die Projektdatenänderung wurde beendet. Das Projekt blieb unverändert." : draft.state === "expired" ? "Die Projektdatenänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "offer.manage" ? (draft.state === "executed" ? "Das Angebot wurde genau einmal entschieden. Projektstatus, Termine, Aufgaben, Rechnungen und Versand blieben unverändert." : draft.state === "cancelled" ? "Die Entscheidung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Entscheidungsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "task.delete" ? (draft.state === "executed" ? `Die Aufgabe wurde genau einmal ${draft.lifecycleAction === "archive" ? "archiviert" : "wiederhergestellt"}. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten.` : draft.state === "cancelled" ? "Die Aufgabenänderung wurde beendet. Die Aufgabe blieb unverändert." : draft.state === "expired" ? "Die Aufgabenänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "project.archive" ? (draft.state === "executed" ? `Das Projekt wurde genau einmal ${draft.lifecycleAction === "archive" ? "archiviert" : "wiederhergestellt"}. Planungen, Aufgaben, Angebote, Rechnungen, Zeiten, Dateien und Online-Anfragen blieben erhalten.` : draft.state === "cancelled" ? "Die Projektarchivierung wurde beendet. Das Projekt blieb unverändert." : draft.state === "expired" ? "Die Projektarchivierungsprüfung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "project.status.change" ? (draft.state === "executed" ? `Der Projektstatus wurde genau einmal auf „${draft.targetStatus}“ geändert. Angebote, Rechnungen, Termine, Aufgaben, Zeiten und Dateien blieben unverändert.` : draft.state === "cancelled" ? "Die Projektstatusänderung wurde beendet. Das Projekt blieb unverändert." : draft.state === "expired" ? "Die Projektstatusprüfung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "offer.delete" ? (draft.state === "executed" ? `Das Angebot wurde genau einmal ${draft.lifecycleAction === "delete" ? "gelöscht" : "wiederhergestellt"}. Projektstatus, Termine, Aufgaben, Rechnungen und Versandprotokolle blieben unverändert.` : draft.state === "cancelled" ? "Die Angebotsänderung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Angebotsänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : draft.actionId === "invoice.delete" ? (draft.state === "executed" ? `Der Rechnungsentwurf wurde genau einmal ${draft.lifecycleAction === "delete" ? "gelöscht" : "wiederhergestellt"}. Stempelungen, Lager, Zahlungen, Mahnungen, Versand, Angebote und Projektstatus blieben unverändert.` : draft.state === "cancelled" ? "Die Rechnungsänderung wurde beendet. Der Entwurf blieb unverändert." : draft.state === "expired" ? "Die Rechnungsänderung ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : (draft.state === "executed" ? "Das Angebot wurde genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert." : draft.state === "cancelled" ? "Die Finalisierung wurde beendet. Das Angebot blieb ein Entwurf." : draft.state === "expired" ? "Die Angebotsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`)}</footer>
@@ -40295,6 +40378,7 @@ await addProjectLogbookEntry(
       | JarvisAutomationManagementDraftView
       | JarvisProjectStatusDraftView
       | JarvisProjectLifecycleDraftView
+      | JarvisOnlineRequestConversionDraftView
       | JarvisOfferDeliveryDraftView
       | JarvisInvoiceDraftView
       | JarvisInvoiceDeliveryDraftView
@@ -40355,6 +40439,12 @@ await addProjectLogbookEntry(
         void loadProjectStatusTimelineEntries();
       } else if (nextDraft.actionId === "project.archive") {
         void loadHeroProjects();
+        void loadProjectLogbookEntries();
+        void loadProjectStatusTimelineEntries();
+      } else if (nextDraft.actionId === "online-request.convert") {
+        void loadOnlineRequests();
+        void loadHeroProjects();
+        void loadContacts();
         void loadProjectLogbookEntries();
         void loadProjectStatusTimelineEntries();
       } else if (nextDraft.actionId === "offer.prepare") {
@@ -77143,6 +77233,7 @@ await addProjectLogbookEntry(
                       message.actionDraft?.actionId === "automation.manage" ||
                       message.actionDraft?.actionId === "project.status.change" ||
                       message.actionDraft?.actionId === "project.archive" ||
+                      message.actionDraft?.actionId === "online-request.convert" ||
                       message.actionDraft?.actionId === "offer.delete" ||
                       message.actionDraft?.actionId === "invoice.delete") ? (
                       <JarvisOfferFinalizationCard
@@ -77209,6 +77300,16 @@ await addProjectLogbookEntry(
                               return;
                             }
                             openEditModal(task);
+                            return;
+                          }
+                          if (offerDraft.actionId === "online-request.convert") {
+                            const projectId = offerDraft.result?.entityId;
+                            const project = heroProjects.find((candidate) => candidate.id === projectId);
+                            if (!project) {
+                              setManagementAiError("Das neu erzeugte Projekt ist noch nicht sichtbar. Lade die Projektansicht neu.");
+                              return;
+                            }
+                            openProjectFile(project);
                             return;
                           }
                           if (offerDraft.actionId === "project.manage" || offerDraft.actionId === "project.status.change" || offerDraft.actionId === "project.archive") {

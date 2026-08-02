@@ -30,6 +30,7 @@ import {
   type JarvisProjectMasterDataDraftView,
   type JarvisProjectStatusDraftView,
   type JarvisProjectLifecycleDraftView,
+  type JarvisOnlineRequestConversionDraftView,
   type JarvisContactManagementDraftView,
   type JarvisContactDeletionDraftView,
   type JarvisCatalogManagementDraftView,
@@ -60,6 +61,7 @@ import {
   canAssignTasksToOthers,
   canApproveProjectOvertime,
   canArchiveProjects,
+  canConvertOnlineRequests,
   canManagePlanningEntries,
   canManageProjectTimeEntries,
   canManageProjects,
@@ -205,6 +207,13 @@ import {
   matchesProjectLifecycleConfirmation,
   ProjectLifecycleServiceError,
 } from "@/lib/projects/project-lifecycle-service";
+import {
+  convertOnlineRequest,
+  evaluateOnlineRequestConversion,
+  getOnlineRequestConversionConfirmationText,
+  matchesOnlineRequestConversionConfirmation,
+  OnlineRequestConversionError,
+} from "@/lib/online-requests/conversion-service";
 import {
   ContactManagementServiceError,
   evaluateContactChange,
@@ -1117,6 +1126,50 @@ const projectLifecycleContextSchema = z.object({
   checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string() }).strict()),
   warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
 }).strict();
+
+const onlineRequestConversionPayloadSchema = z
+  .object({
+    requestId: z.string().trim().min(1).max(120),
+  })
+  .strict();
+
+const onlineRequestConversionContextSchema = z
+  .object({
+    fingerprint: z.string().length(64),
+    blockingIssues: z.array(z.string()),
+    warnings: z.array(z.string()),
+    request: z
+      .object({
+        id: z.string(),
+        referenceNumber: z.string(),
+        status: z.string(),
+        requestType: z.string(),
+        tradeName: z.string(),
+        customerDecision: z.string(),
+        customerName: z.string(),
+        photoCount: z.number().int().min(0),
+        updatedAt: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    contact: z
+      .object({ id: z.string(), customerNumber: z.string(), name: z.string() })
+      .strict()
+      .nullable(),
+    responsibility: z
+      .object({
+        userId: z.string(),
+        name: z.string(),
+        fallback: z.boolean(),
+      })
+      .strict(),
+    project: z
+      .object({ id: z.string(), projectNumber: z.string(), title: z.string() })
+      .strict()
+      .nullable(),
+    projectPrefix: z.string(),
+    tasks: z.array(z.object({ title: z.string() }).strict()),
+  })
+  .strict();
 
 const invoiceLifecycleContextSchema = z.object({
   action: z.enum(["delete", "restore"]),
@@ -4321,6 +4374,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "project.archive") {
     return getJarvisProjectLifecycleDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "online-request.convert") {
+    return getJarvisOnlineRequestConversionDraft(previewId, binding, now);
   }
   if (draft?.actionId === "invoice.finalize") {
     return getJarvisInvoiceFinalizationDraft(previewId, binding, now);
@@ -11170,6 +11226,741 @@ export async function confirmJarvisProjectLifecycleDraft(previewId: string, bind
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof ProjectLifecycleServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     throw new JarvisActionDraftError("execution_failed", "Das Projekt wurde nicht archiviert oder wiederhergestellt und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayConvertOnlineRequest(binding: JarvisTaskDraftBinding) {
+  return (
+    canConvertOnlineRequests(binding.profile.sessionActor) &&
+    canConvertOnlineRequests(binding.profile.effectiveActor)
+  );
+}
+
+function validateOnlineRequestConversionBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Online-Anfragen-Umwandlung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit der Übernahmeprüfung geändert. Bitte erstelle eine neue Vorschau.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis der Online-Anfragen-Umwandlung ist ungültig.",
+      409
+    );
+  }
+  const payload = onlineRequestConversionPayloadSchema.safeParse(draft.payload);
+  const context = onlineRequestConversionContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "online-request.convert" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Online-Anfrage oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function reconcileOnlineRequestConversionDraft(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  if (draft.state !== "executing") return draft;
+  const { context } = validateOnlineRequestConversionBinding(draft, binding);
+  const [request, audit] = await Promise.all([
+    prisma.onlineRequest.findFirst({
+      where: {
+        id: context.request.id,
+        organizationId: binding.organizationId,
+      },
+      select: { convertedProjectId: true },
+    }),
+    prisma.onlineRequestAuditEvent.findFirst({
+      where: {
+        organizationId: binding.organizationId,
+        onlineRequestId: context.request.id,
+        eventType: "converted",
+      },
+      orderBy: { createdAt: "desc" },
+      select: { payload: true },
+    }),
+  ]);
+  const auditPayload =
+    audit?.payload && typeof audit.payload === "object" && !Array.isArray(audit.payload)
+      ? audit.payload
+      : null;
+  if (
+    !request?.convertedProjectId ||
+    auditPayload?.executionRequestId !== draft.id
+  ) {
+    return draft;
+  }
+  const convertedProjectId = request.convertedProjectId;
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.jarvisActionDraft.findUnique({ where: { id: draft.id } });
+    if (!current || current.state === "executed") return current ?? draft;
+    if (current.state !== "executing") return current;
+    const executedAt = new Date();
+    const executedData: DraftIntegrityData = {
+      ...current,
+      state: "executed",
+      executedAt,
+      resultEntityType: "project",
+      resultEntityId: convertedProjectId,
+      lastErrorCode: null,
+    };
+    const executed = await tx.jarvisActionDraft.update({
+      where: { id: current.id },
+      data: {
+        state: "executed",
+        executedAt,
+        resultEntityType: "project",
+        resultEntityId: convertedProjectId,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(executedData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft: executed,
+      eventType: "draft_execution_reconciled",
+      result: { id: convertedProjectId, entityType: "project" },
+    });
+    return executed;
+  });
+}
+
+async function loadBoundOnlineRequestConversionDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Die Online-Anfragen-Umwandlung wurde nicht gefunden.",
+      404
+    );
+  }
+  validateOnlineRequestConversionBinding(found, binding);
+  const reconciled = await reconcileOnlineRequestConversionDraft(found, binding);
+  const current = await expireDraftIfNeeded(reconciled, now);
+  return {
+    draft: current,
+    ...validateOnlineRequestConversionBinding(current, binding),
+  };
+}
+
+function toJarvisOnlineRequestConversionDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisOnlineRequestConversionDraftView {
+  const { context } = validateOnlineRequestConversionBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayConvertOnlineRequest(binding);
+  const ready =
+    state === "awaiting_confirmation" &&
+    permitted &&
+    context.blockingIssues.length === 0;
+  const reason: JarvisOnlineRequestConversionDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : !permitted
+              ? "not_permitted"
+              : context.blockingIssues.length
+                ? "blocked"
+                : "ready";
+  const customerPath =
+    context.request.customerDecision === "new"
+      ? "Neuen Kontakt anlegen"
+      : context.contact
+        ? `${context.contact.customerNumber} · ${context.contact.name}`
+        : "Nicht eindeutig";
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "online-request.convert",
+    title: "Online-Anfrage kontrolliert umwandeln",
+    badge:
+      state === "executed"
+        ? "Ausgeführt"
+        : state === "executing"
+          ? "Wird geändert"
+          : state === "cancelled"
+            ? "Abgebrochen"
+            : state === "expired"
+              ? "Abgelaufen"
+              : ready
+                ? "Bereit"
+                : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    requestId: context.request.id,
+    referenceNumber: context.request.referenceNumber,
+    taskTitles: context.tasks.map((task) => task.title),
+    fields: [
+      { label: "Online-Anfrage", value: context.request.referenceNumber },
+      { label: "Anfragender", value: context.request.customerName },
+      { label: "Gewerk", value: context.request.tradeName },
+      { label: "Kundenweg", value: customerPath },
+      { label: "Verantwortung", value: context.responsibility.name },
+      { label: "Projektziel", value: "OK immocare · Lead / Klärung" },
+      { label: "Projektnummer", value: `${context.projectPrefix}-<nächste globale Nummer>` },
+      { label: "Folgeaufgaben", value: String(context.tasks.length) },
+      { label: "Anfragebilder", value: String(context.request.photoCount) },
+    ],
+    checks: [
+      {
+        key: "customer-path",
+        label: "Kundenprüfung",
+        status: context.blockingIssues.length ? "blocked" : "ok",
+        detail: customerPath,
+      },
+      {
+        key: "new-project-only",
+        label: "Projektzuordnung",
+        status: "ok",
+        detail:
+          "Es entsteht immer ein neues Projekt; kein Bestandsprojekt wird automatisch verwendet.",
+      },
+      {
+        key: "responsibility",
+        label: "Verantwortung",
+        status: context.responsibility.fallback ? "warning" : "ok",
+        detail: context.responsibility.name,
+      },
+    ],
+    warnings: context.warnings,
+    blockingIssues: [
+      ...context.blockingIssues,
+      ...(!permitted
+        ? ["Online-Anfragen-Umwandlungen sind für diese Rollenkombination nicht freigegeben."]
+        : []),
+    ],
+    confirmation: {
+      enabled: ready,
+      reason,
+      requiredText: getOnlineRequestConversionConfirmationText(
+        context.request.referenceNumber
+      ),
+    },
+    cancellation: {
+      enabled: state === "awaiting_input" || state === "awaiting_confirmation",
+    },
+    ...(state === "executed" && draft.resultEntityId
+      ? {
+          result: {
+            entityType: "project" as const,
+            entityId: draft.resultEntityId,
+            label: "Neues Projekt öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisOnlineRequestConversionDraft(input: {
+  preview: JarvisActionPreview<"online-request.convert">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für die Umwandlung ist eine aktuelle serverseitige Sitzung erforderlich.",
+      401
+    );
+  }
+  if (!mayConvertOnlineRequest(input)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf Online-Anfragen nicht umwandeln.",
+      403
+    );
+  }
+  const payload = onlineRequestConversionPayloadSchema.parse(input.preview.payload);
+  const actorIds = getActorIds(input.profile);
+  const [actor, users] = await Promise.all([
+    prisma.user.findFirst({
+      where: {
+        id: actorIds.effectiveActorId,
+        organizationId: input.organizationId,
+        isActive: true,
+      },
+    }),
+    prisma.user.findMany({ where: { organizationId: input.organizationId } }),
+  ]);
+  if (!actor || !canConvertOnlineRequests(actor)) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Akteur oder Umwandlungsberechtigung sind nicht mehr aktuell.",
+      409
+    );
+  }
+  const context = onlineRequestConversionContextSchema.parse(
+    await evaluateOnlineRequestConversion({
+      organizationId: input.organizationId,
+      requestId: payload.requestId,
+      actor,
+      users,
+    })
+  );
+  const now = input.now ?? new Date();
+  const state = context.blockingIssues.length
+    ? "awaiting_input"
+    : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "online-request.convert",
+    state,
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: context.blockingIssues.length ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft,
+      eventType:
+        state === "awaiting_confirmation"
+          ? "draft_created_ready"
+          : "draft_created_blocked",
+    });
+    return draft;
+  });
+  return toJarvisOnlineRequestConversionDraftView(created, input);
+}
+
+export async function getJarvisOnlineRequestConversionDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundOnlineRequestConversionDraft(
+    previewId,
+    binding,
+    now
+  );
+  return toJarvisOnlineRequestConversionDraftView(draft, binding);
+}
+
+export async function cancelJarvisOnlineRequestConversionDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundOnlineRequestConversionDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (draft.state === "cancelled") {
+    return toJarvisOnlineRequestConversionDraftView(draft, binding);
+  }
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) {
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Online-Anfragen-Umwandlung kann nicht mehr abgebrochen werden.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (expectedRevision !== draft.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Umwandlung wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Umwandlung wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisOnlineRequestConversionDraftView(cancelled, binding);
+}
+
+async function markOnlineRequestConversionExecutionFailed(
+  draftId: string,
+  reasonCode: string,
+  now = new Date()
+) {
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.jarvisActionDraft.findUnique({
+      where: { id: draftId },
+    });
+    if (!current || current.state !== "executing") return current;
+    const cancelledData: DraftIntegrityData = {
+      ...current,
+      state: "cancelled",
+      cancelledAt: now,
+      lastErrorCode: reasonCode,
+    };
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: current.id,
+        state: "executing",
+        integrityTag: current.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: reasonCode,
+        integrityTag: createIntegrityTag(cancelledData),
+      },
+    });
+    if (changed.count !== 1) return current;
+    const cancelled = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: current.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: cancelled,
+      eventType: "draft_execution_failed",
+      reasonCode,
+    });
+    return cancelled;
+  });
+}
+
+export async function confirmJarvisOnlineRequestConversionDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  confirmationText: string,
+  now = new Date()
+) {
+  const loaded = await loadBoundOnlineRequestConversionDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (loaded.draft.state === "executed") {
+    return toJarvisOnlineRequestConversionDraftView(loaded.draft, binding);
+  }
+  const requiredText = getOnlineRequestConversionConfirmationText(
+    loaded.context.request.referenceNumber
+  );
+  if (
+    !matchesOnlineRequestConversionConfirmation(
+      loaded.context.request.referenceNumber,
+      confirmationText
+    )
+  ) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`,
+      400
+    );
+  }
+  if (
+    expectedRevision !== loaded.draft.revision ||
+    loaded.draft.state !== "awaiting_confirmation"
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Nur die aktuelle, vollständig geprüfte Umwandlung darf bestätigt werden.",
+      409
+    );
+  }
+  if (!mayConvertOnlineRequest(binding)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf Online-Anfragen nicht umwandeln.",
+      403
+    );
+  }
+
+  let claimed: JarvisActionDraft | undefined;
+  try {
+    claimed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({
+        where: { id: loaded.draft.id },
+      });
+      if (!current) {
+        throw new JarvisActionDraftError(
+          "not_found",
+          "Die Umwandlung wurde nicht gefunden.",
+          404
+        );
+      }
+      validateOnlineRequestConversionBinding(current, binding);
+      if (
+        current.state !== "awaiting_confirmation" ||
+        current.expiresAt.getTime() <= now.getTime()
+      ) {
+        throw new JarvisActionDraftError(
+          current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict",
+          "Die Umwandlung ist nicht mehr ausführbar.",
+          current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+        );
+      }
+      const claimedData: DraftIntegrityData = {
+        ...current,
+        state: "executing",
+        confirmedAt: now,
+        lastErrorCode: null,
+      };
+      const changed = await tx.jarvisActionDraft.updateMany({
+        where: {
+          id: current.id,
+          revision: current.revision,
+          state: "awaiting_confirmation",
+          integrityTag: current.integrityTag,
+        },
+        data: {
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+          integrityTag: createIntegrityTag(claimedData),
+        },
+      });
+      if (changed.count !== 1) {
+        throw new JarvisActionDraftError(
+          "conflict",
+          "Die Online-Anfrage wird bereits verarbeitet.",
+          409
+        );
+      }
+      const next = await tx.jarvisActionDraft.findUniqueOrThrow({
+        where: { id: current.id },
+      });
+      await appendAuditEvent(tx, {
+        draft: next,
+        eventType: "draft_execution_started",
+      });
+      return next;
+    });
+    const claimedDraft = claimed;
+
+    const [actor, users] = await Promise.all([
+      prisma.user.findFirst({
+        where: {
+          id: claimedDraft.effectiveActorId,
+          organizationId: binding.organizationId,
+          isActive: true,
+        },
+      }),
+      prisma.user.findMany({ where: { organizationId: binding.organizationId } }),
+    ]);
+    if (!actor || !canConvertOnlineRequests(actor)) {
+      throw new JarvisActionDraftError(
+        "role_changed",
+        "Akteur oder Umwandlungsberechtigung sind nicht mehr aktuell.",
+        409
+      );
+    }
+    const result = await convertOnlineRequest({
+      organizationId: binding.organizationId,
+      requestId: loaded.context.request.id,
+      actor,
+      users,
+      expectedFingerprint: loaded.context.fingerprint,
+      executionRequestId: claimedDraft.id,
+      source: "jarvis",
+    });
+    if (result.duplicate && !result.executionRequestMatched) {
+      throw new JarvisActionDraftError(
+        "stale_context",
+        "Die Online-Anfrage wurde außerhalb dieses JARVIS-Entwurfs umgewandelt.",
+        409
+      );
+    }
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+        where: { id: claimedDraft.id },
+      });
+      if (current.state === "executed") return current;
+      if (current.state !== "executing") {
+        throw new JarvisActionDraftError(
+          "conflict",
+          "Der Ausführungszustand der Umwandlung ist nicht mehr aktuell.",
+          409
+        );
+      }
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = {
+        ...current,
+        state: "executed",
+        executedAt,
+        resultEntityType: "project",
+        resultEntityId: result.projectId,
+        lastErrorCode: null,
+      };
+      const finalDraft = await tx.jarvisActionDraft.update({
+        where: { id: current.id },
+        data: {
+          state: "executed",
+          executedAt,
+          resultEntityType: "project",
+          resultEntityId: result.projectId,
+          lastErrorCode: null,
+          integrityTag: createIntegrityTag(executedData),
+        },
+      });
+      await appendAuditEvent(tx, {
+        draft: finalDraft,
+        eventType: "draft_confirmed_and_executed",
+        result: { id: result.projectId, entityType: "project" },
+      });
+      return finalDraft;
+    });
+    return toJarvisOnlineRequestConversionDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundOnlineRequestConversionDraft(
+        previewId,
+        binding,
+        now
+      );
+      if (latest.draft.state === "executed") {
+        return toJarvisOnlineRequestConversionDraftView(latest.draft, binding);
+      }
+    }
+    if (error instanceof JarvisActionDraftError) {
+      if (claimed && error.code !== "conflict") {
+        await markOnlineRequestConversionExecutionFailed(
+          claimed.id,
+          error.code,
+          now
+        );
+      }
+      throw error;
+    }
+    if (error instanceof OnlineRequestConversionError) {
+      const status =
+        error.status === 400 ||
+        error.status === 401 ||
+        error.status === 403 ||
+        error.status === 404 ||
+        error.status === 409 ||
+        error.status === 410 ||
+        error.status === 500
+          ? error.status
+          : 409;
+      if (claimed) {
+        await markOnlineRequestConversionExecutionFailed(
+          claimed.id,
+          error.code,
+          now
+        );
+      }
+      throw new JarvisActionDraftError(
+        error.code === "stale_context" ? "stale_context" : "invalid_input",
+        error.message,
+        status
+      );
+    }
+    if (claimed) {
+      const latest = await loadBoundOnlineRequestConversionDraft(
+        previewId,
+        binding,
+        now
+      );
+      if (latest.draft.state === "executed") {
+        return toJarvisOnlineRequestConversionDraftView(latest.draft, binding);
+      }
+      await markOnlineRequestConversionExecutionFailed(
+        claimed.id,
+        "execution_failed",
+        now
+      );
+    }
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Die Online-Anfrage wurde nicht umgewandelt. Der Ausführungsnachweis bleibt zur sicheren Prüfung erhalten.",
+      500
+    );
   }
 }
 

@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisProjectStatusDraft: vi.fn(),
   cancelJarvisProjectLifecycleDraft: vi.fn(),
   confirmJarvisProjectLifecycleDraft: vi.fn(),
+  cancelJarvisOnlineRequestConversionDraft: vi.fn(),
+  confirmJarvisOnlineRequestConversionDraft: vi.fn(),
   cancelJarvisContactManagementDraft: vi.fn(),
   confirmJarvisContactManagementDraft: vi.fn(),
   cancelJarvisContactDeletionDraft: vi.fn(),
@@ -93,6 +95,10 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisProjectStatusDraft: mocks.confirmJarvisProjectStatusDraft,
   cancelJarvisProjectLifecycleDraft: mocks.cancelJarvisProjectLifecycleDraft,
   confirmJarvisProjectLifecycleDraft: mocks.confirmJarvisProjectLifecycleDraft,
+  cancelJarvisOnlineRequestConversionDraft:
+    mocks.cancelJarvisOnlineRequestConversionDraft,
+  confirmJarvisOnlineRequestConversionDraft:
+    mocks.confirmJarvisOnlineRequestConversionDraft,
   cancelJarvisContactManagementDraft: mocks.cancelJarvisContactManagementDraft,
   confirmJarvisContactManagementDraft: mocks.confirmJarvisContactManagementDraft,
   cancelJarvisContactDeletionDraft: mocks.cancelJarvisContactDeletionDraft,
@@ -361,6 +367,8 @@ describe("JARVIS action-draft API", () => {
     });
     mocks.cancelJarvisProjectLifecycleDraft.mockResolvedValue({ ...draft, actionId: "project.archive", state: "cancelled" });
     mocks.confirmJarvisProjectLifecycleDraft.mockResolvedValue({ ...draft, actionId: "project.archive", state: "executed", result: { entityType: "project", entityId: "project-1", label: "Projekt öffnen" } });
+    mocks.cancelJarvisOnlineRequestConversionDraft.mockResolvedValue({ ...draft, actionId: "online-request.convert", state: "cancelled" });
+    mocks.confirmJarvisOnlineRequestConversionDraft.mockResolvedValue({ ...draft, actionId: "online-request.convert", state: "executed", result: { entityType: "project", entityId: "project-online-1", label: "Neues Projekt öffnen" } });
     mocks.completeJarvisInvoiceDeliveryDraft.mockResolvedValue({
       ...draft,
       actionId: "document.send",
@@ -1460,6 +1468,39 @@ describe("JARVIS action-draft API", () => {
     expect(response.status).toBe(200);
     expect(mocks.confirmJarvisProjectLifecycleDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 4, "PROJEKT ARCHIVIEREN GLR-449");
     expect(mocks.confirmJarvisProjectStatusDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact online request phrase to the dedicated conversion draft", async () => {
+    const response = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "online-request.convert",
+          command: "confirm",
+          revision: 3,
+          confirmationText:
+            "ONLINE-ANFRAGE UMWANDELN OKI-20260802-A1B2C3",
+          projectId: "forbidden-existing-project",
+        },
+        {
+          "x-jarvis-action": "jarvis-action-draft-v2",
+          origin: "https://workpilot.example",
+        }
+      ) as never,
+      context
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(
+      mocks.confirmJarvisOnlineRequestConversionDraft
+    ).toHaveBeenCalledWith(
+      "preview-1",
+      expect.anything(),
+      3,
+      "ONLINE-ANFRAGE UMWANDELN OKI-20260802-A1B2C3"
+    );
+    expect(mocks.confirmJarvisProjectLifecycleDraft).not.toHaveBeenCalled();
   });
 
   it("rejects unknown commands without touching draft state", async () => {

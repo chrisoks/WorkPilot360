@@ -104,6 +104,7 @@ import {
   createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft,
+  createPersistedJarvisOnlineRequestConversionDraft,
   createPersistedJarvisContactManagementDraft,
   createPersistedJarvisContactDeletionDraft,
   createPersistedJarvisCatalogManagementDraft,
@@ -178,6 +179,10 @@ import {
   extractProjectLifecycleRequest,
   looksLikeProjectLifecycleRequest,
 } from "@/lib/jarvis/project-lifecycle-intake";
+import {
+  extractOnlineRequestConversionReference,
+  looksLikeOnlineRequestConversionRequest,
+} from "@/lib/jarvis/online-request-conversion-intake";
 import {
   extractContactManagementRequest,
   looksLikeContactManagementRequest,
@@ -1198,6 +1203,91 @@ async function buildJarvisProjectLifecycleDraft(input: {
     return { type: "answer" as const, topicId: "action.project-lifecycle", message: "Ich habe den vollständigen Projektlebenszyklus serverseitig geprüft. Kontrolliere vorherigen und neuen Status, Grund, Planungen, Aufgaben, laufende Stempelungen, Angebote, Rechnungen, Zeiten, Dateien und Online-Anfragen. Erst die exakte Bestätigungsphrase archiviert oder stellt das Projekt genau einmal wieder her; verknüpfte Fachdaten werden nicht gelöscht oder umgehängt.", actionDraft };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.project-lifecycle.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Projektarchivierung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.` };
+  }
+}
+
+async function buildJarvisOnlineRequestConversionDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.online-request-conversion.session-required",
+      message:
+        "Für die Umwandlung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const referenceNumber = extractOnlineRequestConversionReference(input.question);
+  if (!referenceNumber) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.online-request-conversion.reference-required",
+      message:
+        "Nenne die vollständige OKI-Referenz, zum Beispiel: „Wandle OKI-20260802-A1B2C3 in ein Projekt um.“ Es wurde nichts verändert.",
+    };
+  }
+  const requests = await prisma.onlineRequest.findMany({
+    where: {
+      organizationId: input.organizationId,
+      referenceNumber: { equals: referenceNumber, mode: "insensitive" },
+    },
+    take: 2,
+    select: { id: true },
+  });
+  if (requests.length !== 1) {
+    return {
+      type: requests.length ? ("clarification" as const) : ("refusal" as const),
+      topicId: requests.length
+        ? "action.online-request-conversion.ambiguous"
+        : "action.online-request-conversion.not-found",
+      message: requests.length
+        ? `Die Online-Anfrage ${referenceNumber} ist nicht eindeutig. Es wurde nichts verändert.`
+        : `Die Online-Anfrage ${referenceNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts verändert.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "online-request.convert",
+    payload: { requestId: requests[0].id },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.online-request-conversion.refused",
+      message: `${preview.message} Es wurde nichts verändert.`,
+    };
+  }
+  try {
+    const actionDraft =
+      await createPersistedJarvisOnlineRequestConversionDraft({
+        preview: preview.value,
+        organizationId: input.organizationId,
+        sessionId: input.sessionId,
+        profile: input.accessProfile,
+      });
+    return {
+      type: "answer" as const,
+      topicId: "action.online-request-conversion",
+      message:
+        "Ich habe die Online-Anfrage, Kundenentscheidung, Kontakt, Verantwortung, Gewerk, Bilder und Folgeaufgaben serverseitig geprüft. Kontrolliere die Vorschau vollständig. Erst die exakte Bestätigungsphrase erzeugt genau ein neues Projekt unter OK immocare → Lead / Klärung; ein bestehendes Projekt wird niemals automatisch verwendet.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.online-request-conversion.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Die Umwandlung konnte nicht sicher vorbereitet werden."
+      } Es wurde nichts verändert.`,
+    };
   }
 }
 
@@ -3129,6 +3219,17 @@ export async function POST(req: Request) {
       topicId: "security.refusal",
       message: getJarvisAuthorizationRefusalMessage(authorization, message),
     });
+  }
+  if (looksLikeOnlineRequestConversionRequest(message)) {
+    return respond(
+      await buildJarvisOnlineRequestConversionDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "sales"
+    );
   }
   const onlineRequestResponse = await resolveJarvisOnlineRequestAnalysis({
     question: message,

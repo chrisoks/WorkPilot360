@@ -212,6 +212,39 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     })).toMatchObject({ ok: false, code: "invalid_payload" });
   });
 
+  it("creates a strict critical online request conversion preview", () => {
+    expect(
+      createJarvisActionPreview({
+        previewId: "preview-online-conversion",
+        actionId: "online-request.convert",
+        payload: { requestId: "online-1" },
+        organizationId: "org-1",
+        profile: leadershipProfile,
+        createdAt: "2026-08-02T10:00:00.000Z",
+      })
+    ).toMatchObject({
+      ok: true,
+      value: {
+        actionId: "online-request.convert",
+        payload: { requestId: "online-1" },
+        execution: { enabled: false, reason: "preview_only" },
+      },
+    });
+    expect(
+      createJarvisActionPreview({
+        previewId: "preview-online-conversion-tampered",
+        actionId: "online-request.convert",
+        payload: {
+          requestId: "online-1",
+          existingProjectId: "forbidden-project",
+        },
+        organizationId: "org-1",
+        profile: leadershipProfile,
+        createdAt: "2026-08-02T10:00:00.000Z",
+      })
+    ).toMatchObject({ ok: false, code: "invalid_payload" });
+  });
+
   it("creates an explicitly registered critical offer-finalization preview", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-offer-finalize",

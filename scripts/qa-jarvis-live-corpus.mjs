@@ -332,6 +332,50 @@ async function main() {
     },
     select: { id: true, customerNumber: true, category: true, updatedAt: true },
   })));
+  const onlinePortal = await prisma.onlineRequestPortal.findFirst({
+    where: { organizationId: actor.organizationId, isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, allowedTradeIds: true },
+  });
+  if (!onlinePortal) throw new Error("Kein aktives Online-Anfragen-Portal für den 110-Fragen-Korpus gefunden.");
+  const onlineAllowedTradeIds = Array.isArray(onlinePortal.allowedTradeIds)
+    ? onlinePortal.allowedTradeIds.filter((id) => typeof id === "string")
+    : [];
+  const onlineTrade = await prisma.category.findFirst({
+    where: {
+      organizationId: actor.organizationId,
+      ...(onlineAllowedTradeIds.length ? { id: { in: onlineAllowedTradeIds } } : {}),
+    },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  if (!onlineTrade) throw new Error("Kein freigegebenes Gewerk für den 110-Fragen-Korpus gefunden.");
+  const onlineContact = await prisma.contact.create({
+    data: {
+      id: randomUUID(), organizationId: actor.organizationId,
+      customerNumber: `88${Date.now().toString().slice(-8)}`,
+      type: "company", category: "Kunde", companyName: `QA JARVIS Online-Korpus ${Date.now()}`,
+      firstName: "QA", lastName: "Online", email: `qa-online-${Date.now()}@example.test`,
+      street: "QA Korpusweg 360", postalCode: "74722", city: "Buchen",
+    },
+    select: { id: true },
+  });
+  const onlineReferenceNumber = `OKI-${now.toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().replaceAll("-", "").slice(0, 6).toUpperCase()}`;
+  const onlineRequest = await prisma.onlineRequest.create({
+    data: {
+      id: randomUUID(), organizationId: actor.organizationId, portalId: onlinePortal.id,
+      referenceNumber: onlineReferenceNumber, clientSubmissionId: randomUUID(), payloadHash: "7".repeat(64),
+      status: "in_review", requestType: "execution", tradeId: onlineTrade.id, tradeName: onlineTrade.name,
+      desiredDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), desiredTimeWindow: "morning",
+      street: "QA Korpusweg 360", postalCode: "74722", city: "Buchen",
+      description: "Isolierte Online-Anfragen-Vorschau im permanenten 110-Fragen-Korpus.",
+      customerKind: "business", company: "QA JARVIS Online-Korpus", firstName: "QA", lastName: "Online",
+      email: `qa-online-request-${Date.now()}@example.test`, phone: "+49 6281 000000", preferredContact: "either",
+      consentAt: now, submissionIpHash: "8".repeat(64), securitySignals: [], securityScore: 100,
+      assignedUserId: actor.id, matchedContactId: onlineContact.id, customerDecision: "existing",
+    },
+    select: { id: true, referenceNumber: true, status: true, convertedProjectId: true, updatedAt: true },
+  });
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -370,6 +414,7 @@ async function main() {
   let automationStatusDiagnosed = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
+  let onlineRequestConversionDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -398,6 +443,7 @@ async function main() {
         const isAutomationManagementCase = item.question.includes("Projektstatus-Frühwarnung");
         const isAutomationRuleManagementCase = item.question.includes("Projektstatus-Regel Umsetzung");
         const isAutomationStatusCase = item.question.includes("Projektstatus-Automation wirklich");
+        const isOnlineRequestConversionCase = item.question.includes("QA-OKI-100");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -444,6 +490,8 @@ async function main() {
               ? "Deaktiviere die Projektstatus-Frühwarnung."
             : isAutomationRuleManagementCase
               ? `Ändere die Projektstatus-Regel Umsetzung: verantwortliche Person nach ${targetResponsibleAfterDays} Tagen, Geschäftsführung nach ${targetManagementAfterDays} Tagen.`
+            : isOnlineRequestConversionCase
+              ? `Wandle ${onlineRequest.referenceNumber} in ein Projekt um.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -649,6 +697,21 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Archivierungsfrage hat keine vollständig prüfbare, unblockierte Bestätigungsvorschau erzeugt." });
           } else {
             projectLifecycleDraftPrepared = true;
+          }
+        }
+        if (isOnlineRequestConversionCase) {
+          if (payload.actionDraft?.actionId !== "online-request.convert") {
+            failures.push({ id: item.id, status: response.status, error: "Die Online-Anfragen-Frage hat keine kontrollierte online-request.convert-Vorschau erzeugt." });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length ||
+            payload.actionDraft.referenceNumber !== onlineRequest.referenceNumber ||
+            !payload.actionDraft.checks?.some((check) => check.key === "new-project-only" && check.status === "ok")
+          ) {
+            failures.push({ id: item.id, status: response.status, error: "Die Online-Anfragen-Frage hat keine vollständige, unblockierte und ausschließlich auf ein neues Projekt gerichtete Vorschau erzeugt." });
+          } else {
+            onlineRequestConversionDraftPrepared = true;
           }
         }
         if (isReminderCase && reminderInvoice) {
@@ -1088,6 +1151,14 @@ async function main() {
     if (currentBulkContacts.length !== bulkContacts.length || bulkContacts.some((contact) => { const current = currentBulkContacts.find((candidate) => candidate.id === contact.id); return !current || current.category !== contact.category || current.updatedAt.toISOString() !== contact.updatedAt.toISOString(); }) || bulkAuditWrites !== 0) {
       failures.push({ id: "side-effect-bulk-update", status: 0, error: "Die 110-Fragen-Prüfung hat unerwartet Kontaktkategorien oder Massenänderungs-Audit verändert." });
     }
+    const [currentOnlineRequest, onlineConvertedAuditWrites, onlineCreatedProjects] = await Promise.all([
+      prisma.onlineRequest.findUnique({ where: { id: onlineRequest.id }, select: { status: true, convertedProjectId: true, updatedAt: true } }),
+      prisma.onlineRequestAuditEvent.count({ where: { onlineRequestId: onlineRequest.id, eventType: "converted", createdAt: { gte: now } } }),
+      prisma.workPilotProject.count({ where: { organizationId: actor.organizationId, source: `Online-Anfrage ${onlineRequest.referenceNumber}`, createdAt: { gte: now } } }),
+    ]);
+    if (!currentOnlineRequest || currentOnlineRequest.status !== onlineRequest.status || currentOnlineRequest.convertedProjectId !== onlineRequest.convertedProjectId || currentOnlineRequest.updatedAt.toISOString() !== onlineRequest.updatedAt.toISOString() || onlineConvertedAuditWrites !== 0 || onlineCreatedProjects !== 0) {
+      failures.push({ id: "side-effect-online-request-conversion", status: 0, error: "Die 110-Fragen-Prüfung hat eine Online-Anfrage unerwartet umgewandelt oder ein Projekt erzeugt." });
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -1125,6 +1196,8 @@ async function main() {
     await prisma.contactIntegrationEvent.deleteMany({ where: { contactId: { in: bulkContacts.map((contact) => contact.id) } } });
     await prisma.auditLog.deleteMany({ where: { organizationId: actor.organizationId, entityType: "contact-bulk" } });
     await prisma.contact.deleteMany({ where: { id: { in: bulkContacts.map((contact) => contact.id) }, organizationId: actor.organizationId } });
+    await prisma.onlineRequest.deleteMany({ where: { id: onlineRequest.id, organizationId: actor.organizationId } });
+    await prisma.contact.deleteMany({ where: { id: onlineContact.id, organizationId: actor.organizationId } });
     await prisma.auditLog.deleteMany({ where: { entityType: "user", entityId: personnelTarget.id } });
     await prisma.auditLog.deleteMany({ where: { entityType: "employeeCostCalculation", entityId: employeeCostTarget.id } });
     await prisma.employeeCostCalculation.deleteMany({ where: { id: employeeCostTarget.id, organizationId: actor.organizationId } });
@@ -1163,6 +1236,7 @@ async function main() {
     automationStatusDiagnosed,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
+    onlineRequestConversionDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
       ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
       : 0,
@@ -1181,6 +1255,8 @@ async function main() {
     qaPersonnelTargetRemaining: await prisma.user.count({ where: { id: personnelTarget.id } }),
     qaEmployeeCostTargetRemaining: await prisma.employeeCostCalculation.count({ where: { id: employeeCostTarget.id } }),
     qaBulkContactRemaining: await prisma.contact.count({ where: { id: { in: bulkContacts.map((contact) => contact.id) } } }),
+    qaOnlineRequestRemaining: await prisma.onlineRequest.count({ where: { id: onlineRequest.id } }),
+    qaOnlineContactRemaining: await prisma.contact.count({ where: { id: onlineContact.id } }),
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

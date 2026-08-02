@@ -2,6 +2,7 @@ import { Role } from "@prisma/client";
 import {
   canAccessEmployeeCosts,
   canArchiveProjects,
+  canConvertOnlineRequests,
   canDeleteContacts,
   canDeleteInvoices,
   canDeleteOffers,
@@ -357,6 +358,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     dataClasses: ["customer"],
     implementation: "available",
     canUse: canArchiveProjects,
+  },
+  {
+    id: "online-request.convert",
+    title: "Online-Anfrage kontrolliert in ein Projekt umwandeln",
+    category: "project",
+    risk: "critical",
+    confirmation: "critical",
+    dataClasses: ["customer"],
+    implementation: "available",
+    canUse: canConvertOnlineRequests,
   },
   {
     id: "contact.manage",

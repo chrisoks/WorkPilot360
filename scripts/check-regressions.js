@@ -81,6 +81,7 @@ const files = {
   tasksRoute: read("src/app/api/tasks/route.ts"),
   onlineRequestSubmitRoute: read("src/app/api/public/online-requests/submit/route.ts"),
   onlineRequestConversionRoute: read("src/app/api/online-requests/[requestId]/convert/route.ts"),
+  onlineRequestConversionService: read("src/lib/online-requests/conversion-service.ts"),
   onlineRequestWorkspace: read("src/components/online-requests/online-requests-workspace.tsx"),
   storedFileRoute: read("src/app/api/files/[fileId]/route.ts"),
   storagePilot: read("src/lib/storage/file-pilot.ts"),
@@ -720,13 +721,13 @@ const required = [
   },
   {
     label: "Online-Anfragen werden immer als OK-immocare-Lead angelegt",
-    file: "onlineRequestConversionRoute",
+    file: "onlineRequestConversionService",
     needle: "const PROJECT_STATUS = \"Lead / Klärung\"",
     min: 1,
   },
   {
     label: "Online-Anfragebilder bleiben eine eigene Projektbildgruppe",
-    file: "onlineRequestConversionRoute",
+    file: "onlineRequestConversionService",
     needle: "Bilder: Anfragebilder",
     min: 1,
   },

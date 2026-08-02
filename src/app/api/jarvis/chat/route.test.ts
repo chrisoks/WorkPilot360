@@ -61,6 +61,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisProjectMasterDataDraft: vi.fn(),
   createPersistedJarvisProjectStatusDraft: vi.fn(),
   createPersistedJarvisProjectLifecycleDraft: vi.fn(),
+  createPersistedJarvisOnlineRequestConversionDraft: vi.fn(),
   createPersistedJarvisContactManagementDraft: vi.fn(),
   createPersistedJarvisContactDeletionDraft: vi.fn(),
   createPersistedJarvisCatalogManagementDraft: vi.fn(),
@@ -159,6 +160,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft:
     mocks.createPersistedJarvisProjectLifecycleDraft,
+  createPersistedJarvisOnlineRequestConversionDraft:
+    mocks.createPersistedJarvisOnlineRequestConversionDraft,
   createPersistedJarvisContactManagementDraft:
     mocks.createPersistedJarvisContactManagementDraft,
   createPersistedJarvisContactDeletionDraft:
@@ -3708,6 +3711,75 @@ describe("POST /api/jarvis/chat", () => {
     expect(payload).toMatchObject({ type: "answer", topicId: "action.project-lifecycle", actionDraft: { actionId: "project.archive", lifecycleAction: "archive", execution: { enabled: false, reason: "requires_confirmation" } } });
     expect(mocks.createPersistedJarvisProjectLifecycleDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "project.archive", payload: { projectId: "project-1", lifecycleAction: "archive", reason: "Auftrag abgeschlossen und geprüft" } }) }));
     projectLookup.mockRestore();
+  });
+
+  it("prepares an online request conversion as a critical non-executing draft", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: actor,
+      effectiveActor: actor,
+      isImpersonating: false,
+    });
+    const requestLookup = vi
+      .spyOn(prisma.onlineRequest, "findMany")
+      .mockResolvedValueOnce([{ id: "online-1" }] as never);
+    mocks.createPersistedJarvisOnlineRequestConversionDraft.mockImplementation(
+      async ({ preview }) => ({
+        version: 2,
+        previewId: preview.previewId,
+        actionId: "online-request.convert",
+        title: "Online-Anfrage kontrolliert umwandeln",
+        badge: "Bereit",
+        state: "awaiting_confirmation",
+        revision: 1,
+        expiresAt: "2026-08-02T12:00:00.000Z",
+        requestId: "online-1",
+        referenceNumber: "OKI-20260802-A1B2C3",
+        taskTitles: ["Wunschdatum prüfen"],
+        fields: [],
+        checks: [],
+        warnings: [],
+        blockingIssues: [],
+        confirmation: {
+          enabled: true,
+          reason: "ready",
+          requiredText: "ONLINE-ANFRAGE UMWANDELN OKI-20260802-A1B2C3",
+        },
+        cancellation: { enabled: true },
+      })
+    );
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wandle OKI-20260802-A1B2C3 in ein Projekt um.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.online-request-conversion",
+      actionDraft: {
+        actionId: "online-request.convert",
+        referenceNumber: "OKI-20260802-A1B2C3",
+        confirmation: { enabled: true },
+      },
+    });
+    expect(
+      mocks.createPersistedJarvisOnlineRequestConversionDraft
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preview: expect.objectContaining({
+          actionId: "online-request.convert",
+          payload: { requestId: "online-1" },
+        }),
+      })
+    );
+    requestLookup.mockRestore();
   });
 
   it("prepares an invoice draft with preflight but never fakturizes or sends", async () => {

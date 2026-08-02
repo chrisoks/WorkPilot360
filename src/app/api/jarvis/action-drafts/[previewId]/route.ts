@@ -22,6 +22,7 @@ import {
   cancelJarvisProjectMasterDataDraft,
   cancelJarvisProjectStatusDraft,
   cancelJarvisProjectLifecycleDraft,
+  cancelJarvisOnlineRequestConversionDraft,
   cancelJarvisContactManagementDraft,
   cancelJarvisContactDeletionDraft,
   cancelJarvisCatalogManagementDraft,
@@ -66,6 +67,7 @@ import {
   confirmJarvisProjectMasterDataDraft,
   confirmJarvisProjectStatusDraft,
   confirmJarvisProjectLifecycleDraft,
+  confirmJarvisOnlineRequestConversionDraft,
   confirmJarvisContactManagementDraft,
   confirmJarvisContactDeletionDraft,
   confirmJarvisCatalogManagementDraft,
@@ -216,6 +218,7 @@ export async function PATCH(
     const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
+    const isOnlineRequestConversion = body.actionId === "online-request.convert";
     const isContactManagement = body.actionId === "contact.manage";
     const isContactDeletion = body.actionId === "contact.delete";
     const isCatalogManagement = body.actionId === "catalog.manage";
@@ -244,7 +247,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isAutomationManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
+    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isOnlineRequestConversion || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isAutomationManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -439,6 +442,8 @@ export async function PATCH(
           ? "Die Projektdatenänderung ist fest an Projektstand, Änderungsumfang und fachlichen Prüfstatus gebunden. Änderungen erfordern eine neue Vorschau."
           : isProjectLifecycle
           ? "Die Projektarchivierung ist fest an Projektstatus, verknüpfte Fachdaten und dokumentierten Grund gebunden. Änderungen erfordern eine neue Vorschau."
+          : isOnlineRequestConversion
+          ? "Die Umwandlung ist fest an Anfrage, Kundenentscheidung, Kontakt, Verantwortung, Gewerk, Bildern und Folgeaufgaben gebunden. Änderungen erfordern eine neue Vorschau."
           : isProjectStatus
           ? "Die Projektstatusänderung ist fest an Projektstand, Zielstatus, Fachnachweise und dokumentierten Grund gebunden. Änderungen erfordern eine neue Vorschau."
           : isOfferDecision
@@ -505,6 +510,7 @@ export async function POST(
     const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
+    const isOnlineRequestConversion = body.actionId === "online-request.convert";
     const isContactManagement = body.actionId === "contact.manage";
     const isContactDeletion = body.actionId === "contact.delete";
     const isCatalogManagement = body.actionId === "catalog.manage";
@@ -590,6 +596,12 @@ export async function POST(
           )
         : isAutomationManagement
         ? await cancelJarvisAutomationManagementDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isOnlineRequestConversion
+        ? await cancelJarvisOnlineRequestConversionDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -736,6 +748,8 @@ export async function POST(
           ? "Die Automationsänderung wurde abgebrochen. Schalter, Regeln, Projekte und Meldungen blieben unverändert."
           : isProjectLifecycle
           ? "Die Projektarchivierung wurde abgebrochen. Projekt und sämtliche verknüpften Fachdaten blieben unverändert."
+          : isOnlineRequestConversion
+          ? "Die Umwandlung wurde abgebrochen. Online-Anfrage, Kunde, Projekte, Aufgaben, Bilder und Benachrichtigungen blieben unverändert."
           : isProjectStatus
           ? "Die Projektstatusänderung wurde abgebrochen. Projekt und sämtliche Fachdaten blieben unverändert."
           : isOfferDecision
@@ -850,6 +864,13 @@ export async function POST(
         )
       : isAutomationManagement
       ? await confirmJarvisAutomationManagementDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isOnlineRequestConversion
+      ? await confirmJarvisOnlineRequestConversionDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -1041,6 +1062,8 @@ export async function POST(
               : "Der Schalter der Projektstatus-Automation wurde nach deiner exakten Bestätigung genau einmal geändert. Dieser Schritt hat keine Meldung, E-Mail, Scheduler-Ausführung oder Projektstatusänderung ausgelöst."
             : isProjectLifecycle
             ? "Das Projekt wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Timeline, Logbuch und Audit wurden gemeinsam geschrieben; alle Verknüpfungen blieben erhalten."
+            : isOnlineRequestConversion
+            ? "Die Online-Anfrage wurde nach deiner exakten Bestätigung kontrolliert genau einmal in ein neues OK-immocare-Projekt umgewandelt. Kundenweg, Logbuch, Anfragebilder, Aufgaben, Timeline, Audit und Benachrichtigungen wurden gemeinsam verarbeitet."
             : isProjectStatus
             ? "Der Projektstatus wurde nach deiner exakten Bestätigung genau einmal geändert. Timeline, Logbuch und Audit wurden gemeinsam geschrieben; alle übrigen Fachdaten blieben unverändert."
             : isOfferDelivery
@@ -1100,6 +1123,8 @@ export async function POST(
             ? "Die Projektstatus-Automation wurde nicht geändert."
             : isProjectLifecycle
             ? "Das Projekt wurde nicht archiviert oder wiederhergestellt."
+            : isOnlineRequestConversion
+            ? "Die Online-Anfrage wurde nicht umgewandelt."
             : isProjectStatus
             ? "Der Projektstatus wurde nicht geändert."
             : isOfferDecision

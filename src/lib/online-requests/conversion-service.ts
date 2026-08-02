@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   Prisma,
   TaskPriority,
@@ -37,6 +37,78 @@ export class OnlineRequestConversionError extends Error {
     super(message);
     this.name = "OnlineRequestConversionError";
   }
+}
+
+type ConversionFingerprintInput = {
+  id: string;
+  referenceNumber: string;
+  updatedAt: Date;
+  status: string;
+  customerDecision: string;
+  matchedContactId: string | null;
+  assignedUserId: string | null;
+  tradeId: string | null;
+  tradeName: string;
+  requestType: string;
+  desiredDate: string | null;
+  desiredTimeWindow: string | null;
+  callbackTimeWindow: string | null;
+  convertedProjectId: string | null;
+  photos: Array<{ id: string; sha256: string; byteSize: number; sortOrder: number }>;
+  matchedContact: { id: string; updatedAt: Date } | null;
+  projectPrefix: string;
+  responsibleUserId: string;
+};
+
+function createConversionFingerprint(input: ConversionFingerprintInput) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: 1,
+        id: input.id,
+        referenceNumber: input.referenceNumber,
+        updatedAt: input.updatedAt.toISOString(),
+        status: input.status,
+        customerDecision: input.customerDecision,
+        matchedContactId: input.matchedContactId,
+        assignedUserId: input.assignedUserId,
+        tradeId: input.tradeId,
+        tradeName: input.tradeName,
+        requestType: input.requestType,
+        desiredDate: input.desiredDate,
+        desiredTimeWindow: input.desiredTimeWindow,
+        callbackTimeWindow: input.callbackTimeWindow,
+        convertedProjectId: input.convertedProjectId,
+        photos: input.photos.map((photo) => ({
+          id: photo.id,
+          sha256: photo.sha256,
+          byteSize: photo.byteSize,
+          sortOrder: photo.sortOrder,
+        })),
+        matchedContact: input.matchedContact
+          ? {
+              id: input.matchedContact.id,
+              updatedAt: input.matchedContact.updatedAt.toISOString(),
+            }
+          : null,
+        projectPrefix: input.projectPrefix,
+        responsibleUserId: input.responsibleUserId,
+      })
+    )
+    .digest("hex");
+}
+
+export function getOnlineRequestConversionConfirmationText(
+  referenceNumber: string
+) {
+  return `ONLINE-ANFRAGE UMWANDELN ${referenceNumber.trim().toUpperCase()}`;
+}
+
+export function matchesOnlineRequestConversionConfirmation(
+  referenceNumber: string,
+  value: string
+) {
+  return value.trim() === getOnlineRequestConversionConfirmationText(referenceNumber);
 }
 
 function cleanString(value: unknown) {
@@ -170,6 +242,167 @@ function buildImageAttachments(
   }));
 }
 
+export async function evaluateOnlineRequestConversion(input: {
+  organizationId: string;
+  requestId: string;
+  actor: User;
+  users: User[];
+}) {
+  const requestId = cleanString(input.requestId);
+  if (!requestId) {
+    throw new OnlineRequestConversionError(
+      "Online-Anfrage fehlt.",
+      400,
+      "request_missing"
+    );
+  }
+  const onlineRequest = await prisma.onlineRequest.findFirst({
+    where: { id: requestId, organizationId: input.organizationId },
+    include: {
+      photos: {
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, sha256: true, byteSize: true, sortOrder: true },
+      },
+    },
+  });
+  if (!onlineRequest) {
+    throw new OnlineRequestConversionError(
+      "Online-Anfrage wurde nicht gefunden.",
+      404,
+      "request_not_found"
+    );
+  }
+  const [matchedContact, validTrade, convertedProject] = await Promise.all([
+    onlineRequest.customerDecision === "existing" &&
+    onlineRequest.matchedContactId
+      ? prisma.contact.findFirst({
+          where: {
+            id: onlineRequest.matchedContactId,
+            organizationId: input.organizationId,
+          },
+          select: {
+            id: true,
+            customerNumber: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            updatedAt: true,
+          },
+        })
+      : null,
+    onlineRequest.tradeId
+      ? prisma.category.findFirst({
+          where: {
+            id: onlineRequest.tradeId,
+            organizationId: input.organizationId,
+          },
+          select: { id: true, projectPrefix: true },
+        })
+      : null,
+    onlineRequest.convertedProjectId
+      ? prisma.workPilotProject.findFirst({
+          where: {
+            id: onlineRequest.convertedProjectId,
+            organizationId: input.organizationId,
+          },
+          select: { id: true, projectNumber: true, title: true },
+        })
+      : null,
+  ]);
+  const responsibleUser =
+    input.users.find(
+      (user) =>
+        user.id === onlineRequest.assignedUserId &&
+        user.isActive &&
+        canConvertOnlineRequests(user)
+    ) ?? input.actor;
+  const blockingIssues: string[] = [];
+  if (onlineRequest.convertedProjectId) {
+    blockingIssues.push(
+      convertedProject
+        ? `Die Anfrage wurde bereits in ${convertedProject.projectNumber} umgewandelt.`
+        : "Der Umwandlungsnachweis verweist auf kein gültiges Projekt."
+    );
+  } else {
+    if (onlineRequest.status === "closed") {
+      blockingIssues.push(
+        "Eine abgeschlossene Anfrage muss vor der Übernahme wieder geöffnet werden."
+      );
+    }
+    if (
+      onlineRequest.customerDecision !== "new" &&
+      onlineRequest.customerDecision !== "existing"
+    ) {
+      blockingIssues.push(
+        "Der Kundenweg muss eindeutig als vorhandener oder neuer Kunde festgelegt sein."
+      );
+    } else if (
+      onlineRequest.customerDecision === "existing" &&
+      !onlineRequest.matchedContactId
+    ) {
+      blockingIssues.push("Für den vorhandenen Kunden ist kein Kontakt ausgewählt.");
+    } else if (
+      onlineRequest.customerDecision === "existing" &&
+      !matchedContact
+    ) {
+      blockingIssues.push(
+        "Der ausgewählte Bestandskontakt ist in dieser Organisation nicht mehr gültig."
+      );
+    }
+    if (!onlineRequest.tradeName.trim()) {
+      blockingIssues.push("Das Gewerk der Anfrage fehlt.");
+    }
+  }
+  const recommendations = stringList(onlineRequest.recommendationNames);
+  const tasks = buildOnlineRequestConversionTasks({
+    ...onlineRequest,
+    recommendationNames: recommendations,
+  });
+  const projectPrefix = validTrade?.projectPrefix || "SON";
+  const fingerprint = createConversionFingerprint({
+    ...onlineRequest,
+    matchedContact,
+    projectPrefix,
+    responsibleUserId: responsibleUser.id,
+  });
+  return {
+    fingerprint,
+    blockingIssues,
+    warnings:
+      responsibleUser.id !== onlineRequest.assignedUserId
+        ? [
+            "Die ausführende berechtigte Person wird automatisch als Verantwortung und Aufgabenempfänger verwendet.",
+          ]
+        : [],
+    request: {
+      id: onlineRequest.id,
+      referenceNumber: onlineRequest.referenceNumber,
+      status: onlineRequest.status,
+      requestType: onlineRequest.requestType,
+      tradeName: onlineRequest.tradeName,
+      customerDecision: onlineRequest.customerDecision,
+      customerName: getOnlineRequestCustomerName(onlineRequest),
+      photoCount: onlineRequest.photos.length,
+      updatedAt: onlineRequest.updatedAt.toISOString(),
+    },
+    contact: matchedContact
+      ? {
+          id: matchedContact.id,
+          customerNumber: matchedContact.customerNumber,
+          name: contactDisplayName(matchedContact),
+        }
+      : null,
+    responsibility: {
+      userId: responsibleUser.id,
+      name: actorName(responsibleUser),
+      fallback: responsibleUser.id !== onlineRequest.assignedUserId,
+    },
+    project: convertedProject,
+    projectPrefix,
+    tasks: tasks.map((task) => ({ title: task.title })),
+  };
+}
+
 async function prepareOnlineRequestPhotoStorage(
   organizationId: string,
   requestId: string,
@@ -210,12 +443,18 @@ async function performConversion({
   actor,
   users,
   preparedPhotoStorage,
+  expectedFingerprint,
+  executionRequestId,
+  source,
 }: {
   organizationId: string;
   requestId: string;
   actor: User;
   users: User[];
   preparedPhotoStorage: PreparedStorageAttachments;
+  expectedFingerprint?: string;
+  executionRequestId?: string;
+  source: "ui" | "jarvis";
 }) {
   const now = new Date();
   return prisma.$transaction(
@@ -250,13 +489,26 @@ async function performConversion({
       }
 
       if (onlineRequest.convertedProjectId) {
-        const existingProject = await tx.workPilotProject.findFirst({
-          where: {
-            id: onlineRequest.convertedProjectId,
-            organizationId,
-          },
-          select: { id: true, contactId: true },
-        });
+        const [existingProject, conversionAudit] = await Promise.all([
+          tx.workPilotProject.findFirst({
+            where: {
+              id: onlineRequest.convertedProjectId,
+              organizationId,
+            },
+            select: { id: true, contactId: true },
+          }),
+          executionRequestId
+            ? tx.onlineRequestAuditEvent.findFirst({
+                where: {
+                  organizationId,
+                  onlineRequestId: onlineRequest.id,
+                  eventType: "converted",
+                },
+                orderBy: { createdAt: "desc" },
+                select: { payload: true },
+              })
+            : null,
+        ]);
         if (!existingProject) {
           throw new OnlineRequestConversionError(
             "Der gespeicherte Umwandlungsnachweis verweist nicht mehr auf ein gültiges Projekt. Bitte den Datenstand prüfen.",
@@ -264,12 +516,21 @@ async function performConversion({
             "converted_project_missing"
           );
         }
+        const auditPayload =
+          conversionAudit?.payload &&
+          typeof conversionAudit.payload === "object" &&
+          !Array.isArray(conversionAudit.payload)
+            ? conversionAudit.payload
+            : null;
         return {
           projectId: existingProject.id,
           contactId: existingProject.contactId ?? "",
           taskIds: [] as string[],
           createdContact: false,
           duplicate: true,
+          executionRequestMatched:
+            Boolean(executionRequestId) &&
+            auditPayload?.executionRequestId === executionRequestId,
         };
       }
 
@@ -291,47 +552,82 @@ async function performConversion({
           "customer_decision_required"
         );
       }
+      if (!onlineRequest.tradeName.trim()) {
+        throw new OnlineRequestConversionError(
+          "Das Gewerk der Online-Anfrage fehlt.",
+          409,
+          "trade_required"
+        );
+      }
+
+      if (
+        onlineRequest.customerDecision === "existing" &&
+        !onlineRequest.matchedContactId
+      ) {
+        throw new OnlineRequestConversionError(
+          "Bitte einen vorhandenen Kunden eindeutig auswählen.",
+          409,
+          "matched_contact_required"
+        );
+      }
+      const matchedContact =
+        onlineRequest.customerDecision === "existing" &&
+        onlineRequest.matchedContactId
+          ? await tx.contact.findFirst({
+              where: {
+                id: onlineRequest.matchedContactId,
+                organizationId,
+              },
+              select: {
+                id: true,
+                companyName: true,
+                firstName: true,
+                lastName: true,
+                customerNumber: true,
+                updatedAt: true,
+              },
+            })
+          : null;
+      if (onlineRequest.customerDecision === "existing" && !matchedContact) {
+        throw new OnlineRequestConversionError(
+          "Der ausgewählte Kunde existiert nicht mehr oder gehört nicht zu dieser Organisation.",
+          409,
+          "matched_contact_invalid"
+        );
+      }
+      const validTrade = onlineRequest.tradeId
+        ? await tx.category.findFirst({
+            where: {
+              id: onlineRequest.tradeId,
+              organizationId,
+            },
+            select: { id: true, projectPrefix: true },
+          })
+        : null;
+      const taskOwner =
+        users.find(
+          (user) =>
+            user.id === onlineRequest.assignedUserId &&
+            user.isActive &&
+            canConvertOnlineRequests(user)
+        ) ?? actor;
+      const fingerprint = createConversionFingerprint({
+        ...onlineRequest,
+        matchedContact,
+        projectPrefix: validTrade?.projectPrefix || "SON",
+        responsibleUserId: taskOwner.id,
+      });
+      if (expectedFingerprint && fingerprint !== expectedFingerprint) {
+        throw new OnlineRequestConversionError(
+          "Die Online-Anfrage oder ihre Zuordnung wurde seit der Vorschau verändert. Bitte erneut prüfen.",
+          409,
+          "stale_context"
+        );
+      }
 
       let createdContact = false;
-      let contact:
-        | {
-            id: string;
-            companyName: string | null;
-            firstName: string | null;
-            lastName: string | null;
-            customerNumber: string;
-          }
-        | null = null;
-
-      if (onlineRequest.customerDecision === "existing") {
-        if (!onlineRequest.matchedContactId) {
-          throw new OnlineRequestConversionError(
-            "Bitte einen vorhandenen Kunden eindeutig auswählen.",
-            409,
-            "matched_contact_required"
-          );
-        }
-        contact = await tx.contact.findFirst({
-          where: {
-            id: onlineRequest.matchedContactId,
-            organizationId,
-          },
-          select: {
-            id: true,
-            companyName: true,
-            firstName: true,
-            lastName: true,
-            customerNumber: true,
-          },
-        });
-        if (!contact) {
-          throw new OnlineRequestConversionError(
-            "Der ausgewählte Kunde existiert nicht mehr oder gehört nicht zu dieser Organisation.",
-            409,
-            "matched_contact_invalid"
-          );
-        }
-      } else {
+      let contact = matchedContact;
+      if (onlineRequest.customerDecision === "new") {
         const contactId = randomUUID();
         const phone = normalizePhoneNumber(onlineRequest.phone);
         const customerNumber = await getNextCustomerNumber(tx, organizationId);
@@ -378,6 +674,7 @@ async function performConversion({
             firstName: true,
             lastName: true,
             customerNumber: true,
+            updatedAt: true,
           },
         });
         await tx.contactIntegrationEvent.create({
@@ -395,6 +692,13 @@ async function performConversion({
           },
         });
         createdContact = true;
+      }
+      if (!contact) {
+        throw new OnlineRequestConversionError(
+          "Der Kundenkontakt konnte nicht sicher bestimmt werden.",
+          409,
+          "contact_unresolved"
+        );
       }
 
       const objectAddress =
@@ -425,22 +729,6 @@ async function performConversion({
           select: { id: true },
         }));
 
-      const validTrade = onlineRequest.tradeId
-        ? await tx.category.findFirst({
-            where: {
-              id: onlineRequest.tradeId,
-              organizationId,
-            },
-            select: { id: true, projectPrefix: true },
-          })
-        : null;
-      const taskOwner =
-        users.find(
-          (user) =>
-            user.id === onlineRequest.assignedUserId &&
-            user.isActive &&
-            canConvertOnlineRequests(user)
-        ) ?? actor;
       const taskOwnerName = actorName(taskOwner);
       const projectId = randomUUID();
       const { projectNumber, projectTitle } =
@@ -645,6 +933,8 @@ async function performConversion({
             createdContact,
             taskIds: createdTasks.map((task) => task.id),
             photoCount: onlineRequest.photos.length,
+            source,
+            executionRequestId: executionRequestId ?? null,
           },
         },
       });
@@ -667,6 +957,7 @@ async function performConversion({
         taskIds: createdTasks.map((task) => task.id),
         createdContact,
         duplicate: false,
+        executionRequestMatched: Boolean(executionRequestId),
       };
     },
     {
@@ -681,6 +972,9 @@ export async function convertOnlineRequest(input: {
   requestId: string;
   actor: User;
   users: User[];
+  expectedFingerprint?: string;
+  executionRequestId?: string;
+  source?: "ui" | "jarvis";
 }) {
   const requestId = cleanString(input.requestId);
   if (!requestId) {
@@ -704,6 +998,9 @@ export async function convertOnlineRequest(input: {
           actor: input.actor,
           users: input.users,
           preparedPhotoStorage,
+          expectedFingerprint: input.expectedFingerprint,
+          executionRequestId: input.executionRequestId,
+          source: input.source ?? "ui",
         });
         if (result.duplicate) {
           await cleanupPreparedStorageUploads(preparedPhotoStorage);
