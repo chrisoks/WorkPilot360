@@ -3170,3 +3170,45 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `734753`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
+
+## 33. Projektstatus-Automation transparent diagnostizieren
+
+Die rein lesende Registry-Aktion `automation.read` beantwortet natürliche
+Statusfragen zur Projektstatus-Automation. JARVIS trennt dabei ausdrücklich
+den fachlichen Schalter der aktuellen Organisation, den serverseitigen
+Scheduler-/Kill-Switch und den Zustell-Kill-Switch. Damit wird ein scheinbar
+„aktiver“ Teilzustand nicht länger mit vollständiger Betriebsbereitschaft
+verwechselt. Die Antwort zeigt zusätzlich alle gespeicherten Regeln und
+Schwellen, aktuelle rein lesende Treffer für verantwortliche Person und
+Geschäftsführung, fehlende eindeutige Zuständigkeiten, den letzten flüchtigen
+Schedulerversuch sowie Zahl und Zeitpunkt persistenter Zustellereignisse.
+
+Administration oder Geschäftsführung sind sowohl für den Sitzungs- als auch
+für den effektiven Akteur erforderlich. Führungskraft und darunter werden vor
+dem organisationsweiten Datenzugriff abgelehnt. Der Adapter
+`src/lib/jarvis/automation-status-analysis.ts` verwendet dieselben
+normalisierten `deadlines`-Einstellungen und dieselbe Projektstatus-Auswertung
+wie die normale Status-Automationsoberfläche. Er führt keine Synchronisation
+aus, startet keinen Scheduler, erzeugt keine Notification, versendet keine
+Mail und ändert keinen Projektstatus. Die Antwort verlinkt ausschließlich zur
+normalen Status-Automation.
+
+Lokal bestanden 171 Testdateien mit 1.715 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Der echte UI-Klicktest zeigte korrekt: Organisationsschalter,
+Scheduler und Zustellung aus; dennoch 131 überwachte Projekte, 104 aktuelle
+Schwellen, sechs Regeln und 94 fehlende Zuständigkeiten. Die Navigation öffnete
+exakt `/dashboard?view=statusAutomation`; Browserfehler, neue Entwürfe, Audits,
+Notifications und Eskalationsereignisse waren null. Der permanente Korpus
+blieb exakt 110 Fälle groß und bestand lokal sowie produktiv 110/110; die neue
+Betriebsdiagnose wurde ausdrücklich validiert, produktiv 28 Schreibentwürfe
+nur vorbereitet, null ausgeführt und null Rückstände.
+
+Produktiv abgenommen auf Runtime-Commit
+`c7223a7edc3981c662941d270dcd17fd833200cc`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T065000Z-before-jarvis-automation-status`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `736895`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.

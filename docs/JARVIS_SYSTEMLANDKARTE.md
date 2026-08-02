@@ -564,3 +564,27 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   170/170 Testdateien, 1.702/1.702 Tests, echter UI-Klicktest, 110/110
   Produktionsfragen, 28 nur vorbereitete Aktionen, null Rückstände und leerer
   Live-Prisma-Diff. WorkPilot PID `734753`, KlinikNavigator PID `398228`.
+
+## Projektstatus-Automation transparent diagnostizieren
+
+- Rein lesende Registry-Aktion `automation.read`; natürliche Statusfragen
+  werden in `src/lib/jarvis/automation-status-analysis.ts` erkannt und
+  deterministisch beantwortet.
+- Sichtbare Trennung: fachlicher Organisationsschalter, serverseitiger
+  Scheduler-/Kill-Switch und Zustell-Kill-Switch. Vollständige
+  Betriebsbereitschaft setzt alle drei Ebenen sowie einen laufenden Scheduler
+  voraus.
+- Diagnoseumfang: alle Regeln/Schwellen, überwachte Projekte, aktuelle
+  Verantwortlichen-/Geschäftsführungsstufe, fehlende Zuständigkeiten, letzter
+  flüchtiger Schedulerstatus und persistente Zustellereignisse.
+- Rollen: Administration/Geschäftsführung auf Sitzungs- und Effektivebene;
+  Führungskraft wird vor dem organisationsweiten Lesezugriff abgelehnt.
+- Rein lesend: kein Schedulerstart, keine Synchronisation, keine Notification,
+  keine E-Mail und kein Projektstatuswechsel. Der einzige UI-Schritt ist die
+  Navigation zur bestehenden Status-Automation.
+- Produktivabnahme: Runtime
+  `c7223a7edc3981c662941d270dcd17fd833200cc`, Backup
+  `/var/backups/workpilot360/20260802T065000Z-before-jarvis-automation-status`,
+  171/171 Testdateien, 1.715/1.715 Tests, echter UI-Klicktest, 110/110
+  Produktionsfragen, null Ausführungen/Rückstände und leerer Live-Prisma-Diff.
+  WorkPilot PID `736895`, KlinikNavigator PID `398228`.

@@ -1,5 +1,28 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projektstatus-Automationsdiagnose 2026-08-02: Die neue rein lesende
+  Aktion `automation.read` beantwortet organisationsweit, ob die
+  Projektstatus-Automation tatsächlich betriebsbereit ist. Sie trennt sichtbar
+  den fachlichen Organisationsschalter, den serverseitigen Scheduler-/
+  Kill-Switch und den Zustell-Kill-Switch. Zusätzlich zeigt sie alle Regeln,
+  aktuelle Dry-Run-Treffer, fehlende Zuständigkeiten, den letzten flüchtigen
+  Schedulerstatus sowie offene und letzte persistente Zustellereignisse.
+  Administration/Geschäftsführung sind auf Sitzungs- und Effektivebene
+  erforderlich; Führungskraft wird vor dem Datenzugriff abgelehnt. Die
+  Diagnose startet keinen Scheduler, versendet nichts und ändert weder
+  Einstellung noch Projektstatus. Fachadapter:
+  `src/lib/jarvis/automation-status-analysis.ts`. Runtime-Commit
+  `c7223a7edc3981c662941d270dcd17fd833200cc`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T065000Z-before-jarvis-automation-status`.
+  Lokal bestanden 171/171 Testdateien mit 1.715/1.715 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und 90-Seiten-Build.
+  Echter UI-Klicktest und lokaler/produktiver 110er-Korpus sind grün; die
+  Diagnose wurde ausdrücklich erkannt, produktiv 28 Schreibentwürfe nur
+  vorbereitet, null Ausführungen und null Rückstände. Dashboard und
+  Anfrageformular HTTP 200, Live-Prisma-Diff leer. WorkPilot PID `736895`,
+  KlinikNavigator unverändert PID `398228`. Prisma-, Storage- und
+  Online-Anfragen-Invarianten blieben unverändert.
+
 - JARVIS Projektstatus-Regelverwaltung 2026-08-02: `automation.manage`
   bearbeitet zusätzlich zum bereits freigegebenen Hauptschalter genau eine
   ausdrücklich benannte bestehende Projektstatus-Regel je Entwurf. Aktivität,
