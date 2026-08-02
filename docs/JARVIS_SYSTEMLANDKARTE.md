@@ -1051,3 +1051,28 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   ausgeführten Aktionen, null Rückstände und leerer Prisma-Diff.
   Dashboard/Formular HTTP 200; WorkPilot PID `785414`, KlinikNavigator
   unverändert PID `398228`.
+
+## Vollständige Terminserien kontrolliert verwalten
+
+- `planning.request.manage` unterstützt zusätzlich `cancel_series` und
+  `withdraw_series`. Die vollständige ID eines sichtbaren Serieneintrags
+  identifiziert die gespeicherte `recurrenceId`; Anzahl, Zeitraum und alle
+  aktiven Eintrag-IDs werden sichtbar und kryptografisch gebunden.
+- Exakte Phrasen sind `TERMIN-SERIE ABSAGEN <ID>` und
+  `TERMINWUNSCH-SERIE ZURÜCKZIEHEN <ID>`. Eine Serie mit gemischten
+  Freigabestatus sperrt. Mitarbeiter dürfen ausschließlich vollständig eigene
+  offene Wunschserien ohne Vertretung oder Impersonation zurückziehen.
+- Normale Oberfläche und JARVIS verwenden denselben Service
+  `src/lib/planning/planning-request-decision-service.ts`. Serienbezogener
+  Advisory-Lock, Zeilensperren und Fingerprint machen die Änderung atomar;
+  deterministische Historien, Logbucheinträge, Benachrichtigungen und ein
+  Replay-Marker sichern Exactly-once auch nach dem Soft-Delete.
+- Einzelterminaktionen bleiben ausdrücklich einzeln. Keine bestehende Serie
+  wird aus einer unbestimmten Formulierung oder über den alten DELETE-/POST-Weg
+  still massenhaft geändert.
+- Produktivabnahme Runtime `1ee7e01d112396e2b98944fc6d2228139ed05e78`,
+  Backup `/var/backups/workpilot360/20260802T163736Z-before-jarvis-planning-series`,
+  187/187 Testdateien, 1.851/1.851 Tests, 90-Seiten-Build, lokale und produktive
+  isolierte QA, echter Zwei-Termine-Klicktest, produktiv 110/110 Fragen, null
+  Rückstände und leerer Prisma-Diff. WorkPilot PID `788731`,
+  KlinikNavigator unverändert PID `398228`.

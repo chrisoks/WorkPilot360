@@ -3601,6 +3601,48 @@ HTTP 200. WorkPilot PID `769535`, KlinikNavigator unverändert PID `398228`.
 Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
 Online-Anfragen-Invarianten blieben erhalten.
 
+## 47. Vollständige Terminserien kontrolliert absagen oder zurückziehen
+
+JARVIS und die normale Planungsoberfläche können jetzt ausdrücklich eine
+vollständige gespeicherte Terminserie verändern. `cancel_series` sagt eine
+durchgehend bestätigte Serie ab; `withdraw_series` zieht eine durchgehend
+offene Terminwunschserie zurück. Die Vorschau zeigt einen sichtbar benannten
+Serieneintrag, Anzahl, ersten und letzten Termin, Mitarbeitende, Projekte und
+Grund. Gemischte Freigabestatus sperren fail-closed. Mitarbeiter dürfen nur
+eine vollständig eigene Wunschserie in ihrer unveränderten, nicht vertretenen
+Sitzung zurückziehen; Serienabsagen bleiben Planungsverantwortlichen
+vorbehalten.
+
+Ausgeführt wird nur mit `TERMIN-SERIE ABSAGEN <Eintrag-ID>` beziehungsweise
+`TERMINWUNSCH-SERIE ZURÜCKZIEHEN <Eintrag-ID>`. Der vollständige aktive
+Serienumfang ist im Fingerprint gebunden. Die serialisierbare Transaktion
+sperrt die Serie per PostgreSQL-Advisory-Lock und alle betroffenen Zeilen,
+entfernt entweder alle geprüften Einträge oder keinen und schreibt je Termin
+deterministische Historie, Projektlogbuch und Hinweise. Ein eigener
+Replay-Marker erlaubt sichere Wiederholungen auch nach dem Soft-Delete und
+liefert exakt die ursprünglich betroffenen Einträge. Direkte Altwege bleiben
+gesperrt; Einzelterminaktionen verändern weiterhin niemals still die Serie.
+
+Lokal bestanden 187/187 Testdateien mit 1.851/1.851 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Die isolierte QA prüfte komplette Termin- und Wunschserien,
+Mitarbeiter- und Managementrollen, Mandantentrennung, Mischstatus-Sperre,
+Normalroute, Altweg-Sperren, Benachrichtigungen, genau-einmal-Replay und null
+Rückstände. Der echte Klicktest zeigte zwei Serientermine, Zeitraum, falsche
+und exakte Phrase, atomare Ausführung sowie den korrekten Nachtext; alle
+Testdaten wurden entfernt. Der permanente Korpus blieb exakt bei 110/110 und
+führte keine Aktion aus.
+
+Produktiv abgenommen auf Runtime-Commit
+`1ee7e01d112396e2b98944fc6d2228139ed05e78`. Verifiziertes Quellen-,
+Datenbank-, Konfigurations- und Runtimebackup:
+`/var/backups/workpilot360/20260802T163736Z-before-jarvis-planning-series`.
+Produktive isolierte QA und 110/110 Fragen bestanden ohne Rückstände;
+Live-Prisma-Diff leer, Dashboard und Online-Formular HTTP 200. WorkPilot PID
+`788731`, KlinikNavigator unverändert PID `398228`. Keine
+Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
+Online-Anfragen-Invarianten blieben erhalten.
+
 ## 46. Eigenen offenen Terminwunsch kontrolliert zurückziehen
 
 Ein Mitarbeiter kann mit JARVIS ausschließlich einen eigenen offenen
