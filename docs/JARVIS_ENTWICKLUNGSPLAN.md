@@ -106,6 +106,12 @@ betroffenen Menschen.
 - JARVIS ordnet einen neuen Kontakt niemals automatisch einem Projekt, einer
   Objektadresse oder Online-Anfrage zu. Die bewusste Kunden- und
   Projektzuordnung bleibt ein eigener Fachschritt.
+- Der Vertikalschnitt ist auf Commit
+  `5502776d50c03ca5b13f6e6938332c4e5cd563bd` produktiv abgenommen. Lokale
+  und produktive isolierte QA, 110/110 permanente Fragen, echter UI-Klicktest,
+  vollständiger Testsatz, 90-Seiten-Build, leerer Prisma-Diff und
+  rückstandsfreie Bereinigung sind belegt. Backup:
+  `/var/backups/workpilot360/20260802T015913Z-before-jarvis-contact-management`.
 - `contact.delete` bleibt bis zu seinem eigenen kritischen Vertikalschnitt
   weiterhin gesperrt. Danach folgt chronologisch `catalog.manage`.
 

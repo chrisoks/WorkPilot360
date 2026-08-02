@@ -17,7 +17,17 @@
   Online-Anfragen und andere Fachdaten werden niemals automatisch angelegt
   oder zugeordnet. Fachservice:
   `src/lib/contacts/contact-management-service.ts`; isolierte QA:
-  `scripts/qa-jarvis-contact-management.mjs`.
+  `scripts/qa-jarvis-contact-management.mjs`. Produktiv auf Runtime-Commit
+  `5502776d50c03ca5b13f6e6938332c4e5cd563bd`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T015913Z-before-jarvis-contact-management`.
+  Lokal bestanden 157/157 Testdateien mit 1.615/1.615 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und der
+  90-Seiten-Build. Isolierte lokale und produktive QA, echter UI-Klicktest
+  mit Öffnen in der normalen Kontaktmaske sowie der produktive permanente
+  Korpus (110/110, 21 nur vorbereitete Aktionen) blieben vollständig grün;
+  null QA-Rückstände. Dashboard und öffentliches Anfrageformular liefern
+  HTTP 200, Live-Prisma-Diff leer. WorkPilot PID `711359`, KlinikNavigator
+  unverändert PID `398228`.
 
 - JARVIS Projektstammdaten 2026-08-02: `project.manage` ist als kontrollierte
   Schreibaktion für bestehende, eindeutig per Projektnummer bestimmte Projekte

@@ -52,7 +52,8 @@ async function main() {
     const cancellableResponse = await createDraft(`Lege einen neuen Firmenkontakt an: Firma: QA Abbruch ${suffix}; E-Mail: cancel-${suffix}@example.test.`);
     const cancellable = cancellableResponse.payload?.actionDraft;
     assert(cancellable?.actionId === "contact.manage", "Keine Kontakt-Abbruchvorschau erzeugt.");
-    assert((await command(cancellable, "cancel")).payload?.actionDraft?.state === "cancelled", "Kontaktabbruch fehlgeschlagen.");
+    const cancelled = await command(cancellable, "cancel");
+    assert(cancelled.payload?.actionDraft?.state === "cancelled", `Kontaktabbruch fehlgeschlagen: HTTP ${cancelled.response.status} ${JSON.stringify(cancelled.payload)}`);
     assert(await prisma.contact.count({ where: { organizationId: actor.organizationId, companyName: `QA Abbruch ${suffix}` } }) === 0, "Abbruch hat Kontakt angelegt.");
 
     const prepared = await createDraft(`Lege einen neuen Firmenkontakt an: Firma: QA JARVIS Kontakt ${suffix}; E-Mail: kontakt-${suffix}@example.test; Telefon: +49 511 123456; Ort: Hannover.`);
