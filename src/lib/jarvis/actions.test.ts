@@ -38,6 +38,22 @@ describe("JARVIS action registry", () => {
     });
   });
 
+  it("allows only master-data management roles to read the automation operating status", () => {
+    const management = createJarvisAccessProfile({ id: "gf", role: Role.GESCHAEFTSFUEHRER });
+    const leadership = createJarvisAccessProfile({ id: "lead", role: Role.FUEHRUNGSKRAFT });
+    expect(getJarvisActionDecision("automation.read", management)).toMatchObject({
+      permitted: true,
+      executable: true,
+      requiresConfirmation: false,
+      action: { risk: "read", confirmation: "none", implementation: "available" },
+    });
+    expect(getJarvisActionDecision("automation.read", leadership)).toMatchObject({
+      permitted: false,
+      executable: false,
+      reason: "role",
+    });
+  });
+
   it("releases invoice credits only as a critical confirmed action", () => {
     const profile = createJarvisAccessProfile({
       id: "accounting",

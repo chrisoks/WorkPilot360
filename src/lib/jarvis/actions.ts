@@ -569,6 +569,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: (actor) => canManageUsers(actor) && canManageContacts(actor),
   },
   {
+    id: "automation.read",
+    title: "Automationsstatus und Dry-Run lesen",
+    category: "automation",
+    risk: "read",
+    confirmation: "none",
+    dataClasses: ["internal"],
+    implementation: "available",
+    canUse: canManageStatusRules,
+  },
+  {
     id: "automation.manage",
     title: "Automation konfigurieren oder ausführen",
     category: "automation",

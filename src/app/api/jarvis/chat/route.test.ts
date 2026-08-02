@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisOrganizationOfferAgingIntent: vi.fn(),
   resolveJarvisOrganizationOfferAgingRequest: vi.fn(),
   resolveJarvisOnlineRequestAnalysis: vi.fn(),
+  resolveJarvisProjectStatusAutomationStatus: vi.fn(),
   resolveJarvisSalesAnalysisIntent: vi.fn(),
   resolveJarvisSalesAnalysisRequest: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
@@ -239,6 +240,11 @@ vi.mock("@/lib/jarvis/organization-offer-aging-analysis", () => ({
 vi.mock("@/lib/jarvis/online-request-analysis", () => ({
   resolveJarvisOnlineRequestAnalysis:
     mocks.resolveJarvisOnlineRequestAnalysis,
+}));
+
+vi.mock("@/lib/jarvis/automation-status-analysis", () => ({
+  resolveJarvisProjectStatusAutomationStatus:
+    mocks.resolveJarvisProjectStatusAutomationStatus,
 }));
 
 vi.mock("@/lib/jarvis/organization-project-review-analysis", () => ({
@@ -604,6 +610,7 @@ describe("POST /api/jarvis/chat", () => {
       undefined
     );
     mocks.resolveJarvisOnlineRequestAnalysis.mockResolvedValue(undefined);
+    mocks.resolveJarvisProjectStatusAutomationStatus.mockResolvedValue(undefined);
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
@@ -3534,6 +3541,37 @@ describe("POST /api/jarvis/chat", () => {
     }));
     expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.automation-management", actionDraft: { actionId: "automation.manage", targetEnabled: true } });
     expect(mocks.createPersistedJarvisAutomationManagementDraft).toHaveBeenCalledWith(expect.objectContaining({ users: expect.any(Array), preview: expect.objectContaining({ actionId: "automation.manage", payload: { operation: "switch", enabled: true } }) }));
+  });
+
+  it("returns a read-only project-status automation diagnosis before generic help", async () => {
+    mocks.resolveJarvisProjectStatusAutomationStatus.mockResolvedValueOnce({
+      type: "answer",
+      topicId: "automation.project-status.status",
+      message: "Die Projektstatus-Automation ist nicht vollständig betriebsbereit.",
+      structured: {
+        title: "Projektstatus-Automation · Betriebsdiagnose",
+        facts: [{ label: "Zustellung", value: "Ausgeschaltet", tone: "warning" }],
+      },
+      navigation: { label: "Status-Automation öffnen", tab: "statusAutomation" },
+      deterministic: true,
+    });
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Läuft die Projektstatus-Automation wirklich?" }),
+    }));
+    expect(await response.json()).toMatchObject({
+      type: "answer",
+      topicId: "automation.project-status.status",
+      navigation: { tab: "statusAutomation" },
+      structured: { title: "Projektstatus-Automation · Betriebsdiagnose" },
+    });
+    expect(mocks.resolveJarvisProjectStatusAutomationStatus).toHaveBeenCalledWith(expect.objectContaining({
+      question: "Läuft die Projektstatus-Automation wirklich?",
+      organizationId: "organization-1",
+      users: expect.any(Array),
+    }));
+    expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
   });
 
   it("prepares one named project-status rule with explicit thresholds", async () => {

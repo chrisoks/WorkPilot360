@@ -367,6 +367,7 @@ async function main() {
   let bulkUpdateDraftPrepared = false;
   let automationManagementDraftPrepared = false;
   let automationRuleManagementDraftPrepared = false;
+  let automationStatusDiagnosed = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -396,6 +397,7 @@ async function main() {
         const isBulkUpdateCase = item.question.includes("QAB-900");
         const isAutomationManagementCase = item.question.includes("Projektstatus-Frühwarnung");
         const isAutomationRuleManagementCase = item.question.includes("Projektstatus-Regel Umsetzung");
+        const isAutomationStatusCase = item.question.includes("Projektstatus-Automation wirklich");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -616,6 +618,23 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Automations-Regelfrage hat keinen vollständigen, unblockierten Vorher-/Nachher-Dry-Run erzeugt." });
           } else {
             automationRuleManagementDraftPrepared = true;
+          }
+        }
+        if (isAutomationStatusCase) {
+          if (
+            payload.type !== "answer" ||
+            payload.topicId !== "automation.project-status.status" ||
+            payload.actionDraft ||
+            payload.navigation?.tab !== "statusAutomation" ||
+            payload.structured?.title !== "Projektstatus-Automation · Betriebsdiagnose" ||
+            !payload.structured?.facts?.some((fact) => fact.label === "Organisation") ||
+            !payload.structured?.facts?.some((fact) => fact.label === "Serverscheduler") ||
+            !payload.structured?.facts?.some((fact) => fact.label === "Zustellung") ||
+            !payload.structured?.sections?.some((section) => section.title === "Wichtige Trennung")
+          ) {
+            failures.push({ id: item.id, status: response.status, error: "Die Automations-Statusfrage hat keine vollständige rein lesende Betriebsdiagnose erzeugt." });
+          } else {
+            automationStatusDiagnosed = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -1136,6 +1155,7 @@ async function main() {
     bulkUpdateDraftPrepared,
     automationManagementDraftPrepared,
     automationRuleManagementDraftPrepared,
+    automationStatusDiagnosed,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId

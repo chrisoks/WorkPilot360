@@ -205,6 +205,7 @@ import {
   looksLikeContactBulkRollbackRequest,
 } from "@/lib/jarvis/bulk-update-intake";
 import { extractProjectStatusAutomationRequest } from "@/lib/jarvis/automation-management-intake";
+import { resolveJarvisProjectStatusAutomationStatus } from "@/lib/jarvis/automation-status-analysis";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -3155,6 +3156,15 @@ export async function POST(req: Request) {
   const storageGuidance = resolveJarvisStorageGuidance(message);
   if (storageGuidance) {
     return respond(storageGuidance, "system");
+  }
+  const automationStatusResponse = await resolveJarvisProjectStatusAutomationStatus({
+    question: message,
+    organizationId: organization.id,
+    users,
+    accessProfile,
+  });
+  if (automationStatusResponse) {
+    return respond(automationStatusResponse, "management");
   }
   if (looksLikeTaskLifecycleRequest(message)) {
     return respond(
