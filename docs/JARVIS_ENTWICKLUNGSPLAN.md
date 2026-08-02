@@ -3334,3 +3334,44 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `743239`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
+
+## 37. Übernahmebereitschaft von Online-Anfragen vorab prüfen
+
+JARVIS beantwortet für eine exakt genannte `OKI-YYYYMMDD-XXXXXX`-Referenz nun
+rein lesend, ob die bestehende kontrollierte Umwandlung ausführbar ist. Die
+Prüfung zeigt Status, eindeutigen Kundenweg, organisationsgebunden aufgelösten
+Bestandskontakt, geplante Verantwortung, Folgeaufgaben und Fotos. Als echte
+Blocker gelten dieselben fachlichen Zustände wie im bestehenden Ablauf:
+abgeschlossene Anfrage, nicht entschiedener Kundenweg, fehlender oder
+organisationsfremder Bestandskontakt und ein nicht auflösbarer Nachweis einer
+bereits erfolgten Umwandlung. Eine fehlende oder ungeeignete Vorab-Zuweisung
+wird korrekt als automatischer Verantwortungs-Fallback auf die ausführende
+berechtigte Person erklärt und nicht fälschlich als Blocker bezeichnet.
+
+Die Folgen bleiben ausdrücklich Vorschau: immer ein neues Projekt unter
+`OK immocare → Lead / Klärung`, globale Projektnummer mit Gewerk-Präfix,
+OKI-Referenz ausschließlich als Quellenreferenz, geprüfter Bestandskontakt
+oder neuer Kontakt, Originalanfrage im Logbuch, Bilder in `Anfragebilder` und
+Termin-/Rückrufsignale nur als Aufgaben. Ein Wunschdatum wird nie als
+bestätigter Termin ausgegeben. JARVIS erzeugt dabei keinen Aktionsentwurf,
+ändert keine Anfrage und führt keine Umwandlung aus.
+
+Lokal bestanden 172 Testdateien mit 1.727 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, synchroner Datenbankstand und
+der 90-Seiten-Build. Der echte UI-Klicktest verwendete eine isolierte
+QA-Anfrage, zeigte `Bereit`, Kundenkontakt, Verantwortung, Folgeaufgabe und die
+korrekte Navigation nach `/dashboard?view=onlineRequests`. Danach waren
+Anfrage, Audit und alle QA-Spuren vollständig entfernt; Entwürfe, Aufgaben,
+Projekte und Logbucheinträge zur Referenz blieben null. Der feste Korpus blieb
+exakt 110 Fälle und bestand lokal sowie produktiv 110/110; produktiv wurden 28
+Schreibentwürfe nur vorbereitet, null Aktionen ausgeführt und null Rückstände
+hinterlassen.
+
+Produktiv abgenommen auf Runtime-Commit
+`2b7d0e4ce1cccaf4ad4bf0b4144a6a2bef0d72d7`. Das verifizierte Datenbank-,
+Git-, Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T081500Z-before-jarvis-online-readiness`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `746049`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und die Invariante gegen automatische
+Bestandsprojekt-Zuordnung blieben unverändert.

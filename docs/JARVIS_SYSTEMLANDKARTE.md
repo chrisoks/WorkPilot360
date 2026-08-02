@@ -666,3 +666,33 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   Produktionsfragen, 28 nur vorbereitete Aktionen, null Ausführungen/
   Rückstände und leerer Live-Prisma-Diff. WorkPilot PID `743239`,
   KlinikNavigator PID `398228`.
+
+## Online-Anfragen: Übernahmebereitschaft ohne Schreibwirkung
+
+- `online-requests.inventory` erkennt bei einer exakten OKI-Referenz Fragen
+  nach Bereitschaft, Voraussetzungen, Blockern und Umwandlung.
+- Die organisationsgebundene Leseschicht lädt Anfrage, verantwortliche Person,
+  Bestandskontakt und gegebenenfalls das bereits erzeugte Projekt. Rollen und
+  Umwandlungsrecht der zugewiesenen Person werden mit derselben
+  Berechtigungsfunktion wie in der normalen Umwandlungsroute bewertet.
+- Blocker: abgeschlossener Vorgang, fehlende Kundenentscheidung, fehlender oder
+  organisationsfremder Bestandskontakt sowie ein nicht auflösbarer
+  Umwandlungsnachweis. Eine fehlende/ungeeignete Zuweisung führt wie in der
+  produktiven Route zum sichtbaren Fallback auf die ausführende berechtigte
+  Person und blockiert nicht fälschlich.
+- Folgeaufgaben werden mit `buildOnlineRequestConversionTasks` aus demselben
+  Termin-/Rückrufkontext vorab berechnet. Ohne Signal wird ausdrücklich keine
+  Folgeaufgabe angekündigt; Wunschdaten bleiben unverbindlich.
+- Invarianten: immer neues OK-immocare-Projekt unter Lead / Klärung, niemals
+  automatische Bestandsprojekt-Zuordnung, globale Projektnummer statt
+  OKI-Referenz, Logbuch `Online-Anfrage`, geschützte `Anfragebilder`, Audit,
+  Timeline und Benachrichtigungen nur im bestehenden bewussten
+  Umwandlungsablauf.
+- Diese Fähigkeit ist rein lesend und erzeugt keinen JARVIS-Entwurf. UI-Ziel:
+  `/dashboard?view=onlineRequests`.
+- Produktivabnahme: Runtime
+  `2b7d0e4ce1cccaf4ad4bf0b4144a6a2bef0d72d7`, Backup
+  `/var/backups/workpilot360/20260802T081500Z-before-jarvis-online-readiness`,
+  172/172 Testdateien, 1.727/1.727 Tests, echter isolierter UI-Klicktest,
+  lokal/produktiv 110/110 Fragen, null Ausführungen/Rückstände und leerer
+  Live-Prisma-Diff. WorkPilot PID `746049`, KlinikNavigator PID `398228`.
