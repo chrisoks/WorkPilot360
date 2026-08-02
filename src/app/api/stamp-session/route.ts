@@ -13,11 +13,20 @@ import {
 } from "@/lib/time/stamp-session-service";
 import { executeStampSessionStart } from "@/lib/time/stamp-session-start-service";
 import {
+  evaluateStampSessionSwitch,
+  executeStampSessionSwitch,
+} from "@/lib/time/stamp-session-switch-service";
+import {
   executeStampSessionStop,
   type StampSessionStopEntry,
 } from "@/lib/time/stamp-session-stop-service";
 import { ensureStampInterruptionFollowup } from "@/lib/time/stamp-session-interruption-service";
 import { attachStampEntryToHourlyInvoiceDraft as attachStampEntryToHourlyInvoiceDraftShared } from "@/lib/time/stamp-session-billing-service";
+import {
+  applyFinalInspectionBillingStatus,
+  createFinalInspection,
+  FinalInspectionServiceError,
+} from "@/lib/projects/final-inspection-service";
 
 type DemoUser = {
   id: string;
@@ -968,6 +977,10 @@ export async function POST(req: Request) {
   const body = await req.json();
   const action = cleanString(body.action);
 
+  if (action === "change") {
+    return changeSession(req, body);
+  }
+
   if (action === "stop") {
     return stopSession(req, body);
   }
@@ -1051,6 +1064,123 @@ export async function POST(req: Request) {
     throw error;
   }
 
+}
+
+async function changeSession(req: Request, body: Record<string, unknown>) {
+  const userId = cleanString(body.userId);
+  const requestId = cleanString(body.requestId) || randomUUID();
+  const next = body.next && typeof body.next === "object" ? body.next as Record<string, unknown> : {};
+  const nextMode: "project" | "unproductive" = cleanString(next.mode) === "unproductive" ? "unproductive" : "project";
+  const nextProjectId = cleanString(next.projectId) || (nextMode === "unproductive" ? "__unproductive__" : "");
+  const nextComment = cleanString(next.comment);
+  if (!userId) return NextResponse.json({ error: "Mitarbeiter fehlt." }, { status: 400 });
+  if (!nextProjectId) return NextResponse.json({ error: "Bitte ein Folgeprojekt angeben." }, { status: 400 });
+  if (!nextComment) return NextResponse.json({ error: "Bitte die Folgetätigkeit angeben." }, { status: 400 });
+
+  const { organization, users } = await getDemoContext();
+  await ensureActiveStampSessionTable();
+  await ensureProjectTimeEntryTable();
+  const stampUserResult = await getSessionBoundActor(req, users, userId);
+  if (!stampUserResult.ok) return sessionBoundActorResponse(stampUserResult);
+  const stampUser = stampUserResult.actor;
+  const current = await getActiveSession(organization.id, stampUser.id);
+  if (!current && !cleanString(body.requestId)) {
+    return NextResponse.json({ error: "Keine aktive Ausgangsstempelung gefunden." }, { status: 404 });
+  }
+  const requestedCompletionStatus = cleanString(body.completionStatus);
+  const completionStatus: "finished" | "interrupted" | "" = ["finished", "interrupted"].includes(requestedCompletionStatus)
+    ? requestedCompletionStatus as "finished" | "interrupted"
+    : "";
+  const interruptionReason = cleanString(body.interruptionReason);
+  const isReplay = current?.id === `${requestId}:start`;
+  if (!isReplay && current?.mode === "project" && !completionStatus) {
+    return NextResponse.json({ error: "Bitte angeben, ob die bisherige Projektarbeit fertig oder unterbrochen ist." }, { status: 400 });
+  }
+  if (!isReplay && completionStatus === "interrupted" && !interruptionReason) {
+    return NextResponse.json({ error: "Bitte kurz begründen, warum die bisherige Arbeit unterbrochen wurde." }, { status: 400 });
+  }
+  try {
+    const change = {
+      stop: {
+        completionStatus,
+        comment: cleanString(body.comment) || cleanString(current?.comment),
+        interruptionReason,
+      },
+      start: {
+        mode: nextMode,
+        projectId: nextProjectId,
+        unproductiveLabel: nextMode === "unproductive" ? cleanString(next.projectLabel) : "",
+        comment: nextComment,
+        trade: nextMode === "project" ? cleanString(next.trade) : "",
+        planningEntryId: nextMode === "project" ? cleanString(next.planningEntryId) : "",
+        planningBillingGroupId: nextMode === "project" ? cleanString(next.planningBillingGroupId) : "",
+        billingCatalogItemId: nextMode === "project" ? cleanString(next.billingCatalogItemId) : "",
+        confirmImplementationStatus: nextMode === "project" && next.confirmImplementationStatus === true,
+      },
+    };
+    const preview = isReplay ? null : await evaluateStampSessionSwitch({
+      organizationId: organization.id,
+      userId: stampUser.id,
+      change,
+    });
+    if (preview?.stop.requiresFinalInspection && !["self", "colleague"].includes(cleanString(body.finalInspectionMode))) {
+      return NextResponse.json({ error: "Vor dem Wechsel muss die verpflichtende Endkontrolle vollständig festgelegt werden." }, { status: 400 });
+    }
+    if (cleanString(body.finalInspectionMode) === "self" && body.allInspectionChecksDone !== true) {
+      return NextResponse.json({ error: "Für die eigene Endkontrolle müssen alle sechs Prüfpunkte bestätigt sein." }, { status: 400 });
+    }
+    const switched = await executeStampSessionSwitch({
+      organizationId: organization.id,
+      userId: stampUser.id,
+      actorName: getUserName(stampUser),
+      change,
+      expectedFingerprint: preview?.fingerprint,
+      requestId,
+      source: "ui",
+    });
+    const finalInspectionMode = cleanString(body.finalInspectionMode);
+    if (finalInspectionMode === "self" || finalInspectionMode === "colleague") {
+      const inspection = await createFinalInspection({
+        organizationId: organization.id,
+        actorUserId: stampUser.id,
+        actorName: getUserName(stampUser),
+        inspection: {
+          projectId: switched.stopped.projectId,
+          projectLabel: switched.stopped.projectLabel,
+          mode: finalInspectionMode,
+          allChecksDone: body.allInspectionChecksDone === true,
+          comment: cleanString(body.comment),
+          upsellNotes: cleanString(body.upsellNotes),
+        },
+        requestId: `${requestId}:final-inspection`,
+        source: "ui",
+      });
+      await applyFinalInspectionBillingStatus({
+        organizationId: organization.id,
+        projectId: switched.stopped.projectId,
+        projectMonth: inspection.projectMonth,
+        actorUserId: stampUser.id,
+        actorName: getUserName(stampUser),
+        requestId: `${requestId}:billing-status`,
+        source: "ui",
+      });
+    }
+    let billingAutomation: { status: "attached"; invoiceId: string; invoiceNumber: string } | null = null;
+    if (shouldAttemptHourlyDraftAttachment({ mode: switched.stopped.mode, completionStatus: switched.stopped.completionStatus })) {
+      const attached = await attachStampEntryToHourlyInvoiceDraftShared({ organizationId: organization.id, entry: switched.stopped });
+      if (!attached) throw new StampSessionServiceError("conflict", "Die bisherige Zeit wurde gespeichert, konnte aber keinem sicheren Rechnungsentwurf zugeordnet werden. Der Wechsel kann gefahrlos wiederholt werden.", 409);
+      billingAutomation = { status: "attached", invoiceId: attached.invoiceId, invoiceNumber: attached.invoiceNumber };
+    }
+    if (switched.stopped.completionStatus === "interrupted") {
+      await ensureStampInterruptionFollowup({ organizationId: organization.id, entry: switched.stopped, interruptionReason });
+    }
+    return NextResponse.json({ stopped: { ...switched.stopped, billingAutomation }, started: switched.started, replayed: switched.replayed }, { status: 201 });
+  } catch (error) {
+    if (error instanceof StampSessionServiceError || error instanceof FinalInspectionServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
 }
 
 export async function PATCH(req: Request) {

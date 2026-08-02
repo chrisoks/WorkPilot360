@@ -3551,3 +3551,40 @@ Rückständen. Live-Prisma-Diff leer, Dashboard und Formular HTTP 200; WorkPilot
 PID `760146`, KlinikNavigator unverändert PID `398228`. Keine
 Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
 Online-Anfragen-Invarianten blieben unverändert.
+
+## 41. Eigene Stempelung atomar zur Folgetätigkeit wechseln
+
+JARVIS kann einen laufenden persönlichen Arbeitsbezug jetzt in einem einzigen
+kontrollierten Vorgang abschließen und die geprüfte Folgetätigkeit starten. Die
+Vorschau vereint bisherigen Abschluss, Zeit/Pause, Endkontrolle, Abrechnung und
+Unterbrechungsfolgen mit neuem Projekt oder unproduktiver Tätigkeit,
+Tätigkeitsbeschreibung und gegebenenfalls Gewerk/Abrechnungsleistung. Die
+kritische Phrase lautet `STEMPELUNG WECHSELN ZU <ZIEL>`; im Action Center heißt
+der ausführende Schritt eindeutig `Jetzt zur Folgetätigkeit wechseln`.
+
+`src/lib/time/stamp-session-switch-service.ts` komponiert die gemeinsamen
+Start- und Stoppservices in einer serialisierbaren Transaktion unter demselben
+persönlichen Advisory-Lock. Deterministische IDs machen Zeitbuchung und neue
+aktive Sitzung zu einem exactly-once-Paar. Vollständige Replays werden
+wiederverwendet, ein nur teilweise vorhandenes Paar sperrt. Die normale
+Stempelmaske verwendet denselben Wechselvertrag statt der früheren getrennten
+Stopp- und Startrequests und hält ihre Request-ID für sichere Wiederholungen
+stabil.
+
+JARVIS markiert den Entwurf erst nach idempotenter Endkontrolle,
+Stunden-Rechnungsbindung und Unterbrechungsfolge als ausgeführt. Organisation,
+Benutzer, Sitzung, Rollenpaar, Impersonation, Payload, kombinierter
+Fachfingerprint, Revision, Ablauf und HMAC bleiben gebunden. Ein unterbrochener
+Arbeitsbezug kann nicht sofort als neues Teilstück desselben Projekts gestartet
+werden; dafür ist Fortsetzen oder ein anderer Bezug erforderlich.
+
+Lokal bestanden 181 Testdateien mit 1.791 Tests, TypeScript,
+Mojibake-/Regressionschecks und der 90-Seiten-Build. Die isolierte QA prüfte
+drei echte Fachfälle einschließlich Stunden-Rechnungsentwurf und
+OK-immocare-Endkontrolle, falsche Phrase, Sitzungsbindung, drei
+Exactly-once-Audits und vollständige Bereinigung. Der permanente Korpus bestand
+110/110 mit 32 ausschließlich vorbereiteten und null ausgeführten Aktionen.
+Der echte Oberflächenklick wechselte eine markierte unproduktive Tätigkeit,
+zeigte sofort und nach Team-Auto-Update den neuen Arbeitsbezug und erzeugte
+genau eine alte Zeitbuchung sowie eine neue aktive Sitzung; Browserfehler und
+QA-Rückstände: null.

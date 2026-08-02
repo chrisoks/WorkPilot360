@@ -158,7 +158,7 @@ function isImmocareProject(project: {
   );
 }
 
-function toEntry(entry: ProjectTimeEntry): StampSessionStopEntry {
+export function toStampSessionStopEntry(entry: ProjectTimeEntry): StampSessionStopEntry {
   return {
     id: entry.id,
     organizationId: entry.organizationId,
@@ -433,7 +433,7 @@ async function executeInTransaction(input: {
   });
   if (previous) {
     return {
-      entry: toEntry(previous),
+      entry: toStampSessionStopEntry(previous),
       evaluation: null,
       replayed: true,
       projectStatusTransition: null,
@@ -575,7 +575,7 @@ async function executeInTransaction(input: {
     }
   }
   return {
-    entry: toEntry(entry),
+    entry: toStampSessionStopEntry(entry),
     evaluation,
     replayed: false,
     projectStatusTransition,

@@ -4342,6 +4342,8 @@ function JarvisOfferFinalizationCard({
         ? "Die persönliche Stempelung wurde genau einmal gestartet. Der angezeigte Arbeits- und Abrechnungskontext ist jetzt aktiv."
         : draft.operation === "stop"
           ? "Die persönliche Stempelung wurde genau einmal beendet und als Zeitbuchung gespeichert. Die angezeigten Fachfolgen wurden kontrolliert verarbeitet."
+        : draft.operation === "switch"
+          ? "Die bisherige Stempelung wurde genau einmal als Zeitbuchung gespeichert und die geprüfte Folgetätigkeit atomar gestartet. Alle angezeigten Fachfolgen wurden kontrolliert verarbeitet."
         : `Die persönliche Stempelung wurde genau einmal ${draft.operation === "pause" ? "pausiert" : "fortgesetzt"}. Projekt, Zeiten und Abrechnung blieben unverändert.`
       : draft.state === "cancelled"
         ? "Die Stempelaktion wurde beendet. Die persönliche Stempelung blieb unverändert."
@@ -4358,7 +4360,7 @@ function JarvisOfferFinalizationCard({
         {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur bewussten Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
         {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
         <div className={styles.jarvisActionDraftActions}>
-          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.operation === "start" ? "Stempelung jetzt starten" : draft.operation === "pause" ? "Stempelung jetzt pausieren" : draft.operation === "resume" ? "Stempelung jetzt fortsetzen" : "Stempelung jetzt beenden"}</button> : null}
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.operation === "start" ? "Stempelung jetzt starten" : draft.operation === "pause" ? "Stempelung jetzt pausieren" : draft.operation === "resume" ? "Stempelung jetzt fortsetzen" : draft.operation === "switch" ? "Jetzt zur Folgetätigkeit wechseln" : "Stempelung jetzt beenden"}</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Stempelaktion abbrechen</button> : null}
         </div>
         <footer>{footer}</footer>
@@ -15300,6 +15302,7 @@ export function DashboardPage() {
   } | null>(null);
   const [isPendingNoteConfirmed, setIsPendingNoteConfirmed] = useState(false);
   const skipNextStampNoteCheckRef = useRef(false);
+  const stampChangeRequestIdRef = useRef("");
   const [projectPotentials, setProjectPotentials] = useState<ProjectPotential[]>([]);
   const [recurringProjectReviews, setRecurringProjectReviews] = useState<RecurringProjectReview[]>([]);
   const [reviewingRecurringProjectId, setReviewingRecurringProjectId] = useState("");
@@ -30287,6 +30290,7 @@ await addProjectLogbookEntry(
     setStampComment("");
     setStampNextComment("");
     setStampError("");
+    stampChangeRequestIdRef.current = crypto.randomUUID();
     resetStampCompletionState();
     setIsStampModalOpen(true);
   }
@@ -30360,6 +30364,73 @@ await addProjectLogbookEntry(
         )
       );
     }
+    return data;
+  }
+
+  async function changeStampSession(input: {
+    completionStatus: "finished" | "interrupted" | "";
+    previousComment: string;
+    interruptionReason: string;
+    nextMode: StampMode;
+    nextProjectId: string;
+    nextProjectLabel: string;
+    nextComment: string;
+    nextTrade: string;
+    planningEntryId: string;
+    planningBillingGroupId: string;
+    billingCatalogItemId: string;
+    confirmImplementationStatus: boolean;
+  }) {
+    const requestId = stampChangeRequestIdRef.current || crypto.randomUUID();
+    stampChangeRequestIdRef.current = requestId;
+    const res = await fetch("/api/stamp-session", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "change",
+        requestId,
+        userId: activeUser?.id || activeUserId,
+        completionStatus: input.completionStatus,
+        comment: input.previousComment,
+        interruptionReason: input.interruptionReason,
+        finalInspectionMode: shouldShowFinalInspectionChecklist
+          ? finalInspectionByColleague ? "colleague" : "self"
+          : "",
+        allInspectionChecksDone: finalInspectionChecks.every(Boolean),
+        upsellNotes: finalInspectionHasUpsell ? finalInspectionUpsellNotes.trim() : "",
+        next: {
+          mode: input.nextMode,
+          projectId: input.nextMode === "project" ? input.nextProjectId : "__unproductive__",
+          projectLabel: input.nextProjectLabel,
+          comment: input.nextComment,
+          trade: input.nextMode === "project" ? input.nextTrade : "",
+          planningEntryId: input.planningEntryId,
+          planningBillingGroupId: input.planningBillingGroupId,
+          billingCatalogItemId: input.billingCatalogItemId,
+          confirmImplementationStatus: input.confirmImplementationStatus,
+        },
+      }),
+    });
+    const data = await res.json().catch(() => null) as null | {
+      error?: string;
+      stopped?: StampTimeEntry;
+      started?: ActiveStampSessionResponse;
+    };
+    if (!res.ok || !data?.stopped || !data.started) {
+      const message = data?.error ?? "Stempelung konnte nicht sicher gewechselt werden.";
+      setStampError(message);
+      throw new Error(message);
+    }
+    const stopped = { ...data.stopped, date: normalizeDateKeyValue(data.stopped.date) };
+    setStampEntries((currentEntries) => [stopped, ...currentEntries.filter((entry) => entry.id !== stopped.id)]);
+    setStampSession(mapActiveStampSession(data.started));
+    setTimerNow(Date.now());
+    void loadProjectTimeEntries();
+    void loadHeroProjects();
+    void loadProjectLogbookEntries();
+    if (stopped.projectId) void loadInvoices(stopped.projectId);
+    stampChangeRequestIdRef.current = "";
     return data;
   }
 
@@ -31125,6 +31196,15 @@ await addProjectLogbookEntry(
         stampCompletionState === "finished" &&
         shouldShowFinalInspectionChecklist &&
         !finalInspectionByColleague &&
+        !finalInspectionChecks.every(Boolean)
+      ) {
+        setStampError("Bitte alle sechs Prüfpunkte der Endkontrolle bestätigen oder die Kontrolle durch einen Kollegen auswählen.");
+        return;
+      }
+      if (
+        stampCompletionState === "finished" &&
+        shouldShowFinalInspectionChecklist &&
+        !finalInspectionByColleague &&
         finalInspectionHasUpsell &&
         !finalInspectionUpsellNotes.trim()
       ) {
@@ -31161,7 +31241,49 @@ await addProjectLogbookEntry(
     }
     skipNextStampNoteCheckRef.current = false;
 
-    if (stampModalMode === "change" || stampModalMode === "stop") {
+    if (stampModalMode === "change") {
+      const changeConfirmImplementationStatus =
+        stampSelectionMode === "project" &&
+        Boolean(selectedNextProject) &&
+        shouldOfferStampImplementationTransition(selectedNextProject?.status)
+          ? window.confirm(
+              `Für das Projekt "${selectedNextProject?.projectNumber || selectedNextProject?.title || "ohne Nummer"}" wurde eine echte Ausführung erkannt. Soll der Projektstatus auf "In Umsetzung" gesetzt werden?`
+            )
+          : false;
+      try {
+        await changeStampSession({
+          completionStatus: stampCompletionState,
+          previousComment: stampComment.trim(),
+          interruptionReason: stampCompletionState === "interrupted" ? stampComment.trim() : "",
+          nextMode: stampSelectionMode,
+          nextProjectId,
+          nextProjectLabel: stampSelectionMode === "project" ? getStampProjectLabel(nextProjectId) : nextUnproductiveLabel,
+          nextComment: nextStampComment,
+          nextTrade: nextStampTrade,
+          planningEntryId: nextStampNeedsTrade ? stampPlanningEntryId : "",
+          planningBillingGroupId: nextStampNeedsTrade ? stampPlanningBillingGroupId : "",
+          billingCatalogItemId: nextStampNeedsTrade ? stampBillingCatalogItemId : "",
+          confirmImplementationStatus: changeConfirmImplementationStatus,
+        });
+        setIsStampModalOpen(false);
+        setStampComment("");
+        setStampNextComment("");
+        setStampUnproductiveLabel("");
+        setStampTrade("");
+        setStampTradeConfirmed(false);
+        setStampPlanningEntryId("");
+        setStampPlanningBillingGroupId("");
+        setStampBillingCatalogItemId("");
+        setStampBillingCatalogItemLabel("");
+        setStampError("");
+        resetStampCompletionState();
+      } catch {
+        // Die Maske bleibt mit derselben Request-ID für eine sichere Wiederholung geöffnet.
+      }
+      return;
+    }
+
+    if (stampModalMode === "stop") {
       try {
         const closedEntry = await closeCurrentStampSession(stampComment.trim(), stampCompletionState);
         if (

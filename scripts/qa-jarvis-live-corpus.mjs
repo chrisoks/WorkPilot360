@@ -472,6 +472,7 @@ async function main() {
         const isStampSessionCase = item.question === "Pausiere meine laufende Stempelung.";
         const isStampSessionStartCase = item.question.startsWith("Starte meine Stempelung unproduktiv.");
         const isStampSessionStopCase = item.question === "Beende meine laufende Stempelung.";
+        const isStampSessionSwitchCase = item.question.startsWith("Wechsle meine Stempelung zur Folgetätigkeit");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -785,6 +786,20 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Stoppfrage hat keine vollständige, unblockierte und sitzungsgebundene Stoppvorschau erzeugt." });
           } else {
             stampSessionStopDraftPrepared = true;
+          }
+        }
+        if (isStampSessionSwitchCase) {
+          if (payload.actionDraft?.actionId !== "time.session.manage" || payload.actionDraft.operation !== "switch") {
+            failures.push({ id: item.id, status: response.status, error: "Die Folgetätigkeitsfrage hat keine kontrollierte time.session.manage-Wechselvorschau erzeugt." });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.confirmation?.requiredText !== "STEMPELUNG WECHSELN ZU QA BÜROORGANISATION" ||
+            payload.actionDraft.sessionId !== corpusStampSession.id ||
+            payload.actionDraft.targetState !== "running" ||
+            payload.actionDraft.blockingIssues?.length
+          ) {
+            failures.push({ id: item.id, status: response.status, error: "Die Folgetätigkeitsfrage hat keine vollständige, unblockierte und atomare Wechselvorschau erzeugt." });
           }
         }
         if (isReminderCase && reminderInvoice) {

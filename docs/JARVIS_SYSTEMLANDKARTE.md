@@ -847,3 +847,38 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   lokale und produktive isolierte QA, privates S3-PDF, 110/110 Fragen, null
   Rückstände und leerer Live-Prisma-Diff. WorkPilot PID `765199`,
   KlinikNavigator unverändert PID `398228`.
+
+## Persönliche Stempelung atomar zur Folgetätigkeit wechseln
+
+- Aktions-ID `time.session.manage` mit Operation `switch`; nur die eigene aktive
+  Sitzung darf gewechselt werden. Vertretung, Impersonation und Fremdstempelung
+  bleiben ausgeschlossen.
+- Der gemeinsame Fachservice
+  `src/lib/time/stamp-session-switch-service.ts` verbindet den geprüften
+  Stoppkontext und den geprüften Startkontext unter einem organisations- und
+  benutzerbezogenen Advisory-Lock in einer serialisierbaren Transaktion. Die
+  bisherige Zeitbuchung und die neue aktive Sitzung erhalten deterministische
+  IDs; ein partiell vorhandenes Paar sperrt fail-closed, ein vollständiges Paar
+  wird bei Replay exakt wiederverwendet.
+- JARVIS und die normale Route `/api/stamp-session` verwenden denselben
+  Wechselvertrag. Die Normalmaske sendet eine über Wiederholungen stabile
+  Request-ID und zeigt erst nach erfolgreichem gemeinsamen Wechsel den neuen
+  Stempelzustand.
+- Die Vorschau zeigt bisherigen Arbeitsbezug, Abschluss, Grund, Dauer, Pause,
+  Endkontrolle, Abrechnungs- und Unterbrechungsfolgen sowie neuen Arbeitsbezug,
+  Tätigkeit, Gewerk, Abrechnungsleistung und ausdrückliche Statuswirkung. Ein
+  unterbrochenes Projekt darf nicht unmittelbar als Folgetätigkeit auf
+  demselben Projekt neu gestartet werden.
+- Kritische Phrase: `STEMPELUNG WECHSELN ZU <PROJEKTNUMMER ODER
+  UNPRODUKTIVER TÄTIGKEIT>`. Entwurf und Ausführung sind zusätzlich an
+  Organisation, Sitzung, Rollenpaar, Impersonation, Payload, kombinierten
+  Fachfingerprint, Revision, Ablaufzeit und HMAC gebunden.
+- Endkontrolle, Stunden-Rechnungsentwurf und Unterbrechungsfolge werden mit
+  korrelierten IDs idempotent nachgeführt. Erst wenn diese Folgen vollständig
+  verarbeitet sind, wird der JARVIS-Entwurf als ausgeführt markiert; ein Retry
+  repariert fehlende Folgen ohne zweite Zeit oder zweite Folgestempelung.
+- Permanente isolierte QA: `scripts/qa-jarvis-stamp-switch.mjs`. Sie prüft
+  falsche Phrase, Sitzungsbindung, atomaren Exactly-once-Wechsel,
+  Stundenabrechnung und verpflichtende OK-immocare-Endkontrolle. Der feste
+  Korpus bleibt exakt 110 Fragen und enthält eine unblockierte
+  Wechselvorschau, ohne sie auszuführen.

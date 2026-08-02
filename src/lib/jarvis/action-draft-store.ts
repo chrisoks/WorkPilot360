@@ -158,6 +158,13 @@ import {
   type StampSessionStopInput,
 } from "@/lib/time/stamp-session-stop-service";
 import {
+  evaluateStampSessionSwitch,
+  executeStampSessionSwitch,
+  getStampSessionSwitchConfirmationText,
+  matchesStampSessionSwitchConfirmation,
+  type StampSessionSwitchInput,
+} from "@/lib/time/stamp-session-switch-service";
+import {
   createFinalInspection,
   applyFinalInspectionBillingStatus,
   FinalInspectionServiceError,
@@ -592,6 +599,28 @@ const stampSessionTransitionPayloadSchema = z.discriminatedUnion("action", [
     billingCatalogItemId: z.string().trim().max(120).optional(),
     confirmImplementationStatus: z.boolean().default(false),
   }).strict(),
+  z.object({
+    action: z.literal("switch"),
+    stop: z.object({
+      completionStatus: z.enum(["finished", "interrupted", ""]),
+      comment: z.string().trim().max(2000).optional(),
+      interruptionReason: z.string().trim().max(2000).optional(),
+      finalInspectionMode: z.enum(["", "self", "colleague"]).default(""),
+      allInspectionChecksDone: z.boolean().default(false),
+      upsellNotes: z.string().trim().max(2000).optional(),
+    }).strict(),
+    start: z.object({
+      mode: z.enum(["project", "unproductive"]),
+      projectId: z.string().trim().min(1).max(120).optional(),
+      unproductiveLabel: z.string().trim().max(240).optional(),
+      comment: z.string().trim().min(1).max(2000),
+      trade: z.string().trim().max(240).optional(),
+      planningEntryId: z.string().trim().max(120).optional(),
+      planningBillingGroupId: z.string().trim().max(120).optional(),
+      billingCatalogItemId: z.string().trim().max(120).optional(),
+      confirmImplementationStatus: z.boolean().default(false),
+    }).strict(),
+  }).strict(),
 ]);
 
 const stampSessionSnapshotSchema = z
@@ -722,10 +751,20 @@ const stampSessionStopContextSchema = z.object({
   blockingIssues: z.array(z.string().max(2000)),
 }).strict();
 
+const stampSessionSwitchContextSchema = z.object({
+  action: z.literal("switch"),
+  stop: stampSessionStopContextSchema,
+  start: stampSessionStartContextSchema,
+  fingerprint: z.string().length(64),
+  warnings: z.array(z.string().max(1000)),
+  blockingIssues: z.array(z.string().max(2000)),
+}).strict();
+
 const stampSessionContextSchema = z.union([
   stampSessionTransitionContextSchema,
   stampSessionStartContextSchema,
   stampSessionStopContextSchema,
+  stampSessionSwitchContextSchema,
 ]);
 
 const winterCalculationInputSchema = z
@@ -2113,8 +2152,8 @@ async function loadBoundStampSessionTransitionDraft(
   };
 }
 
-function stampTransitionStateLabel(state: string, operation: "start" | "stop" | StampSessionTransition) {
-  if (state === "executed") return operation === "start" ? "Gestartet" : operation === "pause" ? "Pausiert" : operation === "resume" ? "Fortgesetzt" : "Beendet";
+function stampTransitionStateLabel(state: string, operation: "start" | "stop" | "switch" | StampSessionTransition) {
+  if (state === "executed") return operation === "start" ? "Gestartet" : operation === "pause" ? "Pausiert" : operation === "resume" ? "Fortgesetzt" : operation === "switch" ? "Gewechselt" : "Beendet";
   if (state === "executing") return "Wird geändert";
   if (state === "cancelled") return "Abgebrochen";
   if (state === "expired") return "Abgelaufen";
@@ -2127,6 +2166,66 @@ function toJarvisStampSessionTransitionDraftView(
 ): JarvisStampSessionTransitionDraftView {
   const { payload, context } = validateStampSessionTransitionBinding(draft, binding);
   const state = draft.state as JarvisStampSessionTransitionDraftView["state"];
+  if (payload.action === "switch" && context.action === "switch") {
+    const permitted = !binding.profile.isImpersonating &&
+      binding.profile.sessionActor.id === binding.profile.effectiveActor.id;
+    const ready = permitted && state === "awaiting_confirmation" && context.blockingIssues.length === 0;
+    const reason: JarvisStampSessionTransitionDraftView["confirmation"]["reason"] =
+      state === "expired" ? "expired" : state === "cancelled" ? "cancelled" :
+      state === "executed" ? "executed" : state === "executing" ? "executing" :
+      !permitted ? "not_permitted" : ready ? "ready" : "blocked";
+    const elapsedMinutes = Math.round(context.stop.effective.durationMs / 60_000);
+    const pauseMinutes = Math.round(context.stop.effective.pauseMs / 60_000);
+    const previousLabel = context.stop.session?.projectLabel ||
+      (context.stop.session?.mode === "unproductive" ? "Unproduktiv" : "Keine aktive Stempelung");
+    const nextLabel = context.start.effective.projectLabel ||
+      (context.start.effective.mode === "unproductive" ? "Unproduktiv" : "Kein Projekt");
+    return {
+      version: 2,
+      previewId: draft.id,
+      actionId: "time.session.manage",
+      title: "Eigene Stempelung kontrolliert bedienen",
+      badge: stampTransitionStateLabel(state, "switch") as JarvisStampSessionTransitionDraftView["badge"],
+      state,
+      revision: draft.revision,
+      expiresAt: draft.expiresAt.toISOString(),
+      operation: "switch",
+      sessionId: state === "executed" ? draft.resultEntityId ?? "" : context.stop.session?.id ?? "",
+      currentState: context.stop.session ? (context.stop.session.pauseStartedAt ? "paused" : "running") : "missing",
+      targetState: "running",
+      fields: [
+        { label: "Aktion", value: "Zur Folgetätigkeit wechseln" },
+        { label: "Bisheriger Arbeitsbezug", value: previousLabel },
+        { label: "Bisheriger Abschluss", value: context.stop.effective.completionStatus === "finished" ? "Arbeit fertig" : context.stop.effective.completionStatus === "interrupted" ? "Arbeit unterbrochen" : "Nicht erforderlich" },
+        ...(context.stop.effective.interruptionReason ? [{ label: "Unterbrechungsgrund", value: context.stop.effective.interruptionReason }] : []),
+        { label: "Bisherige Arbeitszeit", value: `${elapsedMinutes} Minuten` },
+        { label: "Bisherige Pause", value: `${pauseMinutes} Minuten` },
+        { label: "Neuer Arbeitsbezug", value: nextLabel },
+        { label: "Neue Tätigkeit", value: context.start.effective.comment || "-" },
+        ...(context.start.isHourlyRecurring ? [
+          { label: "Neues Gewerk", value: context.start.effective.trade || "Fehlt" },
+          { label: "Neue Abrechnungsleistung", value: context.start.effective.billingCatalogItemLabel || "Fehlt" },
+        ] : []),
+        ...(context.stop.willAttachHourlyInvoiceDraft ? [{ label: "Bisherige Abrechnung", value: "Die beendete Zeit wird einem passenden Stunden-Rechnungsentwurf zugeordnet." }] : []),
+        ...(context.stop.willCreateInterruptionTask ? [{ label: "Unterbrechungsfolge", value: "Aufgabe und Benachrichtigungen werden für die Klärung erzeugt." }] : []),
+      ],
+      checks: [
+        { key: "personal-session", label: "Persönliche Sitzung", status: permitted ? "ok" : "blocked", detail: permitted ? "Der Wechsel betrifft ausschließlich deine eigene laufende Stempelung." : "Vertretung und Fremdstempelung sind ausgeschlossen." },
+        { key: "atomic-switch", label: "Atomarer Wechsel", status: context.stop.session ? "ok" : "blocked", detail: context.stop.session ? "Bisherige Zeitbuchung und Folgestart werden in einem genau-einmal-geschützten Wechsel ausgeführt." : "Es gibt keine eindeutig gebundene Ausgangsstempelung." },
+        { key: "completion", label: "Bisheriger Abschluss", status: context.stop.blockingIssues.length ? "blocked" : "ok", detail: context.stop.effective.completionStatus === "interrupted" ? "Unterbrechungsstatus und Grund sind dokumentiert." : context.stop.effective.completionStatus === "finished" ? "Die bisherige Projektarbeit ist als fertig angegeben." : "Für unproduktive Zeit ist kein Projektabschluss erforderlich." },
+        { key: "next-billing-context", label: "Folge-Abrechnungskontext", status: context.start.isHourlyRecurring && !context.start.billingCatalogItem ? "blocked" : "ok", detail: context.start.isHourlyRecurring ? (context.start.billingCatalogItem ? "Gewerk und aktive Stunden-Abrechnungsleistung sind eindeutig gebunden." : "Gewerk oder aktive Stunden-Abrechnungsleistung fehlen.") : "Für die Folgetätigkeit ist keine Stunden-Abrechnungsleistung erforderlich." },
+        { key: "final-inspection", label: "Endkontrolle", status: context.stop.requiresFinalInspection && !payload.stop.finalInspectionMode ? "blocked" : context.stop.requiresFinalInspection ? "warning" : "ok", detail: context.stop.requiresFinalInspection ? (payload.stop.finalInspectionMode ? "Die verpflichtende Endkontrolle ist für den Abschluss vorgemerkt." : "Vor dem Wechsel muss die Endkontrolle festgelegt werden.") : "Für diesen Abschluss ist keine verpflichtende Endkontrolle erforderlich." },
+      ],
+      warnings: context.warnings,
+      blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Persönliche Live-Stempelungen können nicht in Vertretung ausgeführt werden."] : [])],
+      confirmation: { enabled: ready, reason, requiredText: getStampSessionSwitchConfirmationText(context) },
+      cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+      ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "activeStampSession" as const, entityId: draft.resultEntityId, label: "Laufende Folgestempelung" } } : {}),
+    };
+  }
+  if (payload.action === "switch" || context.action === "switch") {
+    throw new JarvisActionDraftError("integrity_failed", "Wechselaktion und Stempelkontext passen nicht zusammen.", 409);
+  }
   if (payload.action === "start" && context.action === "start") {
     const permitted = !binding.profile.isImpersonating &&
       binding.profile.sessionActor.id === binding.profile.effectiveActor.id;
@@ -2367,7 +2466,32 @@ export async function createPersistedJarvisStampSessionTransitionDraft(input: {
       409
     );
   }
-  const context = payload.action === "start"
+  const context = payload.action === "switch"
+    ? await evaluateStampSessionSwitch({
+        organizationId: input.organizationId,
+        userId: actor.id,
+        change: {
+          stop: {
+            completionStatus: payload.stop.completionStatus,
+            comment: payload.stop.comment,
+            interruptionReason: payload.stop.interruptionReason,
+          },
+          start: payload.start,
+        },
+        now: input.now,
+      }).then((evaluation) => stampSessionSwitchContextSchema.parse({
+        ...evaluation,
+        blockingIssues: [
+          ...evaluation.blockingIssues,
+          ...(evaluation.stop.requiresFinalInspection && !payload.stop.finalInspectionMode
+            ? ["Bitte festlegen, ob du die Endkontrolle selbst dokumentierst oder ein Kollege sie übernimmt."]
+            : []),
+          ...(evaluation.stop.requiresFinalInspection && payload.stop.finalInspectionMode === "self" && !payload.stop.allInspectionChecksDone
+            ? ["Für die eigene Endkontrolle müssen alle sechs Prüfpunkte ausdrücklich bestätigt sein."]
+            : []),
+        ],
+      }))
+    : payload.action === "start"
     ? stampSessionStartContextSchema.parse(await evaluateStampSessionStart({
         organizationId: input.organizationId,
         userId: actor.id,
@@ -2551,21 +2675,27 @@ export async function confirmJarvisStampSessionTransitionDraft(
   if (loaded.draft.state === "executed") {
     return toJarvisStampSessionTransitionDraftView(loaded.draft, binding);
   }
-  const validConfirmation = loaded.payload.action === "start" && loaded.context.action === "start"
+  const validConfirmation = loaded.payload.action === "switch" && loaded.context.action === "switch"
+    ? matchesStampSessionSwitchConfirmation(loaded.context, confirmationText)
+    : loaded.payload.action === "start" && loaded.context.action === "start"
     ? matchesStampSessionStartConfirmation(loaded.context, confirmationText)
     : loaded.payload.action === "stop" && loaded.context.action === "stop"
       ? matchesStampSessionStopConfirmation(loaded.context, confirmationText)
     : loaded.payload.action !== "start" && loaded.context.action !== "start"
       && loaded.payload.action !== "stop" && loaded.context.action !== "stop"
+      && loaded.payload.action !== "switch" && loaded.context.action !== "switch"
       ? matchesStampSessionTransitionConfirmation(loaded.payload.action, confirmationText)
       : false;
   if (!validConfirmation) {
-    const requiredText = loaded.payload.action === "start" && loaded.context.action === "start"
+    const requiredText = loaded.payload.action === "switch" && loaded.context.action === "switch"
+      ? getStampSessionSwitchConfirmationText(loaded.context)
+      : loaded.payload.action === "start" && loaded.context.action === "start"
       ? getStampSessionStartConfirmationText(loaded.context)
       : loaded.payload.action === "stop" && loaded.context.action === "stop"
         ? getStampSessionStopConfirmationText(loaded.context)
       : loaded.payload.action !== "start"
         && loaded.payload.action !== "stop"
+        && loaded.payload.action !== "switch"
         ? getStampSessionTransitionConfirmationText(loaded.payload.action)
         : "STEMPELAKTION NEU PRÜFEN";
     throw new JarvisActionDraftError(
@@ -2583,6 +2713,128 @@ export async function confirmJarvisStampSessionTransitionDraft(
       "Die Stempelaktion ist nicht mehr aktuell oder ausführbar.",
       loaded.draft.state === "expired" ? 410 : 409
     );
+  }
+  if (loaded.payload.action === "switch" && loaded.context.action === "switch") {
+    try {
+      const actor = await prisma.user.findFirst({
+        where: {
+          id: loaded.draft.effectiveActorId,
+          organizationId: binding.organizationId,
+          isActive: true,
+        },
+      });
+      if (!actor || actor.id !== loaded.draft.sessionActorId) {
+        throw new JarvisActionDraftError("role_changed", "Der persönliche Benutzerkontext ist nicht mehr aktuell.", 409);
+      }
+      const switched = await executeStampSessionSwitch({
+        organizationId: binding.organizationId,
+        userId: actor.id,
+        actorName: [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email,
+        change: {
+          stop: loaded.context.stop.requested as StampSessionStopInput,
+          start: loaded.context.start.requested as StampSessionStartInput,
+        },
+        expectedFingerprint: loaded.context.fingerprint,
+        requestId: loaded.draft.id,
+        source: "jarvis",
+        now,
+      });
+      if (loaded.context.stop.requiresFinalInspection) {
+        if (!loaded.payload.stop.finalInspectionMode) {
+          throw new JarvisActionDraftError("invalid_input", "Die verpflichtende Endkontrolle ist noch nicht festgelegt.", 400);
+        }
+        const inspection = await createFinalInspection({
+          organizationId: binding.organizationId,
+          actorUserId: actor.id,
+          actorName: [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email,
+          inspection: {
+            projectId: switched.stopped.projectId,
+            projectLabel: switched.stopped.projectLabel,
+            mode: loaded.payload.stop.finalInspectionMode,
+            allChecksDone: loaded.payload.stop.allInspectionChecksDone,
+            comment: loaded.payload.stop.comment,
+            upsellNotes: loaded.payload.stop.upsellNotes,
+          },
+          requestId: `${loaded.draft.id}:final-inspection`,
+          source: "jarvis",
+          now,
+        });
+        await applyFinalInspectionBillingStatus({
+          organizationId: binding.organizationId,
+          projectId: switched.stopped.projectId,
+          projectMonth: inspection.projectMonth,
+          actorUserId: actor.id,
+          actorName: [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email,
+          requestId: `${loaded.draft.id}:billing-status`,
+          source: "jarvis",
+        });
+      }
+      if (loaded.context.stop.willAttachHourlyInvoiceDraft) {
+        const attached = await attachStampEntryToHourlyInvoiceDraft({
+          organizationId: binding.organizationId,
+          entry: switched.stopped,
+        });
+        if (!attached) {
+          throw new JarvisActionDraftError("conflict", "Die bisherige Stundenstempelung wurde gespeichert, konnte aber keinem sicheren Rechnungsentwurf zugeordnet werden. Der Wechsel kann gefahrlos erneut bestätigt werden.", 409);
+        }
+      }
+      if (switched.stopped.completionStatus === "interrupted") {
+        await ensureStampInterruptionFollowup({
+          organizationId: binding.organizationId,
+          entry: switched.stopped,
+          interruptionReason: loaded.context.stop.effective.interruptionReason,
+          now,
+        });
+      }
+      const executed = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`jarvis-draft:${loaded.draft.id}`}, 0))`;
+        const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
+        if (!current) throw new JarvisActionDraftError("not_found", "Die Stempelaktion wurde nicht gefunden.", 404);
+        validateStampSessionTransitionBinding(current, binding);
+        if (current.state === "executed") return current;
+        if (current.state !== "awaiting_confirmation" || current.revision !== expectedRevision) {
+          throw new JarvisActionDraftError("conflict", "Die Stempelaktion ist nicht mehr ausführbar.", 409);
+        }
+        const executedData: DraftIntegrityData = {
+          ...current,
+          state: "executed",
+          confirmedAt: now,
+          executedAt: now,
+          resultEntityType: "activeStampSession",
+          resultEntityId: switched.started.id,
+          lastErrorCode: null,
+        };
+        const finalDraft = await tx.jarvisActionDraft.update({
+          where: { id: current.id },
+          data: {
+            state: "executed",
+            confirmedAt: now,
+            executedAt: now,
+            resultEntityType: "activeStampSession",
+            resultEntityId: switched.started.id,
+            lastErrorCode: null,
+            integrityTag: createIntegrityTag(executedData),
+          },
+        });
+        await appendAuditEvent(tx, {
+          draft: finalDraft,
+          eventType: "draft_confirmed_and_executed",
+          result: { id: switched.started.id, entityType: "activeStampSession" },
+        });
+        return finalDraft;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return toJarvisStampSessionTransitionDraftView(executed, binding);
+    } catch (error) {
+      if (error instanceof JarvisActionDraftError) throw error;
+      if (error instanceof StampSessionServiceError || error instanceof FinalInspectionServiceError) {
+        throw new JarvisActionDraftError(
+          error.code === "stale_context" ? "stale_context" : error.code === "not_found" ? "not_found" : "conflict",
+          error.message,
+          error.status === 404 ? 404 : error.status === 400 ? 400 : 409,
+        );
+      }
+      throw new JarvisActionDraftError("execution_failed", "Der Wechsel oder eine seiner sicheren Folgeaktionen konnte nicht vollständig verarbeitet werden. Eine Wiederholung ist gefahrlos möglich.", 500);
+    }
   }
   if (loaded.payload.action === "stop" && loaded.context.action === "stop") {
     try {
@@ -2786,8 +3038,8 @@ export async function confirmJarvisStampSessionTransitionDraft(
                 source: "jarvis",
                 now,
               })).entry }
-          : parsed.payload.action !== "start" && parsed.context.action !== "start"
-            && parsed.payload.action !== "stop" && parsed.context.action !== "stop"
+          : (parsed.payload.action === "pause" || parsed.payload.action === "resume")
+            && (parsed.context.action === "pause" || parsed.context.action === "resume")
             ? { entityType: "activeStampSession" as const, entity: await executeStampSessionTransition({
                 db: tx,
                 organizationId: binding.organizationId,

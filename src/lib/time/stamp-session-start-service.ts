@@ -179,6 +179,7 @@ export async function evaluateStampSessionStart(input: {
   organizationId: string;
   userId: string;
   start: StampSessionStartInput;
+  replaceActiveSessionId?: string;
   now?: Date;
 }): Promise<StampSessionStartEvaluation> {
   const db = input.db ?? prisma;
@@ -207,7 +208,12 @@ export async function evaluateStampSessionStart(input: {
   const existing = await db.activeStampSession.findUnique({
     where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },
   });
-  const existingSession = existing ? toStampSessionSnapshot(existing, now.getTime()) : null;
+  const replacesExpectedSession = Boolean(
+    existing && input.replaceActiveSessionId && existing.id === input.replaceActiveSessionId,
+  );
+  const existingSession = existing && !replacesExpectedSession
+    ? toStampSessionSnapshot(existing, now.getTime())
+    : null;
   if (existingSession) blockingIssues.push("Es läuft bereits eine persönliche Stempelung. Bitte zuerst pausieren, fortsetzen, wechseln oder stoppen.");
 
   const project = requested.mode === "project" && requested.projectId
@@ -324,6 +330,7 @@ async function executeInTransaction(input: {
   expectedFingerprint?: string;
   requestId: string;
   source: "ui" | "jarvis";
+  sessionId?: string;
   now: Date;
 }) {
   await input.tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`stamp-session:${input.organizationId}:${input.userId}`}, 0))`;
@@ -356,7 +363,7 @@ async function executeInTransaction(input: {
     }
   }
   const session = await input.tx.activeStampSession.create({ data: {
-    id: randomUUID(), organizationId: input.organizationId, userId: input.userId,
+    id: input.sessionId || randomUUID(), organizationId: input.organizationId, userId: input.userId,
     employee: input.actorName, mode: evaluation.effective.mode,
     projectId: evaluation.effective.projectId, projectLabel: evaluation.effective.projectLabel,
     trade: evaluation.effective.trade || null, planningEntryId: evaluation.effective.planningEntryId || null,
@@ -381,6 +388,7 @@ export async function executeStampSessionStart(input: {
   expectedFingerprint?: string;
   requestId: string;
   source: "ui" | "jarvis";
+  sessionId?: string;
   now?: Date;
 }) {
   const now = input.now ?? new Date();

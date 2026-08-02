@@ -22,6 +22,27 @@ function createdSession() {
 }
 
 describe("stamp-session-start-service", () => {
+  it("evaluates a switch target as if the exactly bound current session were replaced", async () => {
+    const current = { ...createdSession(), id: "stamp-current" };
+    const db = {
+      activeStampSession: { findUnique: vi.fn().mockResolvedValue(current) },
+      workPilotProject: { findFirst: vi.fn() }, planningEntry: { findMany: vi.fn() }, catalogItem: { findFirst: vi.fn() },
+    } as never;
+    const replacement = await evaluateStampSessionStart({
+      db, organizationId: "org-1", userId: "user-1", now: NOW,
+      replaceActiveSessionId: "stamp-current",
+      start: { mode: "unproductive", unproductiveLabel: "Besprechung intern", comment: "Teamrunde" },
+    });
+    expect(replacement.blockingIssues).toEqual([]);
+    expect(replacement.existingSession).toBeNull();
+    const wrongSession = await evaluateStampSessionStart({
+      db, organizationId: "org-1", userId: "user-1", now: NOW,
+      replaceActiveSessionId: "stamp-other",
+      start: { mode: "unproductive", unproductiveLabel: "Besprechung intern", comment: "Teamrunde" },
+    });
+    expect(wrongSession.blockingIssues).toContain("Es läuft bereits eine persönliche Stempelung. Bitte zuerst pausieren, fortsetzen, wechseln oder stoppen.");
+  });
+
   it("prepares a personal unproductive start and requires its exact phrase", async () => {
     const db = {
       activeStampSession: { findUnique: vi.fn().mockResolvedValue(null) },

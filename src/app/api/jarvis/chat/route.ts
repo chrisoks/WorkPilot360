@@ -214,6 +214,7 @@ import { extractProjectStatusAutomationRequest } from "@/lib/jarvis/automation-m
 import {
   extractStampSessionStartRequest,
   extractStampSessionStopRequest,
+  extractStampSessionSwitchRequest,
   extractStampSessionTransition,
 } from "@/lib/jarvis/stamp-session-intake";
 import { resolveJarvisProjectStatusAutomationStatus } from "@/lib/jarvis/automation-status-analysis";
@@ -1315,6 +1316,96 @@ async function buildJarvisStampSessionStopDraft(input: {
     return { type: "answer" as const, topicId: "action.stamp-session-stop", message: "Ich habe das Beenden deiner persönlichen Stempelung vollständig vorbereitet. Kontrolliere Abschlussart, Zeit, Pause und die angekündigten Projekt- und Abrechnungsfolgen. Erst die exakte Bestätigungsphrase speichert die Zeit genau einmal und beendet die aktive Stempelung.", actionDraft };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.stamp-session-stop.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Das Beenden der persönlichen Stempelung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.` };
+  }
+}
+
+async function buildJarvisStampSessionSwitchDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  const details = extractStampSessionSwitchRequest(input.question);
+  if (!details) return null;
+  if (!input.sessionId) {
+    return { type: "refusal" as const, topicId: "action.stamp-session-switch.session-required", message: "Für den Wechsel deiner persönlichen Stempelung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert." };
+  }
+  if (!details.start.comment) {
+    return { type: "clarification" as const, topicId: "action.stamp-session-switch.comment-required", message: "Was machst du in der Folgetätigkeit? Ergänze bitte eine konkrete neue Tätigkeit. Es wurde noch nichts verändert." };
+  }
+  if (details.stop.completionStatus === "interrupted" && !details.stop.interruptionReason) {
+    return { type: "clarification" as const, topicId: "action.stamp-session-switch.reason-required", message: "Warum wurde die bisherige Arbeit unterbrochen? Ergänze bitte einen konkreten Unterbrechungsgrund. Es wurde noch nichts verändert." };
+  }
+  if (details.start.mode === "project" && !details.start.projectNumber) {
+    return { type: "clarification" as const, topicId: "action.stamp-session-switch.project-required", message: "Auf welches Projekt soll die Folgestempelung wechseln? Nenne bitte die eindeutige Projektnummer und die neue Tätigkeit. Es wurde noch nichts verändert." };
+  }
+  const projects = details.start.mode === "project"
+    ? await prisma.workPilotProject.findMany({
+        where: { organizationId: input.organizationId, projectNumber: { equals: details.start.projectNumber, mode: "insensitive" } },
+        take: 2,
+        select: { id: true },
+      })
+    : [];
+  if (details.start.mode === "project" && projects.length !== 1) {
+    return { type: projects.length ? "clarification" as const : "refusal" as const, topicId: projects.length ? "action.stamp-session-switch.project-ambiguous" : "action.stamp-session-switch.project-not-found", message: projects.length ? `Die Projektnummer ${details.start.projectNumber} ist nicht eindeutig. Es wurde nichts verändert.` : `Das Projekt ${details.start.projectNumber} wurde in dieser Organisation nicht gefunden. Es wurde nichts verändert.` };
+  }
+  let billingCatalogItemId: string | undefined;
+  if (details.start.billingService) {
+    const serviceNumber = details.start.billingService.split("|")[0].trim();
+    const services = await prisma.catalogItem.findMany({
+      where: { organizationId: input.organizationId, OR: [
+        { number: { equals: serviceNumber, mode: "insensitive" } },
+        { name: { equals: details.start.billingService, mode: "insensitive" } },
+      ] },
+      take: 2,
+      select: { id: true },
+    });
+    if (services.length !== 1) {
+      return { type: "clarification" as const, topicId: "action.stamp-session-switch.billing-service-ambiguous", message: services.length ? "Die genannte Abrechnungsleistung ist nicht eindeutig. Nenne bitte ihre eindeutige Artikel-/Leistungsnummer. Es wurde nichts verändert." : `Die Abrechnungsleistung „${details.start.billingService}“ wurde nicht gefunden. Nenne bitte die Nummer aus Artikel & Leistungen. Es wurde nichts verändert.` };
+    }
+    billingCatalogItemId = services[0].id;
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "time.session.manage",
+    payload: {
+      action: "switch",
+      stop: {
+        completionStatus: details.stop.completionStatus,
+        ...(details.stop.comment ? { comment: details.stop.comment } : {}),
+        ...(details.stop.interruptionReason ? { interruptionReason: details.stop.interruptionReason } : {}),
+        finalInspectionMode: details.stop.finalInspectionMode,
+        allInspectionChecksDone: details.stop.allInspectionChecksDone,
+        ...(details.stop.upsellNotes ? { upsellNotes: details.stop.upsellNotes } : {}),
+      },
+      start: {
+        mode: details.start.mode,
+        ...(projects[0]?.id ? { projectId: projects[0].id } : {}),
+        ...(details.start.unproductiveLabel ? { unproductiveLabel: details.start.unproductiveLabel } : {}),
+        comment: details.start.comment,
+        ...(details.start.trade ? { trade: details.start.trade } : {}),
+        ...(billingCatalogItemId ? { billingCatalogItemId } : {}),
+        confirmImplementationStatus: details.start.confirmImplementationStatus,
+      },
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return { type: "refusal" as const, topicId: "action.stamp-session-switch.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisStampSessionTransitionDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    if (actionDraft.blockingIssues.some((issue) => issue.includes("fertig oder unterbrochen"))) {
+      return { type: "clarification" as const, topicId: "action.stamp-session-switch.completion-required", message: "Ist die bisherige Projektarbeit fertig oder unterbrochen? Der Wechselentwurf bleibt bis zu dieser Angabe blockiert; es wurde noch nichts verändert.", actionDraft };
+    }
+    if (actionDraft.blockingIssues.some((issue) => issue.includes("Endkontrolle"))) {
+      return { type: "clarification" as const, topicId: "action.stamp-session-switch.inspection-required", message: "Vor dem Wechsel muss die verpflichtende OK-immocare-Endkontrolle vollständig festgelegt werden. Es wurde noch nichts verändert.", actionDraft };
+    }
+    return { type: "answer" as const, topicId: "action.stamp-session-switch", message: "Ich habe den Wechsel deiner persönlichen Stempelung vollständig vorbereitet. Kontrolliere Abschluss und Folgen der bisherigen Arbeit sowie Projekt, Tätigkeit und Abrechnungskontext der Folgetätigkeit. Erst die exakte Bestätigungsphrase speichert die bisherige Zeit und startet die neue Stempelung atomar und genau einmal.", actionDraft };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.stamp-session-switch.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Der Wechsel deiner persönlichen Stempelung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.` };
   }
 }
 
@@ -3405,6 +3496,16 @@ export async function POST(req: Request) {
       topicId: "security.refusal",
       message: getJarvisAuthorizationRefusalMessage(authorization, message),
     });
+  }
+  const stampSessionSwitch = extractStampSessionSwitchRequest(message);
+  if (stampSessionSwitch) {
+    const response = await buildJarvisStampSessionSwitchDraft({
+      question: message,
+      organizationId: organization.id,
+      sessionId: actorResult.sessionId,
+      accessProfile,
+    });
+    if (response) return respond(response, "system");
   }
   const stampSessionStart = extractStampSessionStartRequest(message);
   if (stampSessionStart) {

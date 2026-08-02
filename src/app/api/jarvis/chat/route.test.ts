@@ -3853,6 +3853,36 @@ describe("POST /api/jarvis/chat", () => {
     projectLookup.mockRestore();
   });
 
+  it("prepares an atomic follow-up switch before start or stop routing can claim it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const projectLookup = vi.spyOn(prisma.workPilotProject, "findMany").mockResolvedValueOnce([{ id: "project-2" }] as never);
+    mocks.createPersistedJarvisStampSessionTransitionDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "time.session.manage", title: "Eigene Stempelung kontrolliert bedienen",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T12:00:00.000Z",
+      operation: "switch", sessionId: "stamp-1", currentState: "running", targetState: "running",
+      fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "STEMPELUNG WECHSELN ZU GLR-449" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Wechsle meine Stempelung zu Projekt GLR-449. Bisherige Arbeit fertig. Bisherige Ergänzung: Treppenhaus abgeschlossen; Neue Tätigkeit: Fenster reinigen" }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.stamp-session-switch", actionDraft: { actionId: "time.session.manage", operation: "switch" } });
+    expect(mocks.createPersistedJarvisStampSessionTransitionDraft).toHaveBeenCalledWith(expect.objectContaining({
+      preview: expect.objectContaining({
+        actionId: "time.session.manage",
+        payload: expect.objectContaining({
+          action: "switch",
+          stop: expect.objectContaining({ completionStatus: "finished", comment: "Treppenhaus abgeschlossen" }),
+          start: expect.objectContaining({ mode: "project", projectId: "project-2", comment: "Fenster reinigen" }),
+        }),
+      }),
+    }));
+    projectLookup.mockRestore();
+  });
+
   it("prepares an invoice draft with preflight but never fakturizes or sends", async () => {
     const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
     mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });

@@ -71,6 +71,14 @@ function extractTaggedValue(question: string, labels: string[]) {
     "unproduktive taetigkeit",
     "projektstatus",
     "status",
+    "neue tätigkeit",
+    "neue taetigkeit",
+    "folgetätigkeit",
+    "folgetaetigkeit",
+    "bisherige ergänzung",
+    "bisherige ergaenzung",
+    "unterbrechungsgrund",
+    "grund",
   ];
   const boundary = allLabels
     .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
@@ -210,4 +218,50 @@ export function extractStampSessionStopRequest(
 
 export function looksLikeStampSessionStopRequest(question: string) {
   return extractStampSessionStopRequest(question) !== null;
+}
+
+export type StampSessionSwitchRequest = {
+  stop: StampSessionStopRequest;
+  start: StampSessionStartRequest;
+};
+
+export function extractStampSessionSwitchRequest(question: string): StampSessionSwitchRequest | null {
+  const value = normalize(question);
+  if (!value || !/\b(stempel\w*|timer|arbeitszeit)\b/.test(value) || !/\b(wechsl\w*|folgetatigkeit|folgeprojekt)\b/.test(value)) return null;
+  const interrupted = /\b(arbeit\s+)?unterbrochen\b|\bunterbrech\w*\b/.test(value);
+  const finished = /\b(arbeit\s+)?fertig\b|\berledigt\b|\babgeschlossen\b/.test(value);
+  const mode = /\b(unproduktiv\w*|folgetatigkeit\s+unproduktiv)\b/.test(value) ? "unproductive" : "project";
+  const projectNumber = mode === "project"
+    ? (question.match(/\b([A-ZÄÖÜ]{2,12}-\d{1,10})\b/i)?.[1] ?? "").trim().toUpperCase()
+    : "";
+  const finalInspectionMode = /endkontrolle[^.;,]*(kollege|kollegin)|durch\s+(einen\s+)?kollegen/.test(value)
+    ? "colleague"
+    : /endkontrolle[^.;,]*(selbst|durchgefuhrt)|endkontrolle\s*:\s*fertig/.test(value)
+      ? "self"
+      : "";
+  return {
+    stop: {
+      completionStatus: interrupted ? "interrupted" : finished ? "finished" : "",
+      interruptionReason: extractTaggedValue(question, ["unterbrechungsgrund", "grund", "warum unterbrochen"]),
+      comment: extractTaggedValue(question, ["bisherige ergänzung", "bisherige ergaenzung", "ergänzung", "ergaenzung"]),
+      finalInspectionMode,
+      allInspectionChecksDone: /\b(alle|samtliche)\b[^.;,]*\b(prufpunkte|checks)\b[^.;,]*\b(erledigt|bestatigt|ok)\b/.test(value),
+      upsellNotes: extractTaggedValue(question, ["zusatzverkauf", "zusatzverkaufsmöglichkeit", "zusatzverkaufsmoeglichkeit"]),
+    },
+    start: {
+      mode,
+      projectNumber,
+      comment: extractTaggedValue(question, ["neue tätigkeit", "neue taetigkeit", "folgetätigkeit", "folgetaetigkeit"]),
+      unproductiveLabel: mode === "unproductive"
+        ? extractTaggedValue(question, ["unproduktive tätigkeit", "unproduktive taetigkeit", "folgetätigkeit", "folgetaetigkeit"]) || "Unproduktiv"
+        : "",
+      trade: extractTaggedValue(question, ["gewerk"]),
+      billingService: extractTaggedValue(question, ["abrechnungsleistung", "leistung"]),
+      confirmImplementationStatus: mode === "project" && /\b(status\w*|projektstatus)\b.*\b(umsetzung|ausfuhrung)\b/.test(value),
+    },
+  };
+}
+
+export function looksLikeStampSessionSwitchRequest(question: string) {
+  return extractStampSessionSwitchRequest(question) !== null;
 }

@@ -227,6 +227,28 @@ const stampSessionTransitionPreviewPayloadSchema = z.discriminatedUnion(
       billingCatalogItemId: boundedId.optional(),
       confirmImplementationStatus: z.boolean().default(false),
     }).strict(),
+    z.object({
+      action: z.literal("switch"),
+      stop: z.object({
+        completionStatus: z.enum(["finished", "interrupted", ""]),
+        comment: optionalText(2000),
+        interruptionReason: optionalText(2000),
+        finalInspectionMode: z.enum(["", "self", "colleague"]).default(""),
+        allInspectionChecksDone: z.boolean().default(false),
+        upsellNotes: optionalText(2000),
+      }).strict(),
+      start: z.object({
+        mode: z.enum(["project", "unproductive"]),
+        projectId: boundedId.optional(),
+        unproductiveLabel: optionalText(240),
+        comment: boundedText(2000),
+        trade: optionalText(240),
+        planningEntryId: boundedId.optional(),
+        planningBillingGroupId: boundedId.optional(),
+        billingCatalogItemId: boundedId.optional(),
+        confirmImplementationStatus: z.boolean().default(false),
+      }).strict(),
+    }).strict(),
   ]
 );
 
@@ -1446,7 +1468,7 @@ export type JarvisStampSessionTransitionDraftView = Omit<
 > & {
   actionId: "time.session.manage";
   title: "Eigene Stempelung kontrolliert bedienen";
-  operation: "start" | "pause" | "resume" | "stop";
+  operation: "start" | "pause" | "resume" | "stop" | "switch";
   sessionId: string;
   currentState: "running" | "paused" | "missing";
   targetState: "running" | "paused" | "missing";

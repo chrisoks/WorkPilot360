@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractStampSessionSwitchRequest,
   extractStampSessionStartRequest,
   extractStampSessionStopRequest,
   extractStampSessionTransition,
@@ -91,5 +92,28 @@ describe("stamp-session-intake", () => {
     expect(extractStampSessionStopRequest("Pausiere meine Stempelung")).toBeNull();
     expect(extractStampSessionStopRequest("Setze meine Stempelung fort")).toBeNull();
     expect(extractStampSessionStopRequest("Starte meine Stempelung")).toBeNull();
+  });
+
+  it("extracts the old completion and the new project activity from one switch request", () => {
+    expect(extractStampSessionSwitchRequest(
+      "Wechsle meine Stempelung zu Projekt GLR-449. Bisherige Arbeit fertig. Bisherige Ergänzung: Treppenhaus abgeschlossen; Neue Tätigkeit: Fenster reinigen; Gewerk: Glasreinigung; Abrechnungsleistung: GLR-10",
+    )).toEqual(expect.objectContaining({
+      stop: expect.objectContaining({ completionStatus: "finished", comment: "Treppenhaus abgeschlossen" }),
+      start: expect.objectContaining({ mode: "project", projectNumber: "GLR-449", comment: "Fenster reinigen", trade: "Glasreinigung", billingService: "GLR-10" }),
+    }));
+  });
+
+  it("extracts the unproductive follow-up switch used by the permanent corpus", () => {
+    expect(extractStampSessionSwitchRequest(
+      "Wechsle meine Stempelung zur Folgetätigkeit unproduktiv. Unproduktive Tätigkeit: QA Büroorganisation; Neue Tätigkeit: QA Ablage prüfen",
+    )).toEqual(expect.objectContaining({
+      stop: expect.objectContaining({ completionStatus: "" }),
+      start: expect.objectContaining({
+        mode: "unproductive",
+        projectNumber: "",
+        unproductiveLabel: "QA Büroorganisation",
+        comment: "QA Ablage prüfen",
+      }),
+    }));
   });
 });
