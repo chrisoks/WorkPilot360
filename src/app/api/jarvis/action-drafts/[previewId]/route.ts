@@ -1128,7 +1128,9 @@ export async function POST(
             : isTimeManagement
             ? "Der Zeiteintrag wurde nach deiner exakten Bestätigung genau einmal korrigiert oder logisch gelöscht. Historie, Kostensatz und Abrechnungsgrenzen wurden kontrolliert erhalten."
             : isPlanningMove
-            ? "Der einzelne Termin wurde nach deiner exakten Bestätigung genau einmal verschoben. Projekt, Mitarbeiter, Terminart, Abrechnungsbezug und übrige Serie blieben unverändert; Historie und Projektlogbuch wurden gemeinsam geschrieben."
+            ? actionDraft.actionId === "planning.move" && actionDraft.scope === "series_from_entry"
+              ? "Der vollständig angezeigte Serienabschnitt wurde nach deiner exakten Bestätigung einschließlich aller gebuchten Mitarbeitenden atomar und genau einmal verschoben. Frühere Folgen blieben unverändert; Historien, Projektlogbuch und Hinweise wurden für alle betroffenen Termine gemeinsam geschrieben."
+              : "Der einzelne Termin wurde nach deiner exakten Bestätigung genau einmal verschoben. Projekt, Mitarbeiter, Terminart, Abrechnungsbezug und übrige Serie blieben unverändert; Historie und Projektlogbuch wurden gemeinsam geschrieben."
             : isPlanningRequestDecision
             ? planningRequestDecision === "cancel_series"
               ? "Die vollständig angezeigte bestätigte Terminserie wurde nach deiner exakten Bestätigung atomar und genau einmal abgesagt. Historie, Projektlogbuch und Hinweise wurden für alle Serientermine gemeinsam geschrieben."

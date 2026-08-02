@@ -1060,19 +1060,20 @@ async function buildJarvisPlanningMoveDraft(input: {
 }) {
   if (!input.sessionId) return { type: "refusal" as const, topicId: "action.planning-move.session-required", message: "Für eine Terminverschiebung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert." };
   const details = extractPlanningMoveRequest(input.question);
-  if (details.seriesRequested) return { type: "clarification" as const, topicId: "action.planning-move.series-scope", message: "Soll nur ein einzelner Serientermin oder die gesamte Terminserie verschoben werden? Der sichere aktuelle Weg verschiebt ausschließlich einen eindeutig benannten Einzeltermin; es wurde noch nichts verändert." };
   if (!details.entryId) return { type: "clarification" as const, topicId: "action.planning-move.entry-required", message: "Welcher Termin soll verschoben werden? Nenne bitte die vollständige Termin-ID aus der Terminübersicht. Es wurde noch nichts verändert." };
   if (!details.date || !details.startTime || !details.endTime) return { type: "clarification" as const, topicId: "action.planning-move.target-required", message: "Auf welches Datum und welchen Zeitraum soll der Termin verschoben werden? Beispiel: „auf 04.08.2026 von 09:00 bis 11:00“. Es wurde noch nichts verändert." };
   if (!details.reason || details.reason.length < 3) return { type: "clarification" as const, topicId: "action.planning-move.reason-required", message: "Für die Terminverschiebung brauche ich einen nachvollziehbaren Grund mit mindestens drei Zeichen. Es wurde noch nichts verändert." };
   const preview = createJarvisActionPreview({
     previewId: randomUUID(), actionId: "planning.move",
-    payload: { entryId: details.entryId, date: details.date, startTime: details.startTime, endTime: details.endTime, reason: details.reason, ...(details.overbookingReason ? { overbookingReason: details.overbookingReason } : {}) },
+    payload: { entryId: details.entryId, scope: details.seriesRequested ? "series_from_entry" : "single", date: details.date, startTime: details.startTime, endTime: details.endTime, reason: details.reason, ...(details.overbookingReason ? { overbookingReason: details.overbookingReason } : {}) },
     organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString(),
   });
   if (!preview.ok) return { type: "refusal" as const, topicId: "action.planning-move.refused", message: `${preview.message} Es wurde nichts verändert.` };
   try {
     const actionDraft = await createPersistedJarvisPlanningMoveDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
-    return { type: "answer" as const, topicId: "action.planning-move", message: "Ich habe die Terminverschiebung serverseitig geprüft. Kontrolliere Terminart, Projekt, Mitarbeiter, bisherigen und neuen Zeitraum, Grund, Abwesenheiten, Überschneidungen und Kontingent. Projekt, Mitarbeiter und Serienzuordnung bleiben unverändert; erst die exakte Bestätigungsphrase verschiebt den einzelnen Termin genau einmal.", actionDraft };
+    return { type: "answer" as const, topicId: "action.planning-move", message: details.seriesRequested
+      ? "Ich habe den ausgewählten Termin und alle zeitlich folgenden aktiven Serieneinträge einschließlich aller gebuchten Mitarbeitenden serverseitig geprüft. Frühere Folgen bleiben unverändert. Kontrolliere vollständigen Umfang, bisherigen und neuen Zeitraum, Zeitversatz, Abwesenheiten, Überschneidungen und Kontingente; erst die exakte Serienphrase verschiebt alle angezeigten Einträge atomar und genau einmal."
+      : "Ich habe die Terminverschiebung serverseitig geprüft. Kontrolliere Terminart, Projekt, Mitarbeiter, bisherigen und neuen Zeitraum, Grund, Abwesenheiten, Überschneidungen und Kontingent. Projekt, Mitarbeiter und Serienzuordnung bleiben unverändert; erst die exakte Bestätigungsphrase verschiebt den einzelnen Termin genau einmal.", actionDraft };
   } catch (error) {
     const message = error instanceof JarvisActionDraftError ? error.message : "Die Terminverschiebung konnte nicht sicher vorbereitet werden.";
     return { type: message.includes("Überplanung:") ? "clarification" as const : "refusal" as const, topicId: "action.planning-move.unavailable", message: `${message} Es wurde nichts verändert.` };
@@ -3509,7 +3510,7 @@ function buildAiIntentClarification(
     topicId: "intent.ai.action-clarification",
     message:
       classification.intent === "prepare_action"
-        ? "Ich habe verstanden, dass JARVIS hier direkt etwas ausführen soll. Diese Aktion ist in der aktuellen Entwicklungsphase noch nicht freigegeben und wurde nicht ausgeführt. Soll ich dir das sichere Vorgehen erklären?"
+        ? "Ich habe verstanden, dass JARVIS hier direkt etwas erledigen soll, aber noch nicht alle Angaben sicher bestimmt. Bevor ich die falsche Aktion vorbereite: Bitte wähle oder beschreibe genauer, was angelegt oder geändert werden soll. Es wurde noch nichts verändert."
         : "Ich bin noch nicht sicher, ob du etwas nur erklärt, geprüft oder später direkt durch JARVIS erledigt haben möchtest. Bitte wähle das gewünschte Vorgehen.",
     choices,
   };
@@ -4410,6 +4411,22 @@ export async function POST(req: Request) {
   if (
     directActionRequest &&
     aiIntentClassification?.intent === "prepare_action" &&
+    aiIntentClassification.actionKind === "offer.create"
+  ) {
+    return respond(
+      await buildJarvisOfferDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "sales"
+    );
+  }
+  if (
+    directActionRequest &&
+    aiIntentClassification?.intent === "prepare_action" &&
     (aiIntentClassification.actionKind === "project_logbook.create" ||
       aiIntentClassification.actionKind === "task_comment.create")
   ) {
@@ -4434,9 +4451,9 @@ export async function POST(req: Request) {
   ) {
     return respond({
       type: "clarification",
-      topicId: "intent.action-not-executed",
+      topicId: "intent.action-clarification",
       message:
-        "Du möchtest, dass JARVIS direkt etwas ändert oder anlegt. Diese Aktion wurde nicht ausgeführt. Die ausführende Funktion ist noch nicht freigegeben; ich kann dir stattdessen den sicheren Ablauf in WorkPilot360 erklären.",
+        "Ich erkenne, dass du etwas ändern oder anlegen lassen möchtest, kann Ziel und gewünschte Aktion aber noch nicht sicher genug bestimmen. Bitte beschreibe kurz, was genau JARVIS für dich vorbereiten soll. Es wurde noch nichts verändert.",
     });
   }
   if (

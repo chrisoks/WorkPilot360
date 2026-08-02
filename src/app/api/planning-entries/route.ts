@@ -1426,6 +1426,7 @@ export async function PATCH(req: Request) {
     endTime: cleanString(body.endTime),
     reason: cleanString(body.reason),
     requireManagement: false,
+    scope: cleanString(body.scope) === "series_from_entry" ? "series_from_entry" as const : "single" as const,
   };
   try {
     if (command === "preflight") {
@@ -1450,15 +1451,19 @@ export async function PATCH(req: Request) {
     const savedEntry = rows[0];
     if (!savedEntry) return NextResponse.json({ error: "Der verschobene Termin wurde nicht wiedergefunden." }, { status: 500 });
     if (!result.replayed) {
-      await deliverPlanningEntryMoveNotifications({ organizationId: organization.id, requestId, entryId: savedEntry.id, actorUserId: actor.id }).catch(
+      await deliverPlanningEntryMoveNotifications({ organizationId: organization.id, requestId, entryId: savedEntry.id, actorUserId: actor.id, ...(result.scope === "series_from_entry" ? { affectedEntryIds: result.affectedEntryIds } : {}) }).catch(
         (error) => console.error("Planning move notification delivery failed", error),
       );
-      await notifyPlanningOverlap(savedEntry, organization.id, actor.id);
-      await syncPlanningCapacityAlert({ ...savedEntry, date: result.previous.date }, organization.id, actor.id);
-      await syncPlanningCapacityAlert(savedEntry, organization.id, actor.id);
+      for (const affected of result.affected) {
+        const affectedRows = await prisma.$queryRaw<PlanningEntryRow[]>`SELECT * FROM "PlanningEntry" WHERE "organizationId"=${organization.id} AND "id"=${affected.entry.id} LIMIT 1`;
+        const affectedEntry = affectedRows[0]; if (!affectedEntry) continue;
+        await notifyPlanningOverlap(affectedEntry, organization.id, actor.id);
+        await syncPlanningCapacityAlert({ ...affectedEntry, date: affected.previous.date }, organization.id, actor.id);
+        await syncPlanningCapacityAlert(affectedEntry, organization.id, actor.id);
+      }
     }
     const history = await prisma.$queryRaw<PlanningEntryHistoryRow[]>`SELECT * FROM "PlanningEntryHistory" WHERE "organizationId"=${organization.id} AND "planningEntryId"=${savedEntry.id} ORDER BY "createdAt" ASC`;
-    return NextResponse.json({ entry: formatEntry(savedEntry, history), replayed: result.replayed });
+    return NextResponse.json({ entry: formatEntry(savedEntry, history), replayed: result.replayed, scope: result.scope, affectedEntryIds: result.affectedEntryIds, series: result.series });
   } catch (error) {
     if (isPlanningEntryMoveError(error)) return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status });
     console.error("Planning entry move failed", error);

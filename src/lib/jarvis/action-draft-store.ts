@@ -1179,6 +1179,7 @@ const timeManagementContextSchema = z.object({
 
 const planningMovePayloadSchema = z.object({
   entryId: z.string().trim().min(1).max(120),
+  scope: z.enum(["single", "series_from_entry"]).default("single"),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
@@ -1188,11 +1189,18 @@ const planningMovePayloadSchema = z.object({
 }).strict();
 
 const planningMoveContextSchema = z.object({
+  scope: z.enum(["single", "series_from_entry"]),
   entry: z.object({ id: z.string(), title: z.string(), projectId: z.string(), projectLabel: z.string(), employee: z.string(), approvalStatus: z.enum(["confirmed", "requested"]), recurrenceRule: z.string() }).strict(),
   from: z.object({ date: z.string(), startTime: z.string(), endTime: z.string(), durationMinutes: z.number().int() }).strict(),
   to: z.object({ date: z.string(), startTime: z.string(), endTime: z.string(), durationMinutes: z.number().int() }).strict(),
   reason: z.string(), warnings: z.array(z.object({ code: z.string(), message: z.string() }).strict()),
   overbooking: z.object({ required: z.boolean(), kind: z.enum(["offer", "monthly"]).nullable(), label: z.string(), availableMinutes: z.number().int(), requestedMinutes: z.number().int(), exceededMinutes: z.number().int(), fingerprint: z.string().nullable() }).strict(),
+  series: z.object({ recurrenceId: z.string(), count: z.number().int().positive(), entryIds: z.array(z.string()).min(1), employeeCount: z.number().int().positive(), fromDate: z.string(), toDate: z.string(), targetFromDate: z.string(), targetToDate: z.string(), deltaDays: z.number().int(), deltaMinutes: z.number().int() }).strict().nullable(),
+  targets: z.array(z.object({
+    entryId: z.string(), userId: z.string(), projectId: z.string(), projectLabel: z.string(), title: z.string(), approvalStatus: z.enum(["confirmed", "requested"]),
+    from: z.object({ date: z.string(), startTime: z.string(), endTime: z.string(), durationMinutes: z.number().int() }).strict(),
+    to: z.object({ date: z.string(), startTime: z.string(), endTime: z.string(), durationMinutes: z.number().int() }).strict(),
+  }).strict()).min(1),
   fingerprint: z.string().length(64),
 }).strict();
 
@@ -11595,9 +11603,15 @@ function toJarvisPlanningMoveDraftView(draft: JarvisActionDraft, binding: Jarvis
   return {
     version: 2, previewId: draft.id, actionId: "planning.move", title: "Termin kontrolliert verschieben",
     badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
-    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), entryId: context.entry.id, projectId: context.entry.projectId,
+    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), entryId: context.entry.id, scope: context.scope, projectId: context.entry.projectId,
     fields: [
       { label: "Termin-ID", value: context.entry.id },
+      ...(context.series ? [
+        { label: "Serienumfang", value: `${context.series.count} Termine · ${context.series.employeeCount} Mitarbeitende` },
+        { label: "Bisheriger Serienabschnitt", value: `${context.series.fromDate} bis ${context.series.toDate}` },
+        { label: "Neuer Serienabschnitt", value: `${context.series.targetFromDate} bis ${context.series.targetToDate}` },
+        { label: "Gemeinsamer Versatz", value: `${context.series.deltaDays >= 0 ? "+" : ""}${context.series.deltaDays} Tage · ${context.series.deltaMinutes >= 0 ? "+" : ""}${context.series.deltaMinutes} Minuten` },
+      ] : []),
       { label: "Terminart", value: context.entry.approvalStatus === "requested" ? "Terminwunsch" : "Bestätigter Termin" },
       { label: "Titel", value: context.entry.title }, { label: "Projekt", value: context.entry.projectLabel || "Ohne Projekt" },
       { label: "Mitarbeitend", value: context.entry.employee },
@@ -11612,14 +11626,16 @@ function toJarvisPlanningMoveDraftView(draft: JarvisActionDraft, binding: Jarvis
       { key: "quota", label: "Kontingent", status: context.overbooking.required ? (overbookingReady ? "warning" : "blocked") : "ok", detail: context.overbooking.required ? `${context.overbooking.availableMinutes} Minuten frei, ${context.overbooking.requestedMinutes} Minuten benötigt.` : context.overbooking.label },
     ],
     warnings: [
-      "Projekt, Mitarbeiter, Terminart, Abrechnungsbezug und Serienzuordnung bleiben unverändert.",
+      context.series
+        ? "Projekt, Mitarbeitende, Terminarten, Abrechnungsbezüge und Serienzuordnung bleiben unverändert; frühere Serienfolgen sind ausdrücklich ausgeschlossen."
+        : "Projekt, Mitarbeiter, Terminart, Abrechnungsbezug und Serienzuordnung bleiben unverändert.",
       ...context.warnings.map((warning) => warning.message),
     ],
     blockingIssues: [
       ...(!permitted ? ["Diese Rollenkombination darf Termine nicht verschieben."] : []),
       ...(!overbookingReady ? ["Die bewusste Überplanung benötigt eine nachvollziehbare Begründung."] : []),
     ],
-    confirmation: { enabled: ready, reason, requiredText: getPlanningEntryMoveConfirmationText(context.entry.id) },
+    confirmation: { enabled: ready, reason, requiredText: getPlanningEntryMoveConfirmationText(context.entry.id, context.scope) },
     cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
     ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "planning" as const, entityId: draft.resultEntityId, label: "Verschobenen Termin öffnen" } } : {}),
   };
@@ -11636,7 +11652,7 @@ export async function createPersistedJarvisPlanningMoveDraft(input: {
   const proposed = planningMovePayloadSchema.parse(input.preview.payload);
   let evaluation;
   try {
-    evaluation = await evaluatePlanningEntryMove({ organizationId: input.organizationId, actor, entryId: proposed.entryId, date: proposed.date, startTime: proposed.startTime, endTime: proposed.endTime, reason: proposed.reason, requireManagement: true });
+    evaluation = await evaluatePlanningEntryMove({ organizationId: input.organizationId, actor, entryId: proposed.entryId, scope: proposed.scope, date: proposed.date, startTime: proposed.startTime, endTime: proposed.endTime, reason: proposed.reason, requireManagement: true });
   } catch (error) {
     if (error instanceof PlanningEntryMoveError) throw new JarvisActionDraftError("invalid_input", error.message, error.status === 403 ? 403 : error.status === 404 ? 404 : error.status === 400 ? 400 : 409);
     throw error;
@@ -11672,8 +11688,8 @@ export async function cancelJarvisPlanningMoveDraft(previewId: string, binding: 
 export async function confirmJarvisPlanningMoveDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
   const loaded = await loadBoundPlanningMoveDraft(previewId, binding, now);
   if (loaded.draft.state === "executed") return toJarvisPlanningMoveDraftView(loaded.draft, binding);
-  const requiredText = getPlanningEntryMoveConfirmationText(loaded.context.entry.id);
-  if (!matchesPlanningEntryMoveConfirmation(loaded.context.entry.id, confirmationText)) throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
+  const requiredText = getPlanningEntryMoveConfirmationText(loaded.context.entry.id, loaded.context.scope);
+  if (!matchesPlanningEntryMoveConfirmation(loaded.context.entry.id, confirmationText, loaded.context.scope)) throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
   if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Terminverschiebung darf bestätigt werden.", 409);
   if (!mayMovePlanningEntry(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Termine nicht verschieben.", 403);
   try {
@@ -11686,13 +11702,13 @@ export async function confirmJarvisPlanningMoveDraft(previewId: string, binding:
       const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
       const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
       if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Der Termin wird bereits verschoben.", 409);
-      const result = await executePlanningEntryMoveInTransaction({ tx, organizationId: binding.organizationId, actor, entryId: parsed.payload.entryId, date: parsed.payload.date, startTime: parsed.payload.startTime, endTime: parsed.payload.endTime, reason: parsed.payload.reason, expectedFingerprint: parsed.context.fingerprint, requestId: current.id, requireManagement: true, overbookingApproval: parsed.payload.overbookingApproval });
+      const result = await executePlanningEntryMoveInTransaction({ tx, organizationId: binding.organizationId, actor, entryId: parsed.payload.entryId, scope: parsed.payload.scope, date: parsed.payload.date, startTime: parsed.payload.startTime, endTime: parsed.payload.endTime, reason: parsed.payload.reason, expectedFingerprint: parsed.context.fingerprint, requestId: current.id, requireManagement: true, overbookingApproval: parsed.payload.overbookingApproval });
       const executedAt = new Date(); const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "planning", resultEntityId: result.entry.id };
       const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "planning", resultEntityId: result.entry.id, integrityTag: createIntegrityTag(executedData) } });
       await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: result.entry.id, entityType: "planning" } }); return finalDraft;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     if (executed.resultEntityId) {
-      await deliverPlanningEntryMoveNotifications({ organizationId: binding.organizationId, requestId: executed.id, entryId: executed.resultEntityId, actorUserId: executed.effectiveActorId })
+      await deliverPlanningEntryMoveNotifications({ organizationId: binding.organizationId, requestId: executed.id, entryId: executed.resultEntityId, actorUserId: executed.effectiveActorId, ...(loaded.context.series ? { affectedEntryIds: loaded.context.series.entryIds } : {}) })
         .catch((error) => console.error("Planning move notification delivery failed", error));
     }
     return toJarvisPlanningMoveDraftView(executed, binding);

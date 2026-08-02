@@ -127,6 +127,7 @@ const planningPreviewPayloadSchema = z
 
 const planningMovePreviewPayloadSchema = z.object({
   entryId: boundedId,
+  scope: z.enum(["single", "series_from_entry"]).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
@@ -991,6 +992,7 @@ export type JarvisPlanningMoveDraftView = {
   revision: number;
   expiresAt: string;
   entryId: string;
+  scope: "single" | "series_from_entry";
   projectId: string;
   fields: Array<{ label: string; value: string }>;
   checks: Array<{ key: string; label: string; status: "ok" | "warning" | "blocked"; detail: string }>;
@@ -1007,7 +1009,7 @@ export type JarvisPlanningMoveDraftView = {
 
 export type JarvisPlanningRequestDecisionDraftView = Omit<
   JarvisPlanningMoveDraftView,
-  "actionId" | "title"
+  "actionId" | "title" | "scope"
 > & {
   actionId: "planning.request.manage";
   title: "Termin oder Terminwunsch kontrolliert entscheiden";

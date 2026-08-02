@@ -11,6 +11,7 @@ describe("JARVIS permanent 110-question regression corpus", () => {
   it("permanently covers invoice drafts, calculators, online requests and safety", () => {
     const text = JARVIS_LIVE_QUESTION_CORPUS.map((item) => item.question).join("\n");
     expect(text).toContain("Erstelle einen Rechnungsentwurf");
+    expect(text).toContain("Kannst du das Angebot für Projekt GLR-449 schreiben");
     expect(text).toContain("Fakturiere Rechnungsentwurf");
     expect(text).toContain("Sende Rechnung RE-10124 kontrolliert");
     expect(text).toContain("Markiere Angebot ANG-10124 als gewonnen");
@@ -22,7 +23,7 @@ describe("JARVIS permanent 110-question regression corpus", () => {
     expect(text).toContain("Setze Projekt QA-100 auf Angebot");
     expect(text).toContain("Archiviere Projekt QA-200");
     expect(text).toContain("Korrigiere einen Zeiteintrag");
-    expect(text).toContain("Verschiebe einen Termin auf morgen");
+    expect(text).toContain("Verschiebe eine komplette Terminserie ab einem ausgewählten Termin gemeinsam");
     expect(text).toContain("Entscheide eine gesamte Terminwunschserie: freigeben, ablehnen, zurückziehen oder bestätigte Terminserie absagen");
   });
 });

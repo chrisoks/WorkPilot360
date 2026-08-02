@@ -2822,6 +2822,7 @@ function parseJarvisTimeManagementDraft(
     typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
     typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
     typeof candidate.entryId !== "string" || typeof candidate.projectId !== "string" ||
+    (candidate.scope !== "single" && candidate.scope !== "series_from_entry") ||
     (candidate.lifecycleAction !== "update" && candidate.lifecycleAction !== "delete") ||
     !Array.isArray(candidate.fields) || !Array.isArray(candidate.checks) ||
     !Array.isArray(candidate.warnings) || !Array.isArray(candidate.blockingIssues) ||
@@ -4545,8 +4546,11 @@ function JarvisOfferFinalizationCard({
   }
 
   if (draft.actionId === "planning.move") {
+    const wholeSeries = draft.scope === "series_from_entry";
     const footer = draft.state === "executed"
-      ? "Der einzelne Termin wurde genau einmal verschoben. Projekt, Mitarbeiter, Terminart, Abrechnungsbezug und übrige Serie blieben unverändert."
+      ? wholeSeries
+        ? "Der vollständig angezeigte Serienabschnitt wurde atomar und genau einmal verschoben. Frühere Folgen, Projekte, Mitarbeitende und Abrechnungsbezüge blieben unverändert."
+        : "Der einzelne Termin wurde genau einmal verschoben. Projekt, Mitarbeiter, Terminart, Abrechnungsbezug und übrige Serie blieben unverändert."
       : draft.state === "cancelled"
         ? "Die Terminverschiebung wurde beendet. Der Termin blieb unverändert."
         : draft.state === "expired"
@@ -4554,7 +4558,7 @@ function JarvisOfferFinalizationCard({
           : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung und den geprüften Terminstand gebunden.`;
     return (
       <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
-        <header><div><span>Action Center · Kritische Terminverschiebung</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+        <header><div><span>Action Center · Kritische {wholeSeries ? "Terminserienverschiebung" : "Terminverschiebung"}</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
         <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
         <div className={styles.jarvisPlanningChecks}><strong>Aktuelle Terminprüfung</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
         {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
@@ -4562,7 +4566,7 @@ function JarvisOfferFinalizationCard({
         {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
         {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
         <div className={styles.jarvisActionDraftActions}>
-          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>Termin jetzt verschieben</button> : null}
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{wholeSeries ? "Angezeigten Serienabschnitt jetzt verschieben" : "Termin jetzt verschieben"}</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Terminverschiebung abbrechen</button> : null}
           {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
         </div>
@@ -25013,7 +25017,8 @@ export function DashboardPage() {
 
   async function savePlanningEntry(
     nextApprovalStatus = planningEntryApprovalStatus,
-    confirmedOverbooking?: { fingerprint: string; reason: string }
+    confirmedOverbooking?: { fingerprint: string; reason: string },
+    moveScope: "single" | "series_from_entry" = "single"
   ) {
     setPlanningEntryError("");
     setErrorMessage("");
@@ -25132,6 +25137,10 @@ export function DashboardPage() {
           previousPlanningEntry.startTime !== planningEntryStartTime ||
           previousPlanningEntry.endTime !== planningEntryEndTime)
     );
+    if (previousPlanningEntry && moveScope === "series_from_entry" && !isPlanningTimeMove) {
+      setPlanningEntryError("Bitte zuerst das neue Datum oder die neue Uhrzeit für den ausgewählten Serientermin eintragen.");
+      return;
+    }
     if (previousPlanningEntry && isPlanningTimeMove) {
       const changedAlongsideMove =
         previousPlanningEntry.title.trim() !== title ||
@@ -25155,6 +25164,7 @@ export function DashboardPage() {
       const movePayload = {
         entryId: previousPlanningEntry.id,
         actorUserId: activeUserId,
+        scope: moveScope,
         date: planningEntryDate,
         startTime: planningEntryStartTime,
         endTime: planningEntryEndTime,
@@ -25172,6 +25182,17 @@ export function DashboardPage() {
         return;
       }
       const evaluation = preflightData?.evaluation;
+      if (moveScope === "series_from_entry") {
+        const series = evaluation?.series;
+        if (!series || !window.confirm(
+          `Ausgewählten Termin und alle folgenden Serieneinträge gemeinsam verschieben?\n\n` +
+          `Umfang: ${series.count} Termine für ${series.employeeCount} Mitarbeitende\n` +
+          `Bisher: ${series.fromDate} bis ${series.toDate}\n` +
+          `Neu: ${series.targetFromDate} bis ${series.targetToDate}\n` +
+          `Versatz: ${series.deltaDays >= 0 ? "+" : ""}${series.deltaDays} Tage, ${series.deltaMinutes >= 0 ? "+" : ""}${series.deltaMinutes} Minuten\n\n` +
+          `Frühere Serienfolgen bleiben unverändert. Ein Konflikt verhindert die gesamte Verschiebung.`
+        )) return;
+      }
       let overbookingApproval: { fingerprint: string; reason: string } | undefined;
       if (evaluation?.overbooking?.required) {
         const overbookingReason = window.prompt(
@@ -73287,13 +73308,22 @@ await addProjectLogbookEntry(
                   </button>
                 )}
                 {editingPlanningEntryId && planningEntries.some((entry) => entry.id === editingPlanningEntryId && Boolean(entry.recurrenceId)) ? (
-                  <button
-                    type="button"
-                    className={styles.dangerButton}
-                    onClick={() => void deletePlanningSeriesByEntryId(editingPlanningEntryId)}
-                  >
-                    {planningEntryApprovalStatus === "confirmed" ? "Gesamte Terminserie absagen" : "Gesamte Terminwunschserie zurückziehen"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => void savePlanningEntry(planningEntryApprovalStatus, undefined, "series_from_entry")}
+                    >
+                      Diesen und folgende Serientermine verschieben
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.dangerButton}
+                      onClick={() => void deletePlanningSeriesByEntryId(editingPlanningEntryId)}
+                    >
+                      {planningEntryApprovalStatus === "confirmed" ? "Gesamte Terminserie absagen" : "Gesamte Terminwunschserie zurückziehen"}
+                    </button>
+                  </>
                 ) : null}
                 {editingPlanningEntryId && planningEntryApprovalStatus === "requested" && mayManagePlanningEntries && planningEntries.some((entry) => entry.id === editingPlanningEntryId && Boolean(entry.recurrenceId)) ? (
                   <>

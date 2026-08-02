@@ -1346,6 +1346,23 @@ describe("JARVIS action-draft API", () => {
     expect(mocks.confirmJarvisPlanningDraft).not.toHaveBeenCalled();
   });
 
+  it("reports an atomic series move without claiming that only one appointment changed", async () => {
+    mocks.confirmJarvisPlanningMoveDraft.mockResolvedValueOnce({
+      actionId: "planning.move", state: "executed", scope: "series_from_entry",
+    });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "planning.move", command: "confirm", revision: 7,
+      confirmationText: "TERMIN-SERIE VERSCHIEBEN planning-1",
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisPlanningMoveDraft).toHaveBeenCalledWith(
+      "preview-1", expect.anything(), 7, "TERMIN-SERIE VERSCHIEBEN planning-1"
+    );
+    const payload = await response.json();
+    expect(payload.message).toContain("vollständig angezeigte Serienabschnitt");
+    expect(payload.message).not.toContain("einzelne Termin");
+  });
+
   it("passes only the exact appointment-request decision phrase to its bound draft", async () => {
     mocks.confirmJarvisPlanningRequestDecisionDraft.mockResolvedValueOnce({
       actionId: "planning.request.manage", state: "executed", decision: "reject",

@@ -17,10 +17,11 @@ const MONTHS: Record<string, number> = {
 
 export function looksLikeOfferDraftRequest(question: string) {
   const value = normalizeJarvisIntentText(question);
+  const directCreationVerb =
+    /^\s*(?:erstell|erstelle|leg|lege|bereit|kalkulier|rechne|mach|schreib)\w*\b/.test(value) ||
+    /\b(?:kannst|konntest|wurdest|sollst)\b[^?!.]*\b(?:erstell|mach|schreib)\w*\b/.test(value);
   return (
-    /^\s*(?:erstell|erstelle|leg|lege|bereit|kalkulier|rechne|mach)\w*\b/.test(
-      value
-    ) &&
+    directCreationVerb &&
     /\b(?:angebot|nachtrag|nachtragsangebot)\w*\b/.test(value) &&
     !/\baufgabe\w*\b/.test(value) &&
     !/\b(?:such|zeig|liste|offen|alt|status|versend|send|schick|losch|archivier)\w*\b/.test(

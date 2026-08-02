@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 process.loadEnvFile?.(".env");
 const prisma = new PrismaClient();
 const cleanupToken = process.argv.find((item) => item.startsWith("--cleanup="))?.slice("--cleanup=".length);
+const seriesMode = process.argv.includes("--series");
 
 async function cleanup(token) {
   const source = `qa-jarvis-planning-move-browser:${token}`;
@@ -34,13 +35,26 @@ async function seed() {
     status: "Umsetzung", projectType: "Hausmeisterservice", projectKind: "Dauerprojekt", recurringBillingMode: "hourly",
     trade: "Hausmeisterservice", branch: "OK immocare", responsibleName: `${actor.firstName} ${actor.lastName}`.trim(), source,
   } });
-  await prisma.planningEntry.create({ data: {
-    id: entryId, organizationId: actor.organizationId, source: "manual", board: "OK immocare", groupName: "QA",
-    userId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}`.trim(), date: "2026-08-23", startTime: "08:00", endTime: "09:00", durationMinutes: 60,
+  const baseEntry = {
+    organizationId: actor.organizationId, source: "manual", board: "OK immocare", groupName: "QA",
+    userId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}`.trim(), startTime: "08:00", endTime: "09:00", durationMinutes: 60,
     title: "QA JARVIS Klicktest", description: "Wird nach dem Klicktest bereinigt", projectId, projectLabel: `${projectNumber} | QA JARVIS Klicktest Terminverschiebung`,
     planningTrade: "Hausmeisterservice", approvalStatus: "confirmed", approvedByUserId: actor.id, approvedAt: new Date(),
-  } });
-  console.log(JSON.stringify({ token, entryId, projectId, targetDate: "2026-08-24", targetStartTime: "10:00", targetEndTime: "11:15" }));
+  };
+  if (seriesMode) {
+    const recurrenceId = `qa-browser-series-${token}`;
+    const earlierEntryId = randomUUID();
+    const laterEntryId = randomUUID();
+    await prisma.planningEntry.createMany({ data: [
+      { ...baseEntry, id: earlierEntryId, date: "2026-09-01", recurrenceId, recurrenceRule: "weekly" },
+      { ...baseEntry, id: entryId, date: "2026-09-08", recurrenceId, recurrenceRule: "weekly" },
+      { ...baseEntry, id: laterEntryId, date: "2026-09-15", recurrenceId, recurrenceRule: "weekly" },
+    ] });
+    console.log(JSON.stringify({ token, entryId, earlierEntryId, laterEntryId, projectId, seriesMode: true, targetDate: "2026-09-09", targetStartTime: "09:00", targetEndTime: "10:00" }));
+  } else {
+    await prisma.planningEntry.create({ data: { ...baseEntry, id: entryId, date: "2026-08-23" } });
+    console.log(JSON.stringify({ token, entryId, projectId, seriesMode: false, targetDate: "2026-08-24", targetStartTime: "10:00", targetEndTime: "11:15" }));
+  }
 }
 
 (cleanupToken ? cleanup(cleanupToken) : seed()).catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

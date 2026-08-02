@@ -15,6 +15,7 @@ import {
 describe("JARVIS offer intake", () => {
   it("recognizes creation but not offer reads or sending", () => {
     expect(looksLikeOfferDraftRequest("Erstelle ein Angebot für Projekt GLR-449")).toBe(true);
+    expect(looksLikeOfferDraftRequest("Kannst du das Angebot für mich schreiben?")).toBe(true);
     expect(looksLikeOfferDraftRequest("Zeig mir offene Angebote")).toBe(false);
     expect(looksLikeOfferDraftRequest("Versende das Angebot")).toBe(false);
   });

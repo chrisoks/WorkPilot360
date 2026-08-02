@@ -45,6 +45,41 @@ describe("planning entry move service", () => {
     expect(matchesPlanningEntryMoveConfirmation("planning-1", "TERMIN VERSCHIEBEN planning-1")).toBe(true);
     expect(matchesPlanningEntryMoveConfirmation("planning-1", "termin verschieben planning-1")).toBe(false);
     expect(matchesPlanningEntryMoveConfirmation("planning-1", "TERMIN VERSCHIEBEN planning-2")).toBe(false);
+    expect(getPlanningEntryMoveConfirmationText("planning-1", "series_from_entry")).toBe("TERMIN-SERIE VERSCHIEBEN planning-1");
+    expect(matchesPlanningEntryMoveConfirmation("planning-1", "TERMIN-SERIE VERSCHIEBEN planning-1", "series_from_entry")).toBe(true);
+    expect(matchesPlanningEntryMoveConfirmation("planning-1", "TERMIN VERSCHIEBEN planning-1", "series_from_entry")).toBe(false);
+  });
+
+  it("evaluates the selected and every later series entry with one shared offset", async () => {
+    const anchor = entry({ date: "2026-08-10", recurrenceId: "series-1", recurrenceRule: "weekly" });
+    const later = entry({ id: "planning-2", date: "2026-08-17", recurrenceId: "series-1", recurrenceRule: "weekly" });
+    const db = fakeDb(
+      [anchor], [anchor, later], [user],
+      [], [], [],
+      [], [], [],
+      [{ id: "project-1", projectNumber: "GLR-449", title: "Glasreinigung", status: "Aktiv", projectKind: "Dauerprojekt", recurringBillingMode: "hourly", timeBudgetAllocations: [], updatedAt: new Date("2026-08-01T10:00:00Z") }],
+    );
+    const evaluation = await evaluatePlanningEntryMove({
+      db: db as never, organizationId: "org-1", actor, entryId: "planning-1", scope: "series_from_entry",
+      date: "2026-08-12", startTime: "09:00", endTime: "10:00", reason: "Objektzugang wurde verlegt", requireManagement: true,
+    });
+    expect(evaluation).toMatchObject({
+      scope: "series_from_entry",
+      series: { count: 2, entryIds: ["planning-1", "planning-2"], fromDate: "2026-08-10", toDate: "2026-08-17", targetFromDate: "2026-08-12", targetToDate: "2026-08-19", deltaDays: 2, deltaMinutes: 60 },
+    });
+    expect(evaluation.targets.map((target) => target.to)).toEqual([
+      { date: "2026-08-12", startTime: "09:00", endTime: "10:00", durationMinutes: 60 },
+      { date: "2026-08-19", startTime: "09:00", endTime: "10:00", durationMinutes: 60 },
+    ]);
+    expect(evaluation.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("keeps duration changes out of a whole-series move", async () => {
+    const db = fakeDb([entry({ recurrenceId: "series-1", recurrenceRule: "weekly" })]);
+    await expect(evaluatePlanningEntryMove({
+      db: db as never, organizationId: "org-1", actor, entryId: "planning-1", scope: "series_from_entry",
+      date: "2026-08-04", startTime: "09:00", endTime: "11:00", reason: "Objektzugang wurde verlegt", requireManagement: true,
+    })).rejects.toMatchObject({ code: "series_duration_change", status: 409 } satisfies Partial<PlanningEntryMoveError>);
   });
 
   it("evaluates a single recurring appointment and reports overlap and series warnings", async () => {

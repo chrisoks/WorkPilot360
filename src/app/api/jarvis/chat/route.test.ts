@@ -2257,6 +2257,8 @@ describe("POST /api/jarvis/chat", () => {
       type: "clarification",
       topicId: "intent.ai.action-clarification",
     });
+    expect(payload.message).toContain("noch nicht alle Angaben sicher bestimmt");
+    expect(payload.message).not.toContain("nicht freigegeben");
     expect(payload.choices).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "Termin anlegen erklären" }),
@@ -3247,7 +3249,8 @@ describe("POST /api/jarvis/chat", () => {
     const payload = await response.json();
 
     expect(payload.topicId).not.toBe("action.preview.task");
-    expect(payload.message).toContain("nicht ausgeführt");
+    expect(payload.message).toContain("noch nichts verändert");
+    expect(payload.message).not.toContain("nicht freigegeben");
     expect(payload.actionPreview).toBeUndefined();
   });
 
@@ -3318,6 +3321,43 @@ describe("POST /api/jarvis/chat", () => {
     );
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("continues a plain-language offer-writing request into the controlled offer editor", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: actor,
+      effectiveActor: actor,
+      isImpersonating: false,
+    });
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      activeMainView: "catalog",
+      activeTab: "articles",
+    });
+
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: "user-1",
+        message: "Kannst du das Angebot für mich schreiben?",
+        context: { activeMainView: "catalog", activeTab: "articles" },
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.offer",
+      actionDraft: {
+        actionId: "offer.prepare",
+        state: "awaiting_input",
+        missingFields: expect.arrayContaining(["Projekt", "Ausführungsmonat", "Mindestens eine Position"]),
+      },
+    });
+    expect(payload.message).toContain("sicheren Angebotsentwurf vorbereitet");
+    expect(payload.message).not.toContain("noch nicht freigegeben");
+    expect(mocks.createPersistedJarvisOfferDraft).toHaveBeenCalledTimes(1);
   });
 
   it("prepares a uniquely scoped project master-data change without executing it", async () => {
@@ -4816,9 +4856,10 @@ describe("POST /api/jarvis/chat", () => {
 
     expect(payload).toMatchObject({
       type: "clarification",
-      topicId: "intent.action-not-executed",
+      topicId: "intent.action-clarification",
     });
-    expect(payload.message).toContain("nicht ausgeführt");
+    expect(payload.message).toContain("noch nicht sicher genug bestimmen");
+    expect(payload.message).not.toContain("nicht freigegeben");
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
@@ -5061,7 +5102,7 @@ describe("POST /api/jarvis/chat", () => {
     mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
     mocks.createPersistedJarvisPlanningMoveDraft.mockImplementationOnce(async ({ preview }) => ({
       version: 2, previewId: preview.previewId, actionId: "planning.move", title: "Termin kontrolliert verschieben", badge: "Bereit", state: "awaiting_confirmation", revision: 1,
-      expiresAt: "2026-08-02T17:00:00.000Z", entryId: preview.payload.entryId, projectId: "project-1", fields: [], checks: [], warnings: [], blockingIssues: [],
+      expiresAt: "2026-08-02T17:00:00.000Z", entryId: preview.payload.entryId, projectId: "project-1", scope: "single", fields: [], checks: [], warnings: [], blockingIssues: [],
       confirmation: { enabled: true, reason: "ready", requiredText: `TERMIN VERSCHIEBEN ${preview.payload.entryId}` }, cancellation: { enabled: true },
     }));
     const response = await POST(new Request("http://localhost/api/jarvis/chat", {
@@ -5070,6 +5111,31 @@ describe("POST /api/jarvis/chat", () => {
     }));
     expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.planning-move", actionDraft: { actionId: "planning.move", entryId: "plan-entry-123456" } });
     expect(mocks.createPersistedJarvisPlanningMoveDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "planning.move", payload: expect.objectContaining({ date: "2026-08-04", startTime: "09:00", endTime: "11:00" }) }) }));
+  });
+
+  it("prepares the selected and all following series appointments as one atomic move", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisPlanningMoveDraft.mockImplementationOnce(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "planning.move", title: "Terminserie kontrolliert verschieben", badge: "Bereit", state: "awaiting_confirmation", revision: 1,
+      expiresAt: "2026-08-02T17:00:00.000Z", entryId: preview.payload.entryId, projectId: "project-1", scope: "series_from_entry", fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: `TERMIN-SERIE VERSCHIEBEN ${preview.payload.entryId}` }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Verschiebe die komplette Terminserie ab Termin plan-entry-123456 auf 04.08.2026 von 09:00 bis 11:00. Grund: Objektzugang dauerhaft geaendert" }),
+    }));
+    expect(await response.json()).toMatchObject({
+      type: "answer",
+      topicId: "action.planning-move",
+      actionDraft: { actionId: "planning.move", entryId: "plan-entry-123456", scope: "series_from_entry" },
+    });
+    expect(mocks.createPersistedJarvisPlanningMoveDraft).toHaveBeenCalledWith(expect.objectContaining({
+      preview: expect.objectContaining({
+        actionId: "planning.move",
+        payload: expect.objectContaining({ scope: "series_from_entry", date: "2026-08-04", startTime: "09:00", endTime: "11:00" }),
+      }),
+    }));
   });
 
   it("asks for the full appointment-request id before approval", async () => {
