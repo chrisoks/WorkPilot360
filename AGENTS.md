@@ -1,5 +1,31 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projektstatus-Regelverwaltung 2026-08-02: `automation.manage`
+  bearbeitet zusätzlich zum bereits freigegebenen Hauptschalter genau eine
+  ausdrücklich benannte bestehende Projektstatus-Regel je Entwurf. Aktivität,
+  Verantwortlichen-Schwelle und Geschäftsführungs-Schwelle werden mit
+  vollständigem Alt-/Neuwert und separatem Vorher-/Nachher-Dry-Run gezeigt.
+  Verantwortliche Person: 1 bis 180 Tage; Geschäftsführung: 1 bis 365 Tage
+  und niemals früher als die verantwortliche Person. Unbekannte Regeln,
+  wirkungslose oder unplausible Änderungen blockieren fail-closed. Exakte
+  Phrase: `PROJEKTSTATUS-REGEL ÄNDERN <STATUS>`. Es gibt weiterhin keinen
+  Schedulerlauf, keine Zustellung, keine E-Mail und keinen Statuswechsel.
+  Berechtigung, Organisation, Sitzung, Rollenpaar, Impersonation, TTL,
+  Revision, HMAC, Payload-/Kontexthash, vollständiger Einstellungsfingerprint,
+  serialisierbare Transaktion, Advisory-Lock, `FOR UPDATE`, Stale Context und
+  Exactly-once gelten unverändert; Audit `automation.project-status.changed`
+  enthält Operation und Regelstand vor/nach der Änderung. Runtime-Commit
+  `4b6140ffd30decbd0e4f15338c877f864dbcc0e9`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T063000Z-before-jarvis-automation-rules`.
+  Lokal bestanden 170/170 Testdateien mit 1.702/1.702 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und 90-Seiten-Build.
+  Echter UI-Klicktest, lokale und produktive isolierte QA sowie 110/110
+  Produktionsfragen sind grün; produktiv 28 nur vorbereitete Aktionen, null
+  Ausführungen und null Rückstände. Dashboard und Anfrageformular HTTP 200,
+  Live-Prisma-Diff leer. WorkPilot PID `734753`, KlinikNavigator unverändert
+  PID `398228`. Prisma-, Storage- und Online-Anfragen-Invarianten blieben
+  unverändert.
+
 - JARVIS Projektstatus-Automationsschalter 2026-08-02: `automation.manage`
   aktiviert oder deaktiviert ausschließlich die bestehende
   Projektstatus-Frühwarnung. Vorher zeigt JARVIS einen rein lesenden Dry-Run

@@ -538,3 +538,29 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   170/170 Testdateien, 1.698/1.698 Tests, echter UI-Klicktest, 110/110
   Produktionsfragen, 27 nur vorbereitete Aktionen, null Rückstände,
   Live-Prisma-Diff leer. WorkPilot PID `732182`, KlinikNavigator PID `398228`.
+
+## Einzelne Projektstatus-Regel kontrolliert ändern
+
+- `automation.manage` unterstützt neben dem Hauptschalter genau eine benannte
+  bestehende Statusregel pro Entwurf: Aktivität, Verantwortlichen-Schwelle und
+  Geschäftsführungs-Schwelle mit vollständigem Vorher-/Nachher-Dry-Run.
+- Grenzen: verantwortlich 1–180 Tage, Geschäftsführung 1–365 Tage und nicht
+  vor der Verantwortlichen-Stufe. Unbekannte, wirkungslose und unplausible
+  Änderungen blockieren fail-closed.
+- Exakte Phrase: `PROJEKTSTATUS-REGEL ÄNDERN <STATUS>`. Administration oder
+  Geschäftsführung sind auf Sitzungs- und Effektivebene erforderlich;
+  Führungskraft bleibt gesperrt.
+- Die Ausführung ändert ausschließlich eine Regel im organisationsgebundenen
+  `deadlines`-Dokument. Kein Scheduler, keine Zustellung, keine E-Mail und kein
+  Projektstatuswechsel werden ausgelöst.
+- Fachservice und Sicherheitskette:
+  `src/lib/automation/project-status-automation-management-service.ts`,
+  Vollkonfigurationsfingerprint, HMAC, Revision, TTL, Advisory-Lock,
+  `FOR UPDATE`, serialisierbare Transaktion, Stale Context, Exactly-once und
+  Audit `automation.project-status.changed` mit Alt-/Neuzustand.
+- Produktivabnahme: Runtime
+  `4b6140ffd30decbd0e4f15338c877f864dbcc0e9`, Backup
+  `/var/backups/workpilot360/20260802T063000Z-before-jarvis-automation-rules`,
+  170/170 Testdateien, 1.702/1.702 Tests, echter UI-Klicktest, 110/110
+  Produktionsfragen, 28 nur vorbereitete Aktionen, null Rückstände und leerer
+  Live-Prisma-Diff. WorkPilot PID `734753`, KlinikNavigator PID `398228`.

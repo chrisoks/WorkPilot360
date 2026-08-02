@@ -3125,3 +3125,48 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `732182`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
+
+## 32. Einzelne Projektstatus-Regel kontrolliert ändern
+
+`automation.manage` bearbeitet jetzt zusätzlich zum Hauptschalter genau eine
+ausdrücklich benannte bestehende Projektstatus-Regel je Entwurf. Änderbar sind
+Aktivität, Schwelle der verantwortlichen Person und Schwelle der
+Geschäftsführung. JARVIS zeigt die Regelwerte vollständig vorher/nachher sowie
+für beide Regelstände die Zahl überwachter Projekte, Verantwortlichen- und
+Geschäftsführungsstufen und fehlender eindeutiger Zuständigkeiten. Eine
+Verantwortlichen-Schwelle ist nur von 1 bis 180 Tagen, eine
+Geschäftsführungs-Schwelle nur von 1 bis 365 Tagen zulässig; die zweite darf
+nicht vor der ersten liegen. Unbekannte, wirkungslose oder unplausible
+Änderungen bleiben gesperrt.
+
+Erst `PROJEKTSTATUS-REGEL ÄNDERN <STATUS>` darf schreiben. Sitzung und
+effektiver Akteur benötigen beide Stammdatenrecht; Führungskraft bleibt
+bewusst ausgeschlossen. Der Schritt ändert nur die eine Regel im bestehenden
+`deadlines`-Dokument. Er startet keinen Scheduler, versendet keine Meldung oder
+E-Mail und verändert keinen Projektstatus. Der bestehende Fachservice bindet
+Organisation, `updatedAt`, Vollkonfiguration und Zielzustand per SHA-256;
+HMAC, Rollenpaar, Impersonation, TTL, Revision, Payload-/Kontexthash,
+serialisierbare Transaktion, PostgreSQL-Advisory-Lock, `FOR UPDATE`, Stale
+Context und Exactly-once bleiben zwingend. Audit
+`automation.project-status.changed` protokolliert Regel und Alt-/Neuzustand.
+
+Lokal bestanden 170 Testdateien mit 1.702 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Der echte UI-Klicktest bestätigte den bei falscher Phrase
+gesperrten Button, die exakte Freigabe, sichtbare Alt-/Neuwerte 14/28 auf
+10/20, genau eine Ausführung, genau einen Fach-Audit, keine Benachrichtigung
+und keine Browserfehler. Der Originalstand einschließlich `updatedAt` wurde
+exakt wiederhergestellt. Die isolierte lokale und produktive QA bestätigte
+Rollen- und Mandantengrenze, Abbruch, Stale Context, genau eine benannte Regel,
+Replay, Audit, fehlende unmittelbare Zustellung und null Rückstände. Der feste
+Korpus blieb exakt 110 Fälle groß und bestand lokal sowie produktiv 110/110;
+produktiv 28 nur vorbereitete und null ausgeführte Aktionen.
+
+Produktiv abgenommen auf Runtime-Commit
+`4b6140ffd30decbd0e4f15338c877f864dbcc0e9`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T063000Z-before-jarvis-automation-rules`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `734753`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.
