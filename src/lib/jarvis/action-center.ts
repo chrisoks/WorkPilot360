@@ -12,6 +12,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "project.manage",
   "project.status.change",
   "project.archive",
+  "contact.manage",
   "planning.prepare",
   "time.prepare",
   "project-logbook.prepare",
@@ -193,6 +194,36 @@ const projectLifecyclePreviewPayloadSchema = z
   })
   .strict();
 
+const contactManagementValuesSchema = z.object({
+  type: z.enum(["company", "private", "person"]).optional(),
+  category: z.string().trim().max(80).optional(),
+  companyName: z.string().trim().max(500).optional(), firstName: z.string().trim().max(500).optional(),
+  lastName: z.string().trim().max(500).optional(), position: z.string().trim().max(500).optional(),
+  email: z.string().trim().max(500).optional(), invoiceEmail: z.string().trim().max(500).optional(),
+  activityReportEmail: z.string().trim().max(500).optional(), phone: z.string().trim().max(500).optional(),
+  mobile: z.string().trim().max(500).optional(), website: z.string().trim().max(1000).optional(),
+  source: z.string().trim().max(500).optional(), reachability: z.string().trim().max(500).optional(),
+  street: z.string().trim().max(500).optional(), addressLine1: z.string().trim().max(500).optional(),
+  addressLine2: z.string().trim().max(500).optional(), postalCode: z.string().trim().max(500).optional(),
+  city: z.string().trim().max(500).optional(), country: z.string().trim().max(500).optional(),
+}).strict();
+
+const contactManagementPreviewPayloadSchema = z.object({
+  mode: z.enum(["create", "update"]),
+  contactId: boundedId.optional(),
+  values: contactManagementValuesSchema,
+}).strict().superRefine((payload, context) => {
+  if (payload.mode === "update" && !payload.contactId) {
+    context.addIssue({ code: "custom", path: ["contactId"], message: "Für eine Änderung ist der Kontakt erforderlich." });
+  }
+  if (payload.mode === "create" && !payload.values.type) {
+    context.addIssue({ code: "custom", path: ["values", "type"], message: "Für eine Anlage ist der Kontakttyp erforderlich." });
+  }
+  if (Object.keys(payload.values).filter((key) => key !== "type" && key !== "category").length === 0) {
+    context.addIssue({ code: "custom", path: ["values"], message: "Mindestens ein Kontaktfeld ist erforderlich." });
+  }
+});
+
 const offerPreviewLineSchema = z
   .object({
     catalogItemId: boundedId.optional(),
@@ -340,6 +371,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "project.manage": projectMasterDataPreviewPayloadSchema,
   "project.status.change": projectStatusPreviewPayloadSchema,
   "project.archive": projectLifecyclePreviewPayloadSchema,
+  "contact.manage": contactManagementPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
@@ -365,6 +397,7 @@ export type JarvisActionPreviewPayloadMap = {
   "project.manage": z.infer<typeof projectMasterDataPreviewPayloadSchema>;
   "project.status.change": z.infer<typeof projectStatusPreviewPayloadSchema>;
   "project.archive": z.infer<typeof projectLifecyclePreviewPayloadSchema>;
+  "contact.manage": z.infer<typeof contactManagementPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "project-logbook.prepare": z.infer<
@@ -1146,6 +1179,19 @@ export type JarvisProjectMasterDataDraftView = Omit<
   title: "Projektstammdaten kontrolliert ändern";
   changes: Array<{ field: string; label: string; before: string; after: string }>;
   reviewWillBeInvalidated: boolean;
+};
+
+export type JarvisContactManagementDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus" | "projectId" | "result"
+> & {
+  actionId: "contact.manage";
+  title: "Kontakt kontrolliert anlegen oder bearbeiten";
+  mode: "create" | "update";
+  contactId: string;
+  customerNumber: string;
+  changes: Array<{ field: string; label: string; before: string; after: string }>;
+  result?: { entityType: "contact"; entityId: string; label: string };
 };
 
 export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView, "actionId" | "title" | "targetStatus"> & {

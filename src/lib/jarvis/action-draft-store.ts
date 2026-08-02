@@ -29,6 +29,7 @@ import {
   type JarvisProjectMasterDataDraftView,
   type JarvisProjectStatusDraftView,
   type JarvisProjectLifecycleDraftView,
+  type JarvisContactManagementDraftView,
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
@@ -55,6 +56,7 @@ import {
   canManagePlanningEntries,
   canManageProjectTimeEntries,
   canManageProjects,
+  canManageContacts,
   canManageOffers,
   canDeleteOffers,
   canDeleteInvoices,
@@ -184,6 +186,17 @@ import {
   matchesProjectLifecycleConfirmation,
   ProjectLifecycleServiceError,
 } from "@/lib/projects/project-lifecycle-service";
+import {
+  ContactManagementServiceError,
+  evaluateContactChange,
+  evaluateContactCreation,
+  executeContactChange,
+  executeContactCreation,
+  getContactChangeConfirmationText,
+  getContactCreateConfirmationText,
+  type ContactCreateInput,
+  type ContactManagementChanges,
+} from "@/lib/contacts/contact-management-service";
 import {
   createConfirmedInvoiceDraft,
   evaluateInvoiceDraft,
@@ -855,6 +868,40 @@ const projectMasterDataContextSchema = z.object({
   checks: z.array(z.object({
     key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string(),
   }).strict()),
+  warnings: z.array(z.string()),
+  blockingIssues: z.array(z.string()),
+  fingerprint: z.string().length(64),
+}).strict();
+
+const contactManagementValuesSchema = z.object({
+  type: z.enum(["company", "private", "person"]).optional(),
+  category: z.string().max(80).optional(),
+  companyName: z.string().max(500).optional(), firstName: z.string().max(500).optional(),
+  lastName: z.string().max(500).optional(), position: z.string().max(500).optional(),
+  email: z.string().max(500).optional(), invoiceEmail: z.string().max(500).optional(),
+  activityReportEmail: z.string().max(500).optional(), phone: z.string().max(500).optional(),
+  mobile: z.string().max(500).optional(), website: z.string().max(1000).optional(),
+  source: z.string().max(500).optional(), reachability: z.string().max(500).optional(),
+  street: z.string().max(500).optional(), addressLine1: z.string().max(500).optional(),
+  addressLine2: z.string().max(500).optional(), postalCode: z.string().max(500).optional(),
+  city: z.string().max(500).optional(), country: z.string().max(500).optional(),
+}).strict();
+
+const contactManagementPayloadSchema = z.object({
+  mode: z.enum(["create", "update"]),
+  contactId: z.string().trim().min(1).max(120).optional(),
+  values: contactManagementValuesSchema,
+}).strict();
+
+const contactManagementContextSchema = z.object({
+  mode: z.enum(["create", "update"]),
+  contact: z.object({
+    id: z.string(), customerNumber: z.string(), displayName: z.string(), type: z.string(),
+    category: z.string(), updatedAt: z.string(),
+  }).strict(),
+  values: contactManagementValuesSchema,
+  changes: z.array(z.object({ field: z.string(), label: z.string(), before: z.string(), after: z.string() }).strict()),
+  checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string() }).strict()),
   warnings: z.array(z.string()),
   blockingIssues: z.array(z.string()),
   fingerprint: z.string().length(64),
@@ -1547,7 +1594,8 @@ async function appendAuditEvent(
         | "documentMailDispatch"
         | "projectLogbookEntry"
         | "taskComment"
-        | "project";
+        | "project"
+        | "contact";
     };
   }
 ) {
@@ -4082,6 +4130,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "project.manage") {
     return getJarvisProjectMasterDataDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "contact.manage") {
+    return getJarvisContactManagementDraft(previewId, binding, now);
   }
   if (draft?.actionId === "project.status.change") {
     return getJarvisProjectStatusDraft(previewId, binding, now);
@@ -9755,6 +9806,161 @@ export async function confirmJarvisProjectMasterDataDraft(
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof ProjectMasterDataServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     throw new JarvisActionDraftError("execution_failed", "Die Projektdaten wurden nicht geändert und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayManageContacts(binding: JarvisTaskDraftBinding) {
+  return canManageContacts(binding.profile.sessionActor) && canManageContacts(binding.profile.effectiveActor);
+}
+
+function validateContactManagementBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) throw new JarvisActionDraftError("scope_mismatch", "Diese Kontaktaktion gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) {
+    throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Kontaktprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  }
+  if (!integrityMatches(draft)) throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Kontaktaktion ist ungültig.", 409);
+  const payload = contactManagementPayloadSchema.safeParse(draft.payload);
+  const context = contactManagementContextSchema.safeParse(draft.context);
+  if (draft.actionId !== "contact.manage" || !payload.success || !context.success || hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash) {
+    throw new JarvisActionDraftError("integrity_failed", "Kontaktaktion oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundContactManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Kontaktaktion wurde nicht gefunden.", 404);
+  validateContactManagementBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validateContactManagementBinding(current, binding) };
+}
+
+function toJarvisContactManagementDraftView(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding): JarvisContactManagementDraftView {
+  const { context } = validateContactManagementBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayManageContacts(binding);
+  const ready = state === "awaiting_confirmation" && permitted && context.blockingIssues.length === 0;
+  const reason: JarvisContactManagementDraftView["confirmation"]["reason"] =
+    state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" :
+    state === "executing" ? "executing" : !permitted ? "not_permitted" : context.blockingIssues.length ? "blocked" : "ready";
+  return {
+    version: 2, previewId: draft.id, actionId: "contact.manage", title: "Kontakt kontrolliert anlegen oder bearbeiten",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), mode: context.mode,
+    contactId: draft.resultEntityId || context.contact.id, customerNumber: context.contact.customerNumber,
+    fields: [
+      { label: "Aktion", value: context.mode === "create" ? "Kontakt anlegen" : "Kontakt bearbeiten" },
+      { label: "Kontakt", value: context.contact.displayName },
+      { label: "Kundennummer", value: context.contact.customerNumber },
+      { label: "Typ", value: context.contact.type },
+      { label: "Kategorie", value: context.contact.category },
+      { label: "Felder", value: String(context.changes.length) },
+    ],
+    changes: context.changes, checks: context.checks, warnings: context.warnings,
+    blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Kontaktverwaltung ist für diese Rollenkombination nicht freigegeben."] : [])],
+    confirmation: {
+      enabled: ready, reason,
+      requiredText: context.mode === "create" ? getContactCreateConfirmationText(context.contact.displayName) : getContactChangeConfirmationText(context.contact.customerNumber),
+    },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "contact" as const, entityId: draft.resultEntityId, label: "Kontakt öffnen" } } : {}),
+  };
+}
+
+export async function createPersistedJarvisContactManagementDraft(input: {
+  preview: JarvisActionPreview<"contact.manage">; organizationId: string; sessionId: string;
+  profile: JarvisAccessProfile; now?: Date;
+}) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Kontaktaktion ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayManageContacts(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Kontakte nicht verwalten.", 403);
+  const now = input.now ?? new Date();
+  const payload = contactManagementPayloadSchema.parse(input.preview.payload);
+  const evaluation = payload.mode === "create"
+    ? await evaluateContactCreation({ organizationId: input.organizationId, values: payload.values as ContactCreateInput })
+    : await evaluateContactChange({ organizationId: input.organizationId, contactId: payload.contactId || "", changes: payload.values as ContactManagementChanges });
+  const context = contactManagementContextSchema.parse(evaluation);
+  const actorIds = getActorIds(input.profile);
+  const state = context.blockingIssues.length ? "awaiting_input" : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating, actionId: "contact.manage", state, revision: 1,
+    payloadHash: hashJson(payload), contextHash: hashJson(context), expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS),
+    confirmedAt: null, cancelledAt: null, executedAt: null, resultEntityType: null, resultEntityId: null,
+    lastErrorCode: context.blockingIssues.length ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } });
+    await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked" });
+    return draft;
+  });
+  return toJarvisContactManagementDraftView(created, input);
+}
+
+export async function getJarvisContactManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const { draft } = await loadBoundContactManagementDraft(previewId, binding, now);
+  return toJarvisContactManagementDraftView(draft, binding);
+}
+
+export async function cancelJarvisContactManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundContactManagementDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisContactManagementDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Kontaktaktion kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Kontaktaktion wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({ where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag }, data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) } });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Kontaktaktion wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" });
+    return current;
+  });
+  return toJarvisContactManagementDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisContactManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundContactManagementDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisContactManagementDraftView(loaded.draft, binding);
+  const requiredText = loaded.context.mode === "create" ? getContactCreateConfirmationText(loaded.context.contact.displayName) : getContactChangeConfirmationText(loaded.context.contact.customerNumber);
+  if (confirmationText.trim() !== requiredText) throw new JarvisActionDraftError("invalid_input", `Gib zur Bestätigung exakt „${requiredText}“ ein.`, 400);
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Kontaktaktion darf bestätigt werden.", 409);
+  if (!mayManageContacts(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Kontakte nicht verwalten.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
+      if (!current) throw new JarvisActionDraftError("not_found", "Die Kontaktaktion wurde nicht gefunden.", 404);
+      const parsed = validateContactManagementBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Kontaktaktion ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true, firstName: true, lastName: true, email: true } });
+      if (!actor || !canManageContacts(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Kontaktberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
+      const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
+      if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Der Kontakt wird bereits verarbeitet.", 409);
+      const contact = parsed.payload.mode === "create"
+        ? await executeContactCreation({ tx, organizationId: binding.organizationId, values: parsed.payload.values as ContactCreateInput, actorId: actor.id, requestId: current.id, expectedFingerprint: parsed.context.fingerprint })
+        : await executeContactChange({ tx, organizationId: binding.organizationId, contactId: parsed.payload.contactId || "", changes: parsed.payload.values as ContactManagementChanges, actorId: actor.id, requestId: current.id, expectedFingerprint: parsed.context.fingerprint });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "contact", resultEntityId: contact.id };
+      const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "contact", resultEntityId: contact.id, integrityTag: createIntegrityTag(executedData) } });
+      await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: contact.id, entityType: "contact" } });
+      return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisContactManagementDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundContactManagementDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") return toJarvisContactManagementDraftView(latest.draft, binding);
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof ContactManagementServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
+    throw new JarvisActionDraftError("execution_failed", "Der Kontakt wurde nicht angelegt oder geändert; die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

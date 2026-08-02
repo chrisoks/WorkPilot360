@@ -22,6 +22,7 @@ import {
   cancelJarvisProjectMasterDataDraft,
   cancelJarvisProjectStatusDraft,
   cancelJarvisProjectLifecycleDraft,
+  cancelJarvisContactManagementDraft,
   cancelJarvisTimeDraft,
   cancelJarvisVehicleTripCalculationDraft,
   cancelJarvisWinterCalculationDraft,
@@ -59,6 +60,7 @@ import {
   confirmJarvisProjectMasterDataDraft,
   confirmJarvisProjectStatusDraft,
   confirmJarvisProjectLifecycleDraft,
+  confirmJarvisContactManagementDraft,
   confirmJarvisTimeDraft,
   confirmJarvisVehicleTripCalculationDraft,
   confirmJarvisWinterCalculationDraft,
@@ -202,6 +204,7 @@ export async function PATCH(
     const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
+    const isContactManagement = body.actionId === "contact.manage";
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
@@ -223,7 +226,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
+    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isContactManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -484,6 +487,7 @@ export async function POST(
     const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
+    const isContactManagement = body.actionId === "contact.manage";
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
@@ -520,6 +524,12 @@ export async function POST(
           )
         : isProjectMasterData
         ? await cancelJarvisProjectMasterDataDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isContactManagement
+        ? await cancelJarvisContactManagementDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -650,6 +660,8 @@ export async function POST(
           ? "Die Aufgabenänderung wurde abgebrochen. Aufgabe, Kommentare, Beteiligte, Links, Zeiten und Folgeaufgaben blieben unverändert."
           : isProjectMasterData
           ? "Die Projektdatenänderung wurde abgebrochen. Das Projekt blieb vollständig unverändert."
+          : isContactManagement
+          ? "Die Kontaktaktion wurde abgebrochen. Es wurde kein Kontakt angelegt oder geändert."
           : isProjectLifecycle
           ? "Die Projektarchivierung wurde abgebrochen. Projekt und sämtliche verknüpften Fachdaten blieben unverändert."
           : isProjectStatus
@@ -717,6 +729,13 @@ export async function POST(
         )
       : isProjectMasterData
       ? await confirmJarvisProjectMasterDataDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isContactManagement
+      ? await confirmJarvisContactManagementDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -890,6 +909,8 @@ export async function POST(
             ? "Die Aufgabe wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten."
             : isProjectMasterData
             ? "Die angezeigten Projektstammdaten wurden nach deiner exakten Bestätigung genau einmal geändert. Logbuch, Audit und gegebenenfalls die Aufhebung der fachlichen Freigabe wurden gemeinsam geschrieben."
+            : isContactManagement
+            ? "Der Kontakt wurde nach deiner exakten Bestätigung genau einmal angelegt oder geändert. Dublettenprüfung, Integrationsereignis und Audit wurden gemeinsam geschrieben; Projekte und Objektadressen wurden nicht automatisch zugeordnet."
             : isProjectLifecycle
             ? "Das Projekt wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Timeline, Logbuch und Audit wurden gemeinsam geschrieben; alle Verknüpfungen blieben erhalten."
             : isProjectStatus
@@ -935,6 +956,8 @@ export async function POST(
             ? "Die Aufgabe wurde nicht archiviert oder wiederhergestellt."
             : isProjectMasterData
             ? "Die Projektdaten wurden nicht geändert."
+            : isContactManagement
+            ? "Der Kontakt wurde nicht angelegt oder geändert."
             : isProjectLifecycle
             ? "Das Projekt wurde nicht archiviert oder wiederhergestellt."
             : isProjectStatus

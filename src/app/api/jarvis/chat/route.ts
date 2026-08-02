@@ -104,6 +104,7 @@ import {
   createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft,
+  createPersistedJarvisContactManagementDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -171,6 +172,10 @@ import {
   extractProjectLifecycleRequest,
   looksLikeProjectLifecycleRequest,
 } from "@/lib/jarvis/project-lifecycle-intake";
+import {
+  extractContactManagementRequest,
+  looksLikeContactManagementRequest,
+} from "@/lib/jarvis/contact-management-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -944,6 +949,56 @@ async function buildJarvisProjectMasterDataDraft(input: {
     return { type: "answer" as const, topicId: "action.project-master-data", message: "Ich habe die Projektdatenänderung serverseitig geprüft. Kontrolliere jeden alten und neuen Wert sowie den fachlichen Prüfstatus. Erst die exakte Bestätigungsphrase ändert ausschließlich die angezeigten Felder genau einmal; Status, Kunde, Projektnummer, Abrechnung und sämtliche verknüpften Fachdaten bleiben unverändert.", actionDraft };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.project-master-data.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Projektdatenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.` };
+  }
+}
+
+async function buildJarvisContactManagementDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.contact-management.session-required", message: "Für eine Kontaktaktion ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts angelegt oder geändert." };
+  const details = extractContactManagementRequest(input.question);
+  if (details.mode === "update" && !details.customerNumber) {
+    return { type: "clarification" as const, topicId: "action.contact-management.number-required", message: "Welcher Kontakt soll geändert werden? Nenne bitte die eindeutige Kundennummer, zum Beispiel „Kundennummer 7000049“. Es wurde noch nichts geändert." };
+  }
+  if (details.mode === "create") {
+    const values = details.values;
+    if ((values.type === "company" && !values.companyName) || (values.type !== "company" && !values.firstName && !values.lastName)) {
+      return { type: "clarification" as const, topicId: "action.contact-management.identity-required", message: values.type === "company" ? "Wie lautet der Firmenname? Nutze zum Beispiel „Firma: Muster GmbH“. Es wurde noch nichts angelegt." : "Wie lautet der Name? Nutze mindestens „Vorname: …“ oder „Nachname: …“. Es wurde noch nichts angelegt." };
+    }
+  }
+  let contactId: string | undefined;
+  if (details.mode === "update") {
+    const contacts = await prisma.contact.findMany({
+      where: { organizationId: input.organizationId, customerNumber: details.customerNumber },
+      take: 2,
+      select: { id: true },
+    });
+    if (contacts.length !== 1) return {
+      type: contacts.length ? "clarification" as const : "refusal" as const,
+      topicId: contacts.length ? "action.contact-management.ambiguous" : "action.contact-management.not-found",
+      message: contacts.length ? `Die Kundennummer ${details.customerNumber} ist nicht eindeutig. Es wurde nichts geändert.` : `Der Kontakt mit Kundennummer ${details.customerNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts geändert.`,
+    };
+    contactId = contacts[0].id;
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(), actionId: "contact.manage",
+    payload: { mode: details.mode, ...(contactId ? { contactId } : {}), values: details.values },
+    organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.contact-management.refused", message: `${preview.message} Es wurde nichts angelegt oder geändert.` };
+  try {
+    const actionDraft = await createPersistedJarvisContactManagementDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return {
+      type: "answer" as const,
+      topicId: "action.contact-management",
+      message: "Ich habe die Kontaktaktion serverseitig geprüft. Kontrolliere Identität, Dublettenprüfung und jeden angezeigten Wert. Erst die exakte Bestätigungsphrase legt den Kontakt an oder ändert ausschließlich die angezeigten Felder genau einmal; Projekte, Objektadressen und weitere Fachdaten werden nicht automatisch zugeordnet.",
+      actionDraft,
+    };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.contact-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Kontaktaktion konnte nicht sicher vorbereitet werden."} Es wurde nichts angelegt oder geändert.` };
   }
 }
 
@@ -2940,6 +2995,17 @@ export async function POST(req: Request) {
   if (looksLikeProjectMasterDataChangeRequest(message)) {
     return respond(
       await buildJarvisProjectMasterDataDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "management"
+    );
+  }
+  if (looksLikeContactManagementRequest(message)) {
+    return respond(
+      await buildJarvisContactManagementDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,

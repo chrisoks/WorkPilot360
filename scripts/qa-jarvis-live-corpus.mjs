@@ -293,6 +293,7 @@ async function main() {
   let invoiceLifecycleDraftPrepared = false;
   let taskLifecycleDraftPrepared = false;
   let projectMasterDataDraftPrepared = false;
+  let contactManagementDraftPrepared = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -314,6 +315,7 @@ async function main() {
         const isProjectStatusCase = item.question.includes("QA-100");
         const isProjectLifecycleCase = item.question.includes("QA-200");
         const isProjectMasterDataCase = item.question.includes("QAM-300");
+        const isContactManagementCase = item.question.includes("QAC-400");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -344,6 +346,8 @@ async function main() {
               ? `Archiviere Projekt ${projectStatusProject.projectNumber}. Grund: Auftrag abgeschlossen und revisionssicher geprüft.`
             : isProjectMasterDataCase
               ? `Ändere Projekt ${projectStatusProject.projectNumber}: Titel: QA JARVIS Projektdaten geprüft; Laufzeit bis: 2026-11.`
+            : isContactManagementCase
+              ? `Lege einen neuen Firmenkontakt an: Firma: QA JARVIS Kontakt ${now.getTime()}; E-Mail: jarvis-kontakt-${now.getTime()}@example.test; Telefon: +49 511 123456.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -427,6 +431,15 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Projektdatenfrage hat keine vollständig prüfbare, unblockierte Änderungsvorschau erzeugt." });
           } else {
             projectMasterDataDraftPrepared = true;
+          }
+        }
+        if (isContactManagementCase) {
+          if (payload.actionDraft?.actionId !== "contact.manage") {
+            failures.push({ id: item.id, status: response.status, error: "Die Kontaktfrage hat keine kontrollierte contact.manage-Vorschau erzeugt." });
+          } else if (payload.actionDraft.state !== "awaiting_confirmation" || payload.actionDraft.confirmation?.enabled !== true || payload.actionDraft.blockingIssues?.length || payload.actionDraft.mode !== "create") {
+            failures.push({ id: item.id, status: response.status, error: "Die Kontaktfrage hat keine vollständig prüfbare, unblockierte Anlagevorschau erzeugt." });
+          } else {
+            contactManagementDraftPrepared = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -914,6 +927,7 @@ async function main() {
     invoiceLifecycleDraftPrepared,
     taskLifecycleDraftPrepared,
     projectMasterDataDraftPrepared,
+    contactManagementDraftPrepared,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId

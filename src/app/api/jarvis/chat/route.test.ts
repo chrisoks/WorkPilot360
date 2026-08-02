@@ -60,6 +60,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisProjectMasterDataDraft: vi.fn(),
   createPersistedJarvisProjectStatusDraft: vi.fn(),
   createPersistedJarvisProjectLifecycleDraft: vi.fn(),
+  createPersistedJarvisContactManagementDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -151,6 +152,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft:
     mocks.createPersistedJarvisProjectLifecycleDraft,
+  createPersistedJarvisContactManagementDraft:
+    mocks.createPersistedJarvisContactManagementDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3300,6 +3303,29 @@ describe("POST /api/jarvis/chat", () => {
       preview: expect.objectContaining({ actionId: "project.manage", payload: { projectId: "project-1", changes: { title: "Glasreinigung West", projectRuntimeUntil: "2026-11" } } }),
     }));
     projectLookup.mockRestore();
+  });
+
+  it("prepares a duplicate-checked company contact creation without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisContactManagementDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "contact.manage", title: "Kontakt kontrolliert anlegen oder bearbeiten",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T03:00:00.000Z",
+      mode: "create", contactId: "", customerNumber: "wird automatisch vergeben", fields: [],
+      changes: [{ field: "companyName", label: "Firma", before: "", after: "Neue GmbH" }],
+      checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "KONTAKT ANLEGEN Neue GmbH" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Lege einen neuen Firmenkontakt an: Firma: Neue GmbH; E-Mail: info@neu.de; Telefon: +49 511 123456" }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.contact-management", actionDraft: { actionId: "contact.manage", state: "awaiting_confirmation" } });
+    expect(mocks.createPersistedJarvisContactManagementDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1", sessionId: "session-1",
+      preview: expect.objectContaining({ actionId: "contact.manage", payload: { mode: "create", values: { type: "company", companyName: "Neue GmbH", email: "info@neu.de", phone: "+49 511 123456" } } }),
+    }));
   });
 
   it("asks for a documented reason before preparing a project-status change", async () => {

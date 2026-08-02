@@ -1,5 +1,24 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Kontaktverwaltung 2026-08-02: `contact.manage` legt Firmen-, Privat-
+  und Personenkontakte kontrolliert an oder bearbeitet bestehende Kontakte
+  ausschließlich über eine eindeutige organisationsgebundene Kundennummer.
+  Freigegeben sind Name/Firma, Position, E-Mail-Empfänger, Telefon/Mobil,
+  Website, Quelle, Erreichbarkeit und Postadresse. Kundennummern werden unter
+  PostgreSQL-Advisory-Lock serialisiert vergeben; Telefonnummern werden wie
+  in der normalen Kontaktmaske kanonisch normalisiert. Vor jeder Aktion zeigt
+  JARVIS sämtliche Alt-/Neuwerte und blockiert mögliche Dubletten über Name,
+  E-Mail oder normalisierte Telefonnummer. Exakte Phrasen sind `KONTAKT
+  ANLEGEN <Name>` und `KONTAKT ÄNDERN <Kundennummer>`. Sitzung, Organisation,
+  Rollenpaar, Impersonation, TTL, Revision, HMAC, Payload-/Kontexthash,
+  Fachfingerprint, serialisierbare Transaktion und Advisory-Locks sichern
+  Vorschau und Exactly-once-Ausführung. Kontakt, IntegrationEvent, Audit und
+  Aktionshistorie entstehen gemeinsam; Projekte, Objektadressen,
+  Online-Anfragen und andere Fachdaten werden niemals automatisch angelegt
+  oder zugeordnet. Fachservice:
+  `src/lib/contacts/contact-management-service.ts`; isolierte QA:
+  `scripts/qa-jarvis-contact-management.mjs`.
+
 - JARVIS Projektstammdaten 2026-08-02: `project.manage` ist als kontrollierte
   Schreibaktion für bestehende, eindeutig per Projektnummer bestimmte Projekte
   freigegeben. Zulässig sind ausschließlich Titel, Beschreibung,

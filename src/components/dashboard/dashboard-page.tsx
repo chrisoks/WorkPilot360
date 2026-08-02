@@ -78,6 +78,7 @@ import type {
   JarvisInvoiceLifecycleDraftView,
   JarvisTaskLifecycleDraftView,
   JarvisProjectMasterDataDraftView,
+  JarvisContactManagementDraftView,
   JarvisProjectStatusDraftView,
   JarvisProjectLifecycleDraftView,
   JarvisInvoiceDraftView,
@@ -765,6 +766,7 @@ type ManagementAiChatMessage = {
     | JarvisInvoiceLifecycleDraftView
     | JarvisTaskLifecycleDraftView
     | JarvisProjectMasterDataDraftView
+    | JarvisContactManagementDraftView
     | JarvisProjectStatusDraftView
     | JarvisProjectLifecycleDraftView
     | JarvisInvoiceDraftView
@@ -795,6 +797,7 @@ const jarvisPreviewActionIds = new Set([
   "project.manage",
   "project.status.change",
   "project.archive",
+  "contact.manage",
   "planning.prepare",
   "time.prepare",
   "offer.prepare",
@@ -2345,6 +2348,7 @@ function parseJarvisActionDraft(
   | JarvisInvoiceLifecycleDraftView
   | JarvisTaskLifecycleDraftView
   | JarvisProjectMasterDataDraftView
+  | JarvisContactManagementDraftView
   | JarvisProjectStatusDraftView
   | JarvisProjectLifecycleDraftView
   | JarvisInvoiceDraftView
@@ -2370,6 +2374,7 @@ function parseJarvisActionDraft(
     parseJarvisInvoiceLifecycleDraft(value) ??
     parseJarvisTaskLifecycleDraft(value) ??
     parseJarvisProjectMasterDataDraft(value) ??
+    parseJarvisContactManagementDraft(value) ??
     parseJarvisProjectStatusDraft(value) ??
     parseJarvisProjectLifecycleDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
@@ -2800,6 +2805,27 @@ function parseJarvisProjectMasterDataDraft(value: unknown): JarvisProjectMasterD
   const cancellation = candidate.cancellation as Record<string, unknown>;
   if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
   return candidate as unknown as JarvisProjectMasterDataDraftView;
+}
+
+function parseJarvisContactManagementDraft(value: unknown): JarvisContactManagementDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 || candidate.actionId !== "contact.manage" ||
+    typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
+    (candidate.mode !== "create" && candidate.mode !== "update") ||
+    typeof candidate.contactId !== "string" || typeof candidate.customerNumber !== "string" ||
+    !Array.isArray(candidate.changes) || !Array.isArray(candidate.fields) || !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) || !Array.isArray(candidate.blockingIssues) ||
+    !candidate.confirmation || typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation || typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
+  return candidate as unknown as JarvisContactManagementDraftView;
 }
 
 function parseJarvisProjectLifecycleDraft(value: unknown): JarvisProjectLifecycleDraftView | undefined {
@@ -3730,11 +3756,11 @@ function JarvisOfferFinalizationCard({
   onChange,
   onOpenOffer,
 }: {
-  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView;
+  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView;
   actorId: string;
   disabled: boolean;
-  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView, message?: string) => void;
-  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView) => void;
+  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView) => void;
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -3768,6 +3794,8 @@ function JarvisOfferFinalizationCard({
           ? parseJarvisTaskLifecycleDraft(data?.actionDraft)
         : draft.actionId === "project.manage"
           ? parseJarvisProjectMasterDataDraft(data?.actionDraft)
+        : draft.actionId === "contact.manage"
+          ? parseJarvisContactManagementDraft(data?.actionDraft)
         : draft.actionId === "project.status.change"
           ? parseJarvisProjectStatusDraft(data?.actionDraft)
         : draft.actionId === "project.archive"
@@ -3778,16 +3806,44 @@ function JarvisOfferFinalizationCard({
             ? parseJarvisInvoiceLifecycleDraft(data?.actionDraft)
             : parseJarvisOfferFinalizationDraft(data?.actionDraft);
       if (!response.ok || !next) {
-        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.manage" ? "Die Projektdaten konnten nicht sicher geändert werden." : draft.actionId === "project.archive" ? "Das Projekt konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
+        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.manage" ? "Die Projektdaten konnten nicht sicher geändert werden." : draft.actionId === "contact.manage" ? "Der Kontakt konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "project.archive" ? "Das Projekt konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
         return;
       }
       onChange(next, typeof data?.message === "string" ? data.message : undefined);
     } catch {
-      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Projektdaten blieben unverändert." : draft.actionId === "project.archive" ? "Das Action Center ist gerade nicht erreichbar. Das Projekt blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
+      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Projektdaten blieben unverändert." : draft.actionId === "contact.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde kein Kontakt angelegt oder geändert." : draft.actionId === "project.archive" ? "Das Action Center ist gerade nicht erreichbar. Das Projekt blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
     } finally {
       setIsWorking(false);
     }
   };
+
+  if (draft.actionId === "contact.manage") {
+    const footer = draft.state === "executed"
+      ? `Der Kontakt wurde genau einmal ${draft.mode === "create" ? "angelegt" : "geändert"}. Projekte, Objektadressen und weitere Fachdaten wurden nicht automatisch zugeordnet.`
+      : draft.state === "cancelled"
+        ? "Die Kontaktaktion wurde beendet. Es wurde nichts angelegt oder geändert."
+        : draft.state === "expired"
+          ? "Die Kontaktaktion ist abgelaufen und muss neu erstellt werden."
+          : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`;
+    return (
+      <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
+        <header><div><span>Action Center · Kontrollierte Aktion</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+        <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+        <div className={styles.jarvisPlanningChecks}><strong>{draft.mode === "create" ? "Anzulegende Werte" : "Alte und neue Werte"}</strong>{draft.changes.map((change) => <div key={change.field} data-status="ok"><span>→</span><p><b>{change.label}</b><small>„{change.before || "–"}“ → „{change.after || "–"}“</small></p></div>)}</div>
+        <div className={styles.jarvisPlanningChecks}><strong>Aktuelle Kontaktprüfung</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
+        {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
+        {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Kontaktaktion ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+        {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur bewussten Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
+        {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
+        <div className={styles.jarvisActionDraftActions}>
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.mode === "create" ? "Kontakt jetzt anlegen" : "Kontakt jetzt ändern"}</button> : null}
+          {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Kontaktaktion abbrechen</button> : null}
+          {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
+        </div>
+        <footer>{footer}</footer>
+      </section>
+    );
+  }
 
   return (
     <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
@@ -39835,6 +39891,7 @@ await addProjectLogbookEntry(
       | JarvisInvoiceLifecycleDraftView
       | JarvisTaskLifecycleDraftView
       | JarvisProjectMasterDataDraftView
+      | JarvisContactManagementDraftView
       | JarvisProjectStatusDraftView
       | JarvisProjectLifecycleDraftView
       | JarvisOfferDeliveryDraftView
@@ -39877,6 +39934,8 @@ await addProjectLogbookEntry(
       } else if (nextDraft.actionId === "project.manage") {
         void loadHeroProjects();
         void loadProjectLogbookEntries();
+      } else if (nextDraft.actionId === "contact.manage") {
+        void loadContacts();
       } else if (nextDraft.actionId === "project.status.change") {
         void loadHeroProjects();
         void loadProjectLogbookEntries();
@@ -76653,6 +76712,7 @@ await addProjectLogbookEntry(
                       message.actionDraft?.actionId === "offer.manage" ||
                       message.actionDraft?.actionId === "task.delete" ||
                       message.actionDraft?.actionId === "project.manage" ||
+                      message.actionDraft?.actionId === "contact.manage" ||
                       message.actionDraft?.actionId === "project.status.change" ||
                       message.actionDraft?.actionId === "project.archive" ||
                       message.actionDraft?.actionId === "offer.delete" ||
@@ -76665,6 +76725,16 @@ await addProjectLogbookEntry(
                           updateJarvisActionDraftMessage(index, nextDraft, nextMessage)
                         }
                         onOpenOffer={(offerDraft) => {
+                          if (offerDraft.actionId === "contact.manage") {
+                            const contactId = offerDraft.result?.entityId || offerDraft.contactId;
+                            const contact = contacts.find((candidate) => candidate.id === contactId);
+                            if (!contact) {
+                              setManagementAiError("Der Kontakt ist in der aktuellen Kontaktansicht nicht sichtbar. Lade die Kontakte neu.");
+                              return;
+                            }
+                            openEditContactModal(contact);
+                            return;
+                          }
                           if (offerDraft.actionId === "task.delete") {
                             const task = tasks.find((candidate) => candidate.id === offerDraft.taskId);
                             if (!task) {

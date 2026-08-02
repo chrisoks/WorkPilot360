@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisProjectStatusDraft: vi.fn(),
   cancelJarvisProjectLifecycleDraft: vi.fn(),
   confirmJarvisProjectLifecycleDraft: vi.fn(),
+  cancelJarvisContactManagementDraft: vi.fn(),
+  confirmJarvisContactManagementDraft: vi.fn(),
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
@@ -79,6 +81,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisProjectStatusDraft: mocks.confirmJarvisProjectStatusDraft,
   cancelJarvisProjectLifecycleDraft: mocks.cancelJarvisProjectLifecycleDraft,
   confirmJarvisProjectLifecycleDraft: mocks.confirmJarvisProjectLifecycleDraft,
+  cancelJarvisContactManagementDraft: mocks.cancelJarvisContactManagementDraft,
+  confirmJarvisContactManagementDraft: mocks.confirmJarvisContactManagementDraft,
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
@@ -1237,6 +1241,19 @@ describe("JARVIS action-draft API", () => {
     expect(response.status).toBe(200);
     expect(mocks.confirmJarvisProjectMasterDataDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 5, "PROJEKT ÄNDERN GLR-449");
     expect(mocks.confirmJarvisProjectStatusDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact contact phrase to the bound contact draft", async () => {
+    mocks.confirmJarvisContactManagementDraft.mockResolvedValueOnce({
+      actionId: "contact.manage", state: "executed", result: { entityType: "contact", entityId: "contact-1", label: "Kontakt öffnen" },
+    });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "contact.manage", command: "confirm", revision: 4,
+      confirmationText: "KONTAKT ANLEGEN Neue GmbH", values: { companyName: "Manipuliert" },
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisContactManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 4, "KONTAKT ANLEGEN Neue GmbH");
+    expect(mocks.confirmJarvisProjectMasterDataDraft).not.toHaveBeenCalled();
   });
 
   it("passes only the exact project-status phrase to the bound status draft", async () => {

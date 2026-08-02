@@ -91,6 +91,24 @@ betroffenen Menschen.
 
 ## Aktueller Umsetzungsstand
 
+### Kontrollierte Kontaktverwaltung
+
+- `contact.manage` kann Firmen-, Privat- und Personenkontakte anlegen sowie
+  bestehende Kontakte nach eindeutiger Kundennummer bearbeiten.
+- Die Vorschau zeigt alle anzulegenden beziehungsweise geänderten Werte,
+  normalisiert Telefonnummern kanonisch und prüft organisationsgebunden auf
+  mögliche Dubletten über Namen, E-Mail und Telefon.
+- Anlage und Änderung benötigen eine exakte, fallunterscheidende
+  Bestätigungsphrase. Persistente signierte Entwürfe, Rollenpaar,
+  Mandantentrennung, Fachfingerprint, Ablaufzeit, Revision, serialisierbare
+  Transaktion, Advisory-Lock, Audit und Integrationsereignis verhindern
+  unbemerkte Änderungen und Doppelausführung.
+- JARVIS ordnet einen neuen Kontakt niemals automatisch einem Projekt, einer
+  Objektadresse oder Online-Anfrage zu. Die bewusste Kunden- und
+  Projektzuordnung bleibt ein eigener Fachschritt.
+- `contact.delete` bleibt bis zu seinem eigenen kritischen Vertikalschnitt
+  weiterhin gesperrt. Danach folgt chronologisch `catalog.manage`.
+
 ### Phase 3b – sichere Browser-Sprachbasis
 
 - Der gemeinsame JARVIS-Composer besitzt einen ersten rein browserseitigen

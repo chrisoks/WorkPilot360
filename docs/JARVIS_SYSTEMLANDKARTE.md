@@ -67,8 +67,8 @@ Kernabläufe ab. Folgende Tiefenarbeit bleibt offen:
   und Rechnungen hinaus,
 - vollständige Dialogvarianten und Umgangssprache je Workflow,
 - weitere schreibende Aktionen außerhalb der bereits vollständigen Aufgaben-,
-  projektartgerechten Termin-/Terminwunsch-, manuellen Zeit-, Text- und
-  Angebotsentwurfs-Vertikalschnitte,
+  Projekt-, Kontakt-, projektartgerechten Termin-/Terminwunsch-, manuellen
+  Zeit-, Text- und Angebotsvertikalschnitte,
 - Sprachsteuerung,
 - der fachlich noch nicht abgeschlossene Ausbau der Fahrzeugvermietung.
 

@@ -56,6 +56,31 @@ const fake = vi.hoisted(() => {
     projectMasterDataChanges.push(row);
     return { project: row, replayed: false };
   });
+  const contactChanges: Array<Record<string, any>> = [];
+  const evaluateContactCreation = vi.fn(async ({ values }: { values: Record<string, string> }) => ({
+    mode: "create", contact: { id: "", customerNumber: "wird automatisch vergeben", displayName: values.companyName || values.lastName, type: values.type, category: values.category || "Kunde", updatedAt: "" },
+    values: { ...values, category: values.category || "Kunde" },
+    changes: Object.entries(values).filter(([field]) => field !== "type").map(([field, after]) => ({ field, label: field === "companyName" ? "Firma" : field, before: "", after })),
+    checks: [{ key: "duplicate", label: "Dublettenprüfung", status: "ok", detail: "Keine Dublette." }],
+    warnings: ["Keine automatische Zuordnung."], blockingIssues: [], fingerprint: "c".repeat(64),
+  }));
+  const evaluateContactChange = vi.fn(async ({ contactId, changes }: { contactId: string; changes: Record<string, string> }) => ({
+    mode: "update", contact: { id: contactId, customerNumber: "7000049", displayName: "Muster GmbH", type: "company", category: "Kunde", updatedAt: "2026-07-29T18:00:00.000Z" },
+    values: changes,
+    changes: Object.entries(changes).map(([field, after]) => ({ field, label: field, before: "Alt", after })),
+    checks: [{ key: "duplicate", label: "Dublettenprüfung", status: "ok", detail: "Keine Dublette." }],
+    warnings: [], blockingIssues: [], fingerprint: "b".repeat(64),
+  }));
+  const executeContactCreation = vi.fn(async (input: Record<string, any>) => {
+    const row = { id: "contact-created", ...input.values };
+    contactChanges.push(row);
+    return row;
+  });
+  const executeContactChange = vi.fn(async (input: Record<string, any>) => {
+    const row = { id: input.contactId, ...input.changes };
+    contactChanges.push(row);
+    return row;
+  });
   const projectLifecycleChanges: Array<Record<string, any>> = [];
   const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
     reason,
@@ -649,6 +674,7 @@ const fake = vi.hoisted(() => {
       creditInvoices.length = 0;
       projectStatusChanges.length = 0;
       projectMasterDataChanges.length = 0;
+      contactChanges.length = 0;
       projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
@@ -664,6 +690,10 @@ const fake = vi.hoisted(() => {
       executeProjectStatusChange.mockClear();
       evaluateProjectMasterDataChange.mockClear();
       executeProjectMasterDataChange.mockClear();
+      evaluateContactCreation.mockClear();
+      evaluateContactChange.mockClear();
+      executeContactCreation.mockClear();
+      executeContactChange.mockClear();
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
       createProjectLogbookEntry.mockClear();
@@ -701,6 +731,11 @@ const fake = vi.hoisted(() => {
     projectMasterDataChanges,
     evaluateProjectMasterDataChange,
     executeProjectMasterDataChange,
+    contactChanges,
+    evaluateContactCreation,
+    evaluateContactChange,
+    executeContactCreation,
+    executeContactChange,
     evaluateProjectStatusChange,
     executeProjectStatusChange,
     projectLifecycleChanges,
@@ -716,6 +751,17 @@ vi.mock("@/lib/projects/project-master-data-service", () => ({
   getProjectMasterDataConfirmationText: (projectNumber: string) => `PROJEKT ÄNDERN ${projectNumber}`,
   matchesProjectMasterDataConfirmation: (projectNumber: string, value: string) => value.trim() === `PROJEKT ÄNDERN ${projectNumber}`,
   ProjectMasterDataServiceError: class ProjectMasterDataServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
+vi.mock("@/lib/contacts/contact-management-service", () => ({
+  evaluateContactCreation: fake.evaluateContactCreation,
+  evaluateContactChange: fake.evaluateContactChange,
+  executeContactCreation: fake.executeContactCreation,
+  executeContactChange: fake.executeContactChange,
+  getContactCreateConfirmationText: (name: string) => `KONTAKT ANLEGEN ${name}`,
+  getContactChangeConfirmationText: (customerNumber: string) => `KONTAKT ÄNDERN ${customerNumber}`,
+  ContactManagementServiceError: class ContactManagementServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
 }));
@@ -900,6 +946,9 @@ import {
   cancelJarvisProjectMasterDataDraft,
   confirmJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectMasterDataDraft,
+  cancelJarvisContactManagementDraft,
+  confirmJarvisContactManagementDraft,
+  createPersistedJarvisContactManagementDraft,
   cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft,
   createPersistedJarvisProjectStatusDraft,
@@ -2800,6 +2849,36 @@ describe("persistent JARVIS project-master-data drafts", () => {
     const cancellable = await createPersistedJarvisProjectMasterDataDraft({ ...binding(), now: baseNow, preview: preview("project-master-cancel") });
     expect((await cancelJarvisProjectMasterDataDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
     expect(fake.projectMasterDataChanges).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS contact-management drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string) => ({
+    version: 1 as const, previewId, actionId: "contact.manage" as const,
+    actionTitle: "Kontakt anlegen oder bearbeiten", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { mode: "create" as const, values: { type: "company" as const, companyName: "Neue GmbH", email: "info@neu.de" } },
+    execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("creates the bound contact exactly once after the exact phrase", async () => {
+    const created = await createPersistedJarvisContactManagementDraft({ ...binding(), now: baseNow, preview: preview("contact-manage-1") });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", mode: "create", confirmation: { requiredText: "KONTAKT ANLEGEN Neue GmbH" } });
+    const first = await confirmJarvisContactManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisContactManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("contact-created");
+    expect(fake.contactChanges).toHaveLength(1);
+    expect(fake.executeContactCreation).toHaveBeenCalledWith(expect.objectContaining({ requestId: "contact-manage-1", expectedFingerprint: "c".repeat(64) }));
+  });
+
+  it("rejects an inexact phrase and cancels without executing", async () => {
+    const wrong = await createPersistedJarvisContactManagementDraft({ ...binding(), now: baseNow, preview: preview("contact-wrong") });
+    await expect(confirmJarvisContactManagementDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisContactManagementDraft({ ...binding(), now: baseNow, preview: preview("contact-cancel") });
+    expect((await cancelJarvisContactManagementDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    expect(fake.contactChanges).toHaveLength(0);
   });
 });
 
