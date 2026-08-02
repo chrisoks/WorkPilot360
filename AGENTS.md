@@ -1,5 +1,36 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS endgültige Kontaktlöschung 2026-08-02: `contact.delete` ist als
+  irreversibler, fail-closed gesicherter Vertikalschnitt produktiv
+  freigegeben. JARVIS löst den Kontakt ausschließlich über eine eindeutige,
+  organisationsgebundene Kundennummer auf und verlangt einen dokumentierten
+  Grund sowie exakt `KONTAKT ENDGÜLTIG LÖSCHEN <Kundennummer>`. Vorschau und
+  normale Kontaktmaske verwenden denselben Fachservice und zeigen beziehungsweise
+  prüfen vollständig 17 Referenzfamilien: Projekte, Unterkontakte,
+  Objektadressen, Online-Anfragen, Kundenlogbuch, Kundenhinweise samt Archiv,
+  Hinweisbestätigungen, Potenziale, Verkaufschancen, Sales-Ziele,
+  Feedback-Anfragen, Feedbacks, Angebotsannahmen, Lagerbewegungen,
+  Winterdienst- und Fahrzeugkalkulationen sowie Winterdienstläufe. Schon ein
+  Bezug blockiert die physische Löschung; für normale Bestandsbereinigung wird
+  weiterhin Archivierung empfohlen. Sitzung, Organisation, Rollenpaar,
+  Impersonation, TTL, Revision, HMAC, Payload-/Kontexthash,
+  SHA-256-Fachfingerprint, serialisierbare Transaktion,
+  PostgreSQL-Advisory-Lock, optimistisches Löschen und Exactly-once-Replay
+  sichern die Ausführung. Kontakt, Integrationsereignis, Audit und persistente
+  JARVIS-Aktionshistorie werden atomar behandelt; Event, Audit und
+  Aktionshistorie bleiben nach der Löschung erhalten. Fachservice:
+  `src/lib/contacts/contact-deletion-service.ts`; isolierte QA:
+  `scripts/qa-jarvis-contact-deletion.mjs`. Produktiv auf Runtime-Commit
+  `9f4d352268fe1c4b2f7c040530e58838ef02af0b`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T023504Z-before-jarvis-contact-deletion`.
+  Lokal bestanden 159/159 Testdateien mit 1.628/1.628 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+  90-Seiten-Build. Isolierte lokale und produktive QA, echter JARVIS-UI-
+  Klicktest und der permanente Korpus (110/110, produktiv 22 nur vorbereitete
+  Aktionen) sind grün; sämtliche QA-Rückstände sind null. Dashboard und
+  öffentliches Anfrageformular liefern HTTP 200, Live-Prisma-Diff leer.
+  WorkPilot PID `714991`, KlinikNavigator unverändert PID `398228`.
+
 - JARVIS Kontaktverwaltung 2026-08-02: `contact.manage` legt Firmen-, Privat-
   und Personenkontakte kontrolliert an oder bearbeitet bestehende Kontakte
   ausschließlich über eine eindeutige organisationsgebundene Kundennummer.

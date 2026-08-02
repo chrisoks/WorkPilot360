@@ -91,7 +91,7 @@ betroffenen Menschen.
 
 ## Aktueller Umsetzungsstand
 
-### Kontrollierte Kontaktverwaltung
+### Kontrollierte Kontaktverwaltung und endgültige Löschung
 
 - `contact.manage` kann Firmen-, Privat- und Personenkontakte anlegen sowie
   bestehende Kontakte nach eindeutiger Kundennummer bearbeiten.
@@ -112,8 +112,36 @@ betroffenen Menschen.
   vollständiger Testsatz, 90-Seiten-Build, leerer Prisma-Diff und
   rückstandsfreie Bereinigung sind belegt. Backup:
   `/var/backups/workpilot360/20260802T015913Z-before-jarvis-contact-management`.
-- `contact.delete` bleibt bis zu seinem eigenen kritischen Vertikalschnitt
-  weiterhin gesperrt. Danach folgt chronologisch `catalog.manage`.
+- `contact.delete` ist als eigener irreversibler Vertikalschnitt produktiv
+  abgenommen. Eine eindeutige organisationsgebundene Kundennummer, ein
+  dokumentierter Grund und die exakte Phrase `KONTAKT ENDGÜLTIG LÖSCHEN
+  <Kundennummer>` sind Pflicht. JARVIS und normale Kontaktmaske verwenden
+  denselben Fachservice und prüfen vor der Löschung vollständig 17
+  Referenzfamilien einschließlich Projekten, Unterkontakten, Objektadressen,
+  Online-Anfragen, Kundenlogbuch und -hinweisen, Sales-/Feedbackdaten,
+  Angebotsannahmen, Lagerbewegungen und Kalkulationen. Schon ein verbleibender
+  Bezug blockiert fail-closed; für normale Bestandsbereinigung bleibt
+  Archivierung die bevorzugte Lösung.
+- Der Löschentwurf ist an Sitzung, Organisation, Rollenpaar, Impersonation,
+  TTL, Revision, signierte Nutzlast und den aktuellen Fachfingerprint
+  gebunden. Serialisierbare Transaktion, Advisory-Lock, optimistisches
+  Löschen, Audit, Integrationsereignis und Aktionshistorie sichern Exactly-once
+  und verhindern eine Ausführung veralteter Vorschauen.
+- Produktiv abgenommen auf Runtime-Commit
+  `9f4d352268fe1c4b2f7c040530e58838ef02af0b`; Backup:
+  `/var/backups/workpilot360/20260802T023504Z-before-jarvis-contact-deletion`.
+  Lokal sind 159/159 Testdateien mit 1.628/1.628 Tests, TypeScript,
+  Qualitätschecks, Prisma mit leerem Diff und der 90-Seiten-Build grün.
+  Isolierte lokale und produktive QA, echter JARVIS-Klicktest und der
+  permanente Korpus mit 110/110 Fragen sind bestanden; produktiv wurden 22
+  Aktionen ausschließlich vorbereitet und keine ausgeführt. Alle QA-
+  Rückstände sind null, Dashboard und öffentliches Formular liefern HTTP 200,
+  WorkPilot läuft mit PID `714991`, KlinikNavigator unverändert mit PID
+  `398228`.
+- Chronologisch folgt jetzt `catalog.manage`; bei früherem Abschluss wird ohne
+  Pause am nächsten offenen JARVIS-Vertikalschnitt weitergearbeitet, sofern
+  keine wesentliche fachliche oder irreversible Entscheidung geklärt werden
+  muss.
 
 ### Phase 3b – sichere Browser-Sprachbasis
 
