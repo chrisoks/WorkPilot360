@@ -28,9 +28,9 @@ async function main() {
   const now = new Date(); const suffix = Date.now().toString().slice(-9);
   const ids = {
     project: randomUUID(), foreignProject: randomUUID(), session: randomUUID(), employeeSession: randomUUID(),
-    approve: randomUUID(), reject: randomUUID(), normal: randomUUID(), cancel: randomUUID(), cancelNormal: randomUUID(), deleteBypass: randomUUID(), bypass: randomUUID(), foreign: randomUUID(),
+    approve: randomUUID(), reject: randomUUID(), normal: randomUUID(), cancel: randomUUID(), cancelNormal: randomUUID(), withdraw: randomUUID(), withdrawNormal: randomUUID(), withdrawBypass: randomUUID(), deleteBypass: randomUUID(), bypass: randomUUID(), foreign: randomUUID(),
   };
-  const entryIds = [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal, ids.deleteBypass, ids.bypass, ids.foreign];
+  const entryIds = [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal, ids.withdraw, ids.withdrawNormal, ids.withdrawBypass, ids.deleteBypass, ids.bypass, ids.foreign];
   const sessionIds = [ids.session, ids.employeeSession];
   const projectIds = [ids.project, ids.foreignProject];
   const draftIds = new Set();
@@ -48,10 +48,14 @@ async function main() {
       { ...baseEntry, id: ids.normal, title: "QA Normalroute", startTime: "10:00", endTime: "11:00" },
       { ...baseEntry, id: ids.cancel, title: "QA Terminabsage", approvalStatus: "confirmed", startTime: "12:00", endTime: "13:00", recurrenceId: `qa-series-${suffix}`, recurrenceRule: "weekly" },
       { ...baseEntry, id: ids.cancelNormal, title: "QA Terminabsage Normalroute", approvalStatus: "confirmed", startTime: "13:00", endTime: "14:00" },
+      { ...baseEntry, id: ids.withdraw, title: "QA Terminwunsch zurückziehen", startTime: "15:00", endTime: "16:00", recurrenceId: `qa-withdraw-series-${suffix}`, recurrenceRule: "weekly" },
+      { ...baseEntry, id: ids.withdrawNormal, title: "QA Terminwunsch zurückziehen Normalroute", startTime: "16:00", endTime: "17:00" },
+      { ...baseEntry, id: ids.withdrawBypass, title: "QA Terminwunsch zurückziehen Altroute", startTime: "17:00", endTime: "18:00" },
       { ...baseEntry, id: ids.deleteBypass, title: "QA Terminabsage Altroute", approvalStatus: "confirmed", startTime: "14:00", endTime: "15:00" },
       { ...baseEntry, id: ids.bypass, title: "QA Altroute", startTime: "11:00", endTime: "12:00" },
       { ...baseEntry, id: ids.foreign, organizationId: foreignOrganization.id, projectId: ids.foreignProject, projectLabel: `QPF-${suffix} | QA fremd`, userId: null, requestedByUserId: null, title: "QA Fremdmandant" },
     ] });
+    await prisma.notification.create({ data: { id: randomUUID(), organizationId: actor.organizationId, userId: actor.id, channel: "app", subject: "Terminwunsch freigeben", body: "QA offener Freigabehinweis", linkTarget: "planning-entry", linkTargetId: ids.withdraw, linkLabel: "Termin öffnen" } });
 
     const managerCookie = `workpilot_session=${token(ids.session)}`;
     const employeeCookie = `workpilot_session=${token(ids.employeeSession)}`;
@@ -86,6 +90,15 @@ async function main() {
     const cancelReplay = await requestJson(`/api/jarvis/action-drafts/${cancelDraft.previewId}`, managerCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: actor.id, actionId: "planning.request.manage", command: "confirm", revision: cancelDraft.revision, confirmationText: cancelDraft.confirmation.requiredText }) });
     assert(cancelReplay.response.ok && cancelReplay.payload?.actionDraft?.state === "executed", "Exactly-once-Replay der Terminabsage fehlgeschlagen.");
 
+    const withdrawPrepared = await requestJson("/api/jarvis/chat", employeeCookie, { method: "POST", body: JSON.stringify({ actorId: employee.id, message: `Terminwunsch-ID ${ids.withdraw} zurückziehen. Grund: Eigener Einsatz ist nicht mehr möglich` }) });
+    assert(withdrawPrepared.response.ok && withdrawPrepared.payload?.actionDraft?.decision === "withdraw", `Rückzugsentwurf wurde nicht erzeugt: ${JSON.stringify(withdrawPrepared.payload)}`);
+    const withdrawDraft = withdrawPrepared.payload.actionDraft; draftIds.add(withdrawDraft.previewId);
+    assert(withdrawDraft.confirmation.requiredText === `TERMINWUNSCH ZURÜCKZIEHEN ${ids.withdraw}`, "Exakte Rückzugsphrase ist falsch.");
+    const withdrawn = await requestJson(`/api/jarvis/action-drafts/${withdrawDraft.previewId}`, employeeCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: employee.id, actionId: "planning.request.manage", command: "confirm", revision: withdrawDraft.revision, confirmationText: withdrawDraft.confirmation.requiredText }) });
+    assert(withdrawn.response.ok && withdrawn.payload?.actionDraft?.state === "executed", "Eigener Terminwunsch wurde nicht zurückgezogen.");
+    const withdrawReplay = await requestJson(`/api/jarvis/action-drafts/${withdrawDraft.previewId}`, employeeCookie, { method: "POST", headers: { "X-Jarvis-Action": "jarvis-action-draft-v2" }, body: JSON.stringify({ actorId: employee.id, actionId: "planning.request.manage", command: "confirm", revision: withdrawDraft.revision, confirmationText: withdrawDraft.confirmation.requiredText }) });
+    assert(withdrawReplay.response.ok && withdrawReplay.payload?.actionDraft?.state === "executed", "Exactly-once-Replay des Rückzugs fehlgeschlagen.");
+
     const bypass = await requestJson("/api/planning-entries", managerCookie, { method: "POST", body: JSON.stringify({ actorUserId: actor.id, id: ids.bypass, approvalStatus: "confirmed" }) });
     assert(bypass.response.status === 409, "Der alte POST-Weg konnte einen Terminwunsch bestätigen.");
     const preflight = await requestJson("/api/planning-entries", managerCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: actor.id, entryId: ids.normal, decision: "approve" }) });
@@ -100,6 +113,13 @@ async function main() {
     assert(cancelNormal.response.ok && cancelNormal.payload?.result?.approvalStatus === "cancelled", "Gemeinsame Normalroute hat den Termin nicht abgesagt.");
     const deleteBypass = await requestJson(`/api/planning-entries?id=${encodeURIComponent(ids.deleteBypass)}&actorUserId=${encodeURIComponent(actor.id)}`, managerCookie, { method: "DELETE" });
     assert(deleteBypass.response.status === 409, "Der alte DELETE-Weg konnte einen bestätigten Termin absagen.");
+    const withdrawPreflight = await requestJson("/api/planning-entries", employeeCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-preflight", actorUserId: employee.id, entryId: ids.withdrawNormal, decision: "withdraw", reason: "Eigener Einsatz ist nicht mehr möglich" }) });
+    assert(withdrawPreflight.response.ok && withdrawPreflight.payload?.evaluation?.fingerprint, "Normalrouten-Rückzugsprüfung fehlgeschlagen.");
+    const withdrawNormalRequestId = randomUUID();
+    const withdrawNormal = await requestJson("/api/planning-entries", employeeCookie, { method: "PATCH", body: JSON.stringify({ command: "decision-execute", requestId: withdrawNormalRequestId, expectedFingerprint: withdrawPreflight.payload.evaluation.fingerprint, actorUserId: employee.id, entryId: ids.withdrawNormal, decision: "withdraw", reason: "Eigener Einsatz ist nicht mehr möglich" }) });
+    assert(withdrawNormal.response.ok && withdrawNormal.payload?.result?.approvalStatus === "withdrawn", "Gemeinsame Normalroute hat den Terminwunsch nicht zurückgezogen.");
+    const withdrawDeleteBypass = await requestJson(`/api/planning-entries?id=${encodeURIComponent(ids.withdrawBypass)}&actorUserId=${encodeURIComponent(employee.id)}`, employeeCookie, { method: "DELETE" });
+    assert(withdrawDeleteBypass.response.status === 409, "Der alte DELETE-Weg konnte einen offenen Terminwunsch zurückziehen.");
 
     const rows = await prisma.planningEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, approvalStatus: true, deletedAt: true } });
     assert(rows.find((row) => row.id === ids.approve)?.approvalStatus === "confirmed", "Freigabestatus fehlt.");
@@ -107,15 +127,22 @@ async function main() {
     assert(Boolean(rows.find((row) => row.id === ids.cancel)?.deletedAt), "JARVIS-Terminabsage wurde nicht logisch markiert.");
     assert(Boolean(rows.find((row) => row.id === ids.cancelNormal)?.deletedAt), "Normalrouten-Terminabsage wurde nicht logisch markiert.");
     assert(!rows.find((row) => row.id === ids.deleteBypass)?.deletedAt, "Alte DELETE-Route hat den bestätigten Termin verändert.");
+    assert(Boolean(rows.find((row) => row.id === ids.withdraw)?.deletedAt), "JARVIS-Rückzug wurde nicht logisch markiert.");
+    assert(Boolean(rows.find((row) => row.id === ids.withdrawNormal)?.deletedAt), "Normalrouten-Rückzug wurde nicht logisch markiert.");
+    assert(!rows.find((row) => row.id === ids.withdrawBypass)?.deletedAt, "Alte DELETE-Route hat den offenen Wunsch verändert.");
     assert(rows.find((row) => row.id === ids.bypass)?.approvalStatus === "requested", "Altrouten-Sperre hat den Wunsch verändert.");
-    const histories = await prisma.planningEntryHistory.findMany({ where: { planningEntryId: { in: [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal] } } });
+    const histories = await prisma.planningEntryHistory.findMany({ where: { planningEntryId: { in: [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal, ids.withdraw, ids.withdrawNormal] } } });
     assert(histories.filter((item) => item.planningEntryId === ids.approve && item.eventType === "approved").length === 1, "Freigabehistorie ist nicht exactly-once.");
     assert(histories.filter((item) => item.planningEntryId === ids.reject && item.eventType === "rejected").length === 1, "Ablehnungshistorie ist nicht exactly-once.");
     assert(histories.filter((item) => item.planningEntryId === ids.cancel && item.eventType === "cancelled").length === 1, `JARVIS-Absagehistorie ist nicht exactly-once: ${JSON.stringify(histories.filter((item) => item.planningEntryId === ids.cancel))}`);
     assert(histories.filter((item) => item.planningEntryId === ids.cancelNormal && item.eventType === "cancelled").length === 1, `Normalrouten-Absagehistorie fehlt: ${JSON.stringify(histories.filter((item) => item.planningEntryId === ids.cancelNormal))}`);
+    assert(histories.filter((item) => item.planningEntryId === ids.withdraw && item.eventType === "withdrawn").length === 1, "JARVIS-Rückzugshistorie ist nicht exactly-once.");
+    assert(histories.filter((item) => item.planningEntryId === ids.withdrawNormal && item.eventType === "withdrawn").length === 1, "Normalrouten-Rückzugshistorie fehlt.");
+    const resolvedRequestNotice = await prisma.notification.findFirst({ where: { linkTargetId: ids.withdraw, subject: "Terminwunsch freigeben" }, select: { resolvedAt: true } });
+    assert(Boolean(resolvedRequestNotice?.resolvedAt), "Offener Freigabehinweis wurde beim Rückzug nicht aufgelöst.");
     const notificationCount = await prisma.notification.count({ where: { linkTargetId: { in: [ids.approve, ids.reject, ids.normal, ids.cancel, ids.cancelNormal] }, subject: { in: ["Terminwunsch bestätigt", "Terminwunsch abgelehnt", "Planungstermin abgesagt"] } } });
     assert(notificationCount >= 5, "Mitarbeiterhinweise fehlen.");
-    result = { ok: true, baseUrl, actorRole: actor.role, roleBoundary: "verified", tenantBoundary: "verified", exactPhrase: true, exactlyOnce: true, normalApiSharedService: true, oldRouteBypassBlocked: true, oldDeleteBypassBlocked: true, employeeNotifications: notificationCount, executions: histories.length };
+    result = { ok: true, baseUrl, actorRole: actor.role, roleBoundary: "verified", tenantBoundary: "verified", selfWithdrawal: true, exactPhrase: true, exactlyOnce: true, normalApiSharedService: true, oldRouteBypassBlocked: true, oldDeleteBypassBlocked: true, employeeNotifications: notificationCount, executions: histories.length };
   } finally {
     await prisma.notification.deleteMany({ where: { linkTargetId: { in: entryIds } } });
     await prisma.projectLogbookEntry.deleteMany({ where: { projectId: { in: projectIds }, source: "planning-request-decision" } });

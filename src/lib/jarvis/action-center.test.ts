@@ -225,15 +225,15 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     })).toMatchObject({ ok: true, value: { actionId: "planning.request.manage", payload: { decision: "cancel" }, execution: { enabled: false, reason: "preview_only" } } });
   });
 
-  it("rejects appointment-request decisions for employees", () => {
+  it("allows employees into the action family for a later ownership-bound withdrawal check", () => {
     expect(createJarvisActionPreview({
       previewId: "preview-planning-request-employee",
       actionId: "planning.request.manage",
-      payload: { entryId: "request-123456", decision: "approve" },
+      payload: { entryId: "request-123456", decision: "withdraw", reason: "Eigener Einsatz ist nicht mehr möglich" },
       organizationId: "org-1",
       profile: employeeProfile,
       createdAt: "2026-08-02T15:00:00.000Z",
-    })).toMatchObject({ ok: false });
+    })).toMatchObject({ ok: true, value: { payload: { decision: "withdraw" } } });
   });
 
   it("creates a critical project-status preview with only the intended fields", () => {

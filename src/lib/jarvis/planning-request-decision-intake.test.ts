@@ -32,4 +32,14 @@ describe("planning request decision intake", () => {
       reason: "Kunde hat abgesagt",
     });
   });
+
+  it("extracts withdrawal of an open appointment request and its reason", () => {
+    const question = "Terminwunsch-ID request-123 zurückziehen. Grund: Eigener Einsatz nicht mehr möglich";
+    expect(looksLikePlanningRequestDecision(question)).toBe(true);
+    expect(extractPlanningRequestDecision(question)).toEqual({
+      entryId: "request-123",
+      decision: "withdraw",
+      reason: "Eigener Einsatz nicht mehr möglich",
+    });
+  });
 });

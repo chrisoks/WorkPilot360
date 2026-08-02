@@ -267,6 +267,7 @@ describe("JARVIS action registry", () => {
       "task-comment.create",
       "planning.prepare",
       "planning.create",
+      "planning.request.manage",
       "project-logbook.prepare",
       "project-logbook.create",
       "time.prepare",

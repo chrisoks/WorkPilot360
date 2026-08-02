@@ -1,6 +1,6 @@
 export type PlanningRequestDecisionIntake = {
   entryId: string;
-  decision: "approve" | "reject" | "cancel" | null;
+  decision: "approve" | "reject" | "cancel" | "withdraw" | null;
   reason: string;
 };
 
@@ -10,14 +10,16 @@ function clean(value: string) {
 
 export function looksLikePlanningRequestDecision(question: string) {
   return (
-    /terminwunsch/i.test(question) && /(freigeb|gib[\s\S]{0,80}\bfrei\b|genehmig|bestätig|bestaetig|ablehn|zurückweis|zurueckweis)/i.test(question)
+    /terminwunsch/i.test(question) && /(freigeb|gib[\s\S]{0,80}\bfrei\b|genehmig|bestätig|bestaetig|ablehn|zurückweis|zurueckweis|zurückzieh|zurueckzieh)/i.test(question)
   ) || (
     /\btermin\b/i.test(question) && /(absag|streich|löschen|loeschen)/i.test(question)
   );
 }
 
 export function extractPlanningRequestDecision(question: string): PlanningRequestDecisionIntake {
-  const decision = /\btermin\b/i.test(question) && /(absag|streich|löschen|loeschen)/i.test(question)
+  const decision = /terminwunsch/i.test(question) && /(zurückzieh|zurueckzieh)/i.test(question)
+    ? "withdraw"
+    : /\btermin\b/i.test(question) && /(absag|streich|löschen|loeschen)/i.test(question)
     ? "cancel"
     : /(ablehn|zurückweis|zurueckweis)/i.test(question)
       ? "reject"
@@ -25,7 +27,7 @@ export function extractPlanningRequestDecision(question: string): PlanningReques
         ? "approve"
         : null;
   const explicitCandidate = question.match(/(?:terminwunsch(?:-id)?|eintrag(?:s-id)?|id)\s*[:#]?\s*([a-z0-9][a-z0-9-]{7,119})/i)?.[1] ?? "";
-  const explicitId = /^(?:freigeben|genehmigen|bestätigen|bestaetigen|ablehnen|zurückweisen|zurueckweisen|absagen|streichen|löschen|loeschen)$/i.test(explicitCandidate)
+  const explicitId = /^(?:freigeben|genehmigen|bestätigen|bestaetigen|ablehnen|zurückweisen|zurueckweisen|zurückziehen|zurueckziehen|absagen|streichen|löschen|loeschen)$/i.test(explicitCandidate)
     ? ""
     : explicitCandidate;
   const uuid = question.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i)?.[0];

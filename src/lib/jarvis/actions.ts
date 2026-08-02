@@ -297,7 +297,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     confirmation: "critical",
     dataClasses: ["internal"],
     implementation: "available",
-    canUse: canManagePlanningEntries,
+    canUse: isActiveInternalUser,
   },
   {
     id: "project-logbook.prepare",

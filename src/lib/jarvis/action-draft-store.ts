@@ -1198,12 +1198,12 @@ const planningMoveContextSchema = z.object({
 
 const planningRequestDecisionPayloadSchema = z.object({
   entryId: z.string().trim().min(1).max(120),
-  decision: z.enum(["approve", "reject", "cancel"]),
+  decision: z.enum(["approve", "reject", "cancel", "withdraw"]),
   reason: z.string().trim().max(500).optional(),
 }).strict();
 
 const planningRequestDecisionContextSchema = z.object({
-  decision: z.enum(["approve", "reject", "cancel"]),
+  decision: z.enum(["approve", "reject", "cancel", "withdraw"]),
   reason: z.string(),
   entry: z.object({
     id: z.string(), title: z.string(), projectId: z.string(), projectLabel: z.string(),
@@ -11540,6 +11540,18 @@ function mayMovePlanningEntry(binding: JarvisTaskDraftBinding) {
     canManagePlanningEntries(binding.profile.effectiveActor);
 }
 
+function mayDecidePlanningEntry(
+  binding: JarvisTaskDraftBinding,
+  decision: "approve" | "reject" | "cancel" | "withdraw",
+) {
+  if (decision !== "withdraw") return mayMovePlanningEntry(binding);
+  const actorIds = getActorIds(binding.profile);
+  return !binding.profile.isImpersonating &&
+    Boolean(actorIds.sessionActorId) &&
+    actorIds.sessionActorId === actorIds.effectiveActorId &&
+    (binding.profile.effectiveActor.role === Role.MITARBEITER || canManagePlanningEntries(binding.profile.effectiveActor));
+}
+
 function validatePlanningMoveBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
   const actorIds = getActorIds(binding.profile);
   if (
@@ -11724,7 +11736,7 @@ function toJarvisPlanningRequestDecisionDraftView(
 ): JarvisPlanningRequestDecisionDraftView {
   const { payload, context } = validatePlanningRequestDecisionBinding(draft, binding);
   const state = draft.state as JarvisTaskActionDraftState;
-  const permitted = mayMovePlanningEntry(binding);
+  const permitted = mayDecidePlanningEntry(binding, payload.decision);
   const ready = state === "awaiting_confirmation" && permitted;
   const reason: JarvisPlanningRequestDecisionDraftView["confirmation"]["reason"] =
     state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" :
@@ -11742,17 +11754,17 @@ function toJarvisPlanningRequestDecisionDraftView(
     entryId: context.entry.id,
     projectId: context.entry.projectId,
     fields: [
-      { label: "Entscheidung", value: payload.decision === "approve" ? "Terminwunsch freigeben" : payload.decision === "reject" ? "Terminwunsch ablehnen" : "Planungstermin absagen" },
+      { label: "Entscheidung", value: payload.decision === "approve" ? "Terminwunsch freigeben" : payload.decision === "reject" ? "Terminwunsch ablehnen" : payload.decision === "cancel" ? "Planungstermin absagen" : "Terminwunsch zurückziehen" },
       { label: payload.decision === "cancel" ? "Termin-ID" : "Terminwunsch-ID", value: context.entry.id },
       { label: "Titel", value: context.entry.title },
       { label: "Projekt", value: context.entry.projectLabel || "Ohne Projekt" },
       { label: "Mitarbeitend", value: context.entry.employee },
       ...(payload.decision === "cancel" ? [] : [{ label: "Beantragt von", value: context.entry.requester }]),
       { label: "Zeitraum", value: `${context.entry.date} · ${context.entry.startTime}-${context.entry.endTime}` },
-      ...(payload.decision === "reject" ? [{ label: "Ablehnungsgrund", value: context.reason }] : payload.decision === "cancel" ? [{ label: "Absagegrund", value: context.reason }] : []),
+      ...(payload.decision === "reject" ? [{ label: "Ablehnungsgrund", value: context.reason }] : payload.decision === "cancel" ? [{ label: "Absagegrund", value: context.reason }] : payload.decision === "withdraw" ? [{ label: "Rückzugsgrund", value: context.reason }] : []),
     ],
     checks: [
-      { key: "scope", label: "Organisation, Sitzung und Rolle", status: permitted ? "ok" : "blocked", detail: permitted ? "Die Entscheidung ist an die aktuelle Planungsverantwortung gebunden." : "Diese Rollenkombination darf den Planungseintrag nicht entscheiden." },
+      { key: "scope", label: "Organisation, Sitzung und Rolle", status: permitted ? "ok" : "blocked", detail: permitted ? payload.decision === "withdraw" ? "Das Zurückziehen ist an die eigene, nicht vertretene Identität und den geprüften Terminwunsch gebunden." : "Die Entscheidung ist an die aktuelle Planungsverantwortung gebunden." : "Diese Rollenkombination darf den Planungseintrag nicht entscheiden." },
       { key: "freshness", label: payload.decision === "cancel" ? "Aktueller Terminstand" : "Aktueller Terminwunschstand", status: "ok", detail: payload.decision === "approve" ? "Offener Wunsch, Person, Abwesenheit, Überschneidungen und Projektstand sind gebunden." : payload.decision === "cancel" ? "Bestätigter Termin, Person, Projekt- und Serienbezug sind vollständig gebunden." : "Offener Wunsch, Person und Projektstand sind gebunden." },
     ],
     warnings: context.warnings.map((warning) => warning.message),
@@ -11771,11 +11783,11 @@ export async function createPersistedJarvisPlanningRequestDecisionDraft(input: {
   now?: Date;
 }) {
   if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Terminwunschentscheidung ist eine aktuelle Sitzung erforderlich.", 401);
-  if (!mayMovePlanningEntry(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Terminwünsche nicht entscheiden.", 403);
+  const payload = planningRequestDecisionPayloadSchema.parse(input.preview.payload);
+  if (!mayDecidePlanningEntry(input, payload.decision)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf den Planungseintrag nicht entscheiden.", 403);
   const actorId = getActorIds(input.profile).effectiveActorId;
   const actor = await prisma.user.findFirst({ where: { id: actorId, organizationId: input.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, organizationId: true } });
   if (!actor) throw new JarvisActionDraftError("role_changed", "Der wirksame Akteur ist nicht mehr aktiv.", 409);
-  const payload = planningRequestDecisionPayloadSchema.parse(input.preview.payload);
   let evaluation;
   try {
     evaluation = await evaluatePlanningRequestDecision({ organizationId: input.organizationId, actor, entryId: payload.entryId, decision: payload.decision, reason: payload.reason });
@@ -11822,7 +11834,7 @@ export async function confirmJarvisPlanningRequestDecisionDraft(previewId: strin
   const requiredText = getPlanningRequestDecisionConfirmationText(loaded.context.entry.id, loaded.payload.decision);
   if (!matchesPlanningRequestDecisionConfirmation(loaded.context.entry.id, loaded.payload.decision, confirmationText)) throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
   if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Terminwunschentscheidung darf bestätigt werden.", 409);
-  if (!mayMovePlanningEntry(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Terminwünsche nicht entscheiden.", 403);
+  if (!mayDecidePlanningEntry(binding, loaded.payload.decision)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf den Planungseintrag nicht entscheiden.", 403);
   try {
     const executed = await prisma.$transaction(async (tx) => {
       const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
@@ -11831,7 +11843,7 @@ export async function confirmJarvisPlanningRequestDecisionDraft(previewId: strin
       if (current.state === "executed") return current;
       if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Terminwunschentscheidung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
       const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, organizationId: true } });
-      if (!actor || !canManagePlanningEntries(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Planungsberechtigung sind nicht mehr aktuell.", 409);
+      if (!actor || (parsed.payload.decision !== "withdraw" && !canManagePlanningEntries(actor))) throw new JarvisActionDraftError("role_changed", "Akteur oder Planungsberechtigung sind nicht mehr aktuell.", 409);
       const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
       const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
       if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Der Terminwunsch wird bereits entschieden.", 409);

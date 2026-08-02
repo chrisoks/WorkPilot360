@@ -1381,7 +1381,7 @@ export async function PATCH(req: Request) {
   const actor = actorResult.actor;
   const command = cleanString(body.command);
   if (command === "decision-preflight" || command === "decision-execute") {
-    const decision = cleanString(body.decision) as "approve" | "reject" | "cancel";
+    const decision = cleanString(body.decision) as "approve" | "reject" | "cancel" | "withdraw";
     const decisionInput = {
       organizationId: organization.id,
       actor,
@@ -1517,9 +1517,9 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  if (entry.approvalStatus === "confirmed" && !entry.deletedAt) {
+  if (!entry.deletedAt) {
     return NextResponse.json(
-      { error: "Bestätigte Termine dürfen nur über die kontrollierte Terminabsage gelöscht werden." },
+      { error: entry.approvalStatus === "confirmed" ? "Bestätigte Termine dürfen nur über die kontrollierte Terminabsage gelöscht werden." : "Offene Terminwünsche dürfen nur über das kontrollierte Zurückziehen gelöscht werden." },
       { status: 409 },
     );
   }

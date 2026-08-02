@@ -139,7 +139,7 @@ const planningMovePreviewPayloadSchema = z.object({
 
 const planningRequestDecisionPreviewPayloadSchema = z.object({
   entryId: boundedId,
-  decision: z.enum(["approve", "reject", "cancel"]),
+  decision: z.enum(["approve", "reject", "cancel", "withdraw"]),
   reason: optionalText(500),
 }).strict();
 
@@ -1011,7 +1011,7 @@ export type JarvisPlanningRequestDecisionDraftView = Omit<
 > & {
   actionId: "planning.request.manage";
   title: "Termin oder Terminwunsch kontrolliert entscheiden";
-  decision: "approve" | "reject" | "cancel";
+  decision: "approve" | "reject" | "cancel" | "withdraw";
 };
 
 export type JarvisWinterCalculationInputView = {

@@ -5113,4 +5113,20 @@ describe("POST /api/jarvis/chat", () => {
     expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.planning-request-decision", actionDraft: { actionId: "planning.request.manage", decision: "cancel" } });
     expect(mocks.createPersistedJarvisPlanningRequestDecisionDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ payload: { entryId: "planning-123456", decision: "cancel", reason: "Kunde hat den Einsatz abgesagt" } }) }));
   });
+
+  it("prepares an employee's reason-bound appointment-request withdrawal without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "MITARBEITER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisPlanningRequestDecisionDraft.mockImplementationOnce(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "planning.request.manage", title: "Termin oder Terminwunsch kontrolliert entscheiden", decision: "withdraw", badge: "Bereit", state: "awaiting_confirmation", revision: 1,
+      expiresAt: "2026-08-02T18:00:00.000Z", entryId: preview.payload.entryId, projectId: "project-1", fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: `TERMINWUNSCH ZURÜCKZIEHEN ${preview.payload.entryId}` }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Terminwunsch-ID request-123456 zurückziehen. Grund: Eigener Einsatz ist nicht mehr möglich" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.planning-request-decision", actionDraft: { decision: "withdraw" } });
+    expect(mocks.createPersistedJarvisPlanningRequestDecisionDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ payload: { entryId: "request-123456", decision: "withdraw", reason: "Eigener Einsatz ist nicht mehr möglich" } }) }));
+  });
 });

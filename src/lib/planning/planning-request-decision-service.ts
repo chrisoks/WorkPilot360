@@ -7,7 +7,7 @@ import { sendPushToUserSafely } from "@/lib/push/web-push";
 
 type DatabaseClient = typeof prisma | Prisma.TransactionClient;
 
-export type PlanningRequestDecision = "approve" | "reject" | "cancel";
+export type PlanningRequestDecision = "approve" | "reject" | "cancel" | "withdraw";
 export type PlanningRequestDecisionActor = {
   id: string;
   email: string;
@@ -71,7 +71,7 @@ export type PlanningRequestDecisionEvaluation = {
 export type PlanningRequestDecisionResult = {
   entryId: string;
   decision: PlanningRequestDecision;
-  approvalStatus: "confirmed" | "rejected" | "cancelled";
+  approvalStatus: "confirmed" | "rejected" | "cancelled" | "withdrawn";
   deleted: boolean;
   replayed: boolean;
 };
@@ -123,7 +123,9 @@ export function getPlanningRequestDecisionConfirmationText(
     ? `TERMINWUNSCH FREIGEBEN ${entryId.trim()}`
     : decision === "reject"
       ? `TERMINWUNSCH ABLEHNEN ${entryId.trim()}`
-      : `TERMIN ABSAGEN ${entryId.trim()}`;
+      : decision === "cancel"
+        ? `TERMIN ABSAGEN ${entryId.trim()}`
+        : `TERMINWUNSCH ZURÜCKZIEHEN ${entryId.trim()}`;
 }
 
 export function matchesPlanningRequestDecisionConfirmation(
@@ -153,19 +155,21 @@ async function evaluateInternal(input: {
   reason?: string;
   lock?: boolean;
 }) {
-  if (!canManagePlanningEntries(input.actor)) {
-    throw new PlanningRequestDecisionError("forbidden", "Nur die Planungsverantwortung darf Terminwünsche freigeben oder ablehnen.", 403);
-  }
   const decision = input.decision;
-  if (decision !== "approve" && decision !== "reject" && decision !== "cancel") {
-    throw new PlanningRequestDecisionError("invalid_decision", "Bitte Terminwunsch freigeben, ablehnen oder einen bestätigten Termin absagen.", 400);
+  if (decision !== "approve" && decision !== "reject" && decision !== "cancel" && decision !== "withdraw") {
+    throw new PlanningRequestDecisionError("invalid_decision", "Bitte Terminwunsch freigeben, ablehnen, zurückziehen oder einen bestätigten Termin absagen.", 400);
   }
   const reason = clean(input.reason);
-  if ((decision === "reject" || decision === "cancel") && (reason.length < 3 || reason.length > 500)) {
-    throw new PlanningRequestDecisionError("reason_required", `${decision === "cancel" ? "Eine Terminabsage" : "Eine Ablehnung"} benötigt einen nachvollziehbaren Grund mit 3 bis 500 Zeichen.`, 400);
+  if ((decision === "reject" || decision === "cancel" || decision === "withdraw") && (reason.length < 3 || reason.length > 500)) {
+    throw new PlanningRequestDecisionError("reason_required", `${decision === "cancel" ? "Eine Terminabsage" : decision === "withdraw" ? "Das Zurückziehen eines Terminwunsches" : "Eine Ablehnung"} benötigt einen nachvollziehbaren Grund mit 3 bis 500 Zeichen.`, 400);
   }
 
   const entry = await loadEntry(input.db, input.organizationId, clean(input.entryId), input.lock);
+  const actorCanManage = canManagePlanningEntries(input.actor);
+  const actorOwnsRequest = entry.userId === input.actor.id || entry.requestedByUserId === input.actor.id;
+  if (decision === "withdraw" ? !actorCanManage && !actorOwnsRequest : !actorCanManage) {
+    throw new PlanningRequestDecisionError("forbidden", decision === "withdraw" ? "Nur die eigene anfragende Person oder die Planungsverantwortung darf diesen Terminwunsch zurückziehen." : "Nur die Planungsverantwortung darf diesen Planungseintrag entscheiden.", 403);
+  }
   if (entry.deletedAt) {
     throw new PlanningRequestDecisionError("deleted", "Der Terminwunsch ist bereits gelöscht oder abgelehnt.", 409);
   }
@@ -182,7 +186,7 @@ async function evaluateInternal(input: {
 
   const assignees = await input.db.$queryRaw<AssigneeRow[]>`SELECT "id","firstName","lastName","email","isActive" FROM "User" WHERE "organizationId"=${input.organizationId} AND "id"=${entry.userId} LIMIT 1`;
   const assignee = assignees[0];
-  if (decision !== "cancel" && !assignee?.isActive) {
+  if (decision === "approve" && !assignee?.isActive) {
     throw new PlanningRequestDecisionError("assignee_inactive", "Die vorgesehene Person ist nicht mehr aktiv.", 409);
   }
 
@@ -190,10 +194,10 @@ async function evaluateInternal(input: {
     ? await input.db.$queryRaw<ProjectRow[]>`SELECT "id","projectNumber","title","status","updatedAt" FROM "WorkPilotProject" WHERE "organizationId"=${input.organizationId} AND "id"=${entry.projectId} LIMIT 1`
     : [];
   const project = projects[0] ?? null;
-  if (decision !== "cancel" && entry.projectId && !project) {
+  if (decision !== "cancel" && decision !== "withdraw" && entry.projectId && !project) {
     throw new PlanningRequestDecisionError("project_missing", "Das verknüpfte Projekt wurde nicht gefunden.", 409);
   }
-  if (decision !== "cancel" && project?.status.toLocaleLowerCase("de-DE").includes("archiviert")) {
+  if (decision !== "cancel" && decision !== "withdraw" && project?.status.toLocaleLowerCase("de-DE").includes("archiviert")) {
     throw new PlanningRequestDecisionError("project_archived", "Ein Terminwunsch in einem archivierten Projekt darf nicht entschieden werden.", 409);
   }
 
@@ -232,7 +236,7 @@ async function evaluateInternal(input: {
     },
     warnings: [
       ...(entry.recurrenceId || entry.recurrenceRule
-        ? [{ code: "single_occurrence", message: decision === "cancel" ? "Die Absage gilt nur für diesen einzelnen Termin; weitere Serieneinträge bleiben unverändert." : "Die Entscheidung gilt nur für diesen Terminwunsch; weitere Serieneinträge bleiben unverändert." }]
+        ? [{ code: "single_occurrence", message: decision === "cancel" ? "Die Absage gilt nur für diesen einzelnen Termin; weitere Serieneinträge bleiben unverändert." : decision === "withdraw" ? "Es wird nur dieser einzelne Terminwunsch zurückgezogen; weitere Serieneinträge bleiben unverändert." : "Die Entscheidung gilt nur für diesen Terminwunsch; weitere Serieneinträge bleiben unverändert." }]
         : []),
     ],
     fingerprint: sha256(evidence),
@@ -266,14 +270,14 @@ export async function executePlanningRequestDecisionInTransaction(input: {
   const historyId = deterministicId("planning-request-decision-history", input.organizationId, input.requestId);
   const prior = await input.tx.$queryRaw<Array<{ id: string; planningEntryId: string; toStatus: string | null }>>`SELECT "id","planningEntryId","toStatus" FROM "PlanningEntryHistory" WHERE "organizationId"=${input.organizationId} AND "id"=${historyId} LIMIT 1`;
   if (prior.length) {
-    const priorDecision = prior[0].toStatus === "confirmed" ? "approve" : prior[0].toStatus === "cancelled" ? "cancel" : "reject";
+    const priorDecision = prior[0].toStatus === "confirmed" ? "approve" : prior[0].toStatus === "cancelled" ? "cancel" : prior[0].toStatus === "withdrawn" ? "withdraw" : "reject";
     if (prior[0].planningEntryId !== input.entryId || priorDecision !== input.decision) {
       throw new PlanningRequestDecisionError("replay_conflict", "Diese Ausführungs-ID wurde bereits für eine andere Terminwunschentscheidung verwendet.", 409);
     }
     return {
       entryId: input.entryId,
       decision: priorDecision,
-      approvalStatus: prior[0].toStatus === "confirmed" ? "confirmed" : prior[0].toStatus === "cancelled" ? "cancelled" : "rejected",
+      approvalStatus: prior[0].toStatus === "confirmed" ? "confirmed" : prior[0].toStatus === "cancelled" ? "cancelled" : prior[0].toStatus === "withdrawn" ? "withdrawn" : "rejected",
       deleted: prior[0].toStatus !== "confirmed",
       replayed: true,
     } satisfies PlanningRequestDecisionResult;
@@ -286,7 +290,7 @@ export async function executePlanningRequestDecisionInTransaction(input: {
   const now = new Date();
   const savedRows = evaluation.decision === "approve"
     ? await input.tx.$queryRaw<EntryRow[]>`UPDATE "PlanningEntry" SET "approvalStatus"='confirmed',"approvedByUserId"=${input.actor.id},"approvedAt"=${now},"updatedAt"=${now} WHERE "organizationId"=${input.organizationId} AND "id"=${input.entryId} AND "approvalStatus"='requested' AND "deletedAt" IS NULL RETURNING *`
-    : evaluation.decision === "reject"
+    : evaluation.decision === "reject" || evaluation.decision === "withdraw"
       ? await input.tx.$queryRaw<EntryRow[]>`UPDATE "PlanningEntry" SET "deletedAt"=${now},"updatedAt"=${now} WHERE "organizationId"=${input.organizationId} AND "id"=${input.entryId} AND "approvalStatus"='requested' AND "deletedAt" IS NULL RETURNING *`
       : await input.tx.$queryRaw<EntryRow[]>`UPDATE "PlanningEntry" SET "deletedAt"=${now},"updatedAt"=${now} WHERE "organizationId"=${input.organizationId} AND "id"=${input.entryId} AND "approvalStatus"='confirmed' AND "deletedAt" IS NULL RETURNING *`;
   const saved = savedRows[0];
@@ -296,8 +300,9 @@ export async function executePlanningRequestDecisionInTransaction(input: {
 
   const approved = evaluation.decision === "approve";
   const cancelled = evaluation.decision === "cancel";
-  const note = approved ? "Terminwunsch freigegeben" : cancelled ? `Planungstermin abgesagt. Grund: ${evaluation.reason}` : `Terminwunsch abgelehnt. Grund: ${evaluation.reason}`;
-  await input.tx.$executeRaw`INSERT INTO "PlanningEntryHistory" ("id","organizationId","planningEntryId","projectId","eventType","actorUserId","actorName","fromStatus","toStatus","note","createdAt") VALUES (${historyId},${input.organizationId},${saved.id},${saved.projectId},${approved ? "approved" : cancelled ? "cancelled" : "rejected"},${input.actor.id},${actorName(input.actor)},${cancelled ? "confirmed" : "requested"},${approved ? "confirmed" : cancelled ? "cancelled" : "rejected"},${note},${now})`;
+  const withdrawn = evaluation.decision === "withdraw";
+  const note = approved ? "Terminwunsch freigegeben" : cancelled ? `Planungstermin abgesagt. Grund: ${evaluation.reason}` : withdrawn ? `Terminwunsch zurückgezogen. Grund: ${evaluation.reason}` : `Terminwunsch abgelehnt. Grund: ${evaluation.reason}`;
+  await input.tx.$executeRaw`INSERT INTO "PlanningEntryHistory" ("id","organizationId","planningEntryId","projectId","eventType","actorUserId","actorName","fromStatus","toStatus","note","createdAt") VALUES (${historyId},${input.organizationId},${saved.id},${saved.projectId},${approved ? "approved" : cancelled ? "cancelled" : withdrawn ? "withdrawn" : "rejected"},${input.actor.id},${actorName(input.actor)},${cancelled ? "confirmed" : "requested"},${approved ? "confirmed" : cancelled ? "cancelled" : withdrawn ? "withdrawn" : "rejected"},${note},${now})`;
   if (saved.projectId) {
     await input.tx.projectLogbookEntry.upsert({
       where: {
@@ -313,7 +318,7 @@ export async function executePlanningRequestDecisionInTransaction(input: {
         id: randomUUID(),
         organizationId: input.organizationId,
         projectId: saved.projectId,
-        title: approved ? "Terminwunsch freigegeben" : cancelled ? "Planungstermin abgesagt" : "Terminwunsch abgelehnt",
+        title: approved ? "Terminwunsch freigegeben" : cancelled ? "Planungstermin abgesagt" : withdrawn ? "Terminwunsch zurückgezogen" : "Terminwunsch abgelehnt",
         body: `${saved.title}: ${note}`,
         author: actorName(input.actor),
         authorUserId: input.actor.id,
@@ -323,13 +328,32 @@ export async function executePlanningRequestDecisionInTransaction(input: {
     });
   }
 
-  const subject = approved ? "Terminwunsch bestätigt" : cancelled ? "Planungstermin abgesagt" : "Terminwunsch abgelehnt";
+  const subject = approved ? "Terminwunsch bestätigt" : cancelled ? "Planungstermin abgesagt" : withdrawn ? "Terminwunsch zurückgezogen" : "Terminwunsch abgelehnt";
   const body = approved
     ? `Der Terminwunsch „${saved.title}“ am ${saved.date} von ${saved.startTime} bis ${saved.endTime} wurde bestätigt.`
     : cancelled
       ? `Der Planungstermin „${saved.title}“ am ${saved.date} von ${saved.startTime} bis ${saved.endTime} wurde abgesagt. Grund: ${evaluation.reason}`
-      : `Der Terminwunsch „${saved.title}“ am ${saved.date} von ${saved.startTime} bis ${saved.endTime} wurde abgelehnt. Grund: ${evaluation.reason}`;
-  for (const userId of new Set([clean(saved.userId), clean(saved.requestedByUserId)].filter(Boolean))) {
+      : withdrawn
+        ? `Der Terminwunsch „${saved.title}“ am ${saved.date} von ${saved.startTime} bis ${saved.endTime} wurde zurückgezogen. Grund: ${evaluation.reason}`
+        : `Der Terminwunsch „${saved.title}“ am ${saved.date} von ${saved.startTime} bis ${saved.endTime} wurde abgelehnt. Grund: ${evaluation.reason}`;
+  await input.tx.notification.updateMany({
+    where: {
+      organizationId: input.organizationId,
+      linkTarget: "planning-entry",
+      linkTargetId: saved.id,
+      subject: "Terminwunsch freigeben",
+      resolvedAt: null,
+    },
+    data: { resolvedAt: now, readAt: now },
+  });
+  const planningResponsibleIds = withdrawn
+    ? await input.tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "User" WHERE "organizationId"=${input.organizationId} AND "isActive"=true AND COALESCE("planningResponsibleFor", '[]'::jsonb) ? ${`${saved.board}:${saved.groupName}`}`
+    : [];
+  for (const userId of new Set([
+    clean(saved.userId),
+    clean(saved.requestedByUserId),
+    ...planningResponsibleIds.map((item) => clean(item.id)),
+  ].filter(Boolean))) {
     if (userId === input.actor.id) continue;
     const id = notificationId(input.organizationId, input.requestId, userId);
     await input.tx.notification.upsert({
@@ -354,7 +378,7 @@ export async function executePlanningRequestDecisionInTransaction(input: {
   return {
     entryId: saved.id,
     decision: evaluation.decision,
-    approvalStatus: approved ? "confirmed" : cancelled ? "cancelled" : "rejected",
+    approvalStatus: approved ? "confirmed" : cancelled ? "cancelled" : withdrawn ? "withdrawn" : "rejected",
     deleted: !approved,
     replayed: false,
   } satisfies PlanningRequestDecisionResult;
@@ -376,10 +400,11 @@ export async function deliverPlanningRequestDecisionNotifications(input: {
   entryId: string;
   actorUserId: string;
 }) {
-  const entries = await prisma.$queryRaw<Array<{ userId: string | null; requestedByUserId: string | null }>>`SELECT "userId","requestedByUserId" FROM "PlanningEntry" WHERE "organizationId"=${input.organizationId} AND "id"=${input.entryId} LIMIT 1`;
+  const entries = await prisma.$queryRaw<Array<{ userId: string | null; requestedByUserId: string | null; board: string; groupName: string }>>`SELECT "userId","requestedByUserId","board","groupName" FROM "PlanningEntry" WHERE "organizationId"=${input.organizationId} AND "id"=${input.entryId} LIMIT 1`;
   const entry = entries[0];
   if (!entry) return;
-  for (const userId of new Set([clean(entry.userId), clean(entry.requestedByUserId)].filter(Boolean))) {
+  const planningResponsibleIds = await prisma.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "User" WHERE "organizationId"=${input.organizationId} AND "isActive"=true AND COALESCE("planningResponsibleFor", '[]'::jsonb) ? ${`${entry.board}:${entry.groupName}`}`;
+  for (const userId of new Set([clean(entry.userId), clean(entry.requestedByUserId), ...planningResponsibleIds.map((item) => clean(item.id))].filter(Boolean))) {
     if (userId === input.actorUserId) continue;
     const id = notificationId(input.organizationId, input.requestId, userId);
     const notification = await prisma.notification.findUnique({ where: { id } });

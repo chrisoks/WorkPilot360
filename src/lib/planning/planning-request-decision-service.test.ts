@@ -150,13 +150,39 @@ describe("planning request decision service", () => {
   });
 
   it("fails closed for employees", async () => {
-    const db = fakeDb();
+    const db = fakeDb([entry()]);
     await expect(evaluatePlanningRequestDecision({
       db: db as never,
       organizationId: "org-1",
       actor: { ...actor, role: Role.MITARBEITER },
       entryId: "request-1",
       decision: "approve",
+    })).rejects.toMatchObject({ code: "forbidden", status: 403 } satisfies Partial<PlanningRequestDecisionError>);
+  });
+
+  it("allows an employee to withdraw only their own open request with a reason", async () => {
+    const employeeActor = { ...actor, id: "employee-1", role: Role.MITARBEITER };
+    const db = fakeDb([entry({ recurrenceId: "series-1", recurrenceRule: "weekly" })], [assignee], [project]);
+    const evaluation = await evaluatePlanningRequestDecision({
+      db: db as never,
+      organizationId: "org-1",
+      actor: employeeActor,
+      entryId: "request-1",
+      decision: "withdraw",
+      reason: "Eigener Einsatz ist nicht mehr möglich",
+    });
+    expect(evaluation).toMatchObject({ decision: "withdraw", warnings: [{ code: "single_occurrence" }] });
+    expect(getPlanningRequestDecisionConfirmationText("request-1", "withdraw")).toBe("TERMINWUNSCH ZURÜCKZIEHEN request-1");
+  });
+
+  it("blocks an employee from withdrawing another person's request", async () => {
+    await expect(evaluatePlanningRequestDecision({
+      db: fakeDb([entry({ userId: "employee-2", requestedByUserId: "employee-2" })]) as never,
+      organizationId: "org-1",
+      actor: { ...actor, id: "employee-1", role: Role.MITARBEITER },
+      entryId: "request-1",
+      decision: "withdraw",
+      reason: "Nicht mein eigener Terminwunsch",
     })).rejects.toMatchObject({ code: "forbidden", status: 403 } satisfies Partial<PlanningRequestDecisionError>);
   });
 
