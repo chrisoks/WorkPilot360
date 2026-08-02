@@ -11,7 +11,7 @@ import {
   canManageInvoices,
   canManageOffers,
   canManagePlanningEntries,
-  canManageProcessAutomation,
+  canManageStatusRules,
   canManageProjectTimeEntries,
   canManageProjects,
   canManageUsers,
@@ -575,8 +575,8 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["internal"],
-    implementation: "planned",
-    canUse: canManageProcessAutomation,
+    implementation: "available",
+    canUse: canManageStatusRules,
   },
 ];
 

@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisEmployeeCostManagementDraft: vi.fn(),
   cancelJarvisBulkUpdateDraft: vi.fn(),
   confirmJarvisBulkUpdateDraft: vi.fn(),
+  cancelJarvisAutomationManagementDraft: vi.fn(),
+  confirmJarvisAutomationManagementDraft: vi.fn(),
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
@@ -103,6 +105,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisEmployeeCostManagementDraft: mocks.confirmJarvisEmployeeCostManagementDraft,
   cancelJarvisBulkUpdateDraft: mocks.cancelJarvisBulkUpdateDraft,
   confirmJarvisBulkUpdateDraft: mocks.confirmJarvisBulkUpdateDraft,
+  cancelJarvisAutomationManagementDraft: mocks.cancelJarvisAutomationManagementDraft,
+  confirmJarvisAutomationManagementDraft: mocks.confirmJarvisAutomationManagementDraft,
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
@@ -1380,6 +1384,24 @@ describe("JARVIS action-draft API", () => {
     expect(response.status).toBe(200);
     expect(mocks.cancelJarvisBulkUpdateDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 3);
     expect(mocks.confirmJarvisBulkUpdateDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact automation phrase to the bound dry-run", async () => {
+    mocks.confirmJarvisAutomationManagementDraft.mockResolvedValueOnce({ actionId: "automation.manage", state: "executed", targetEnabled: true });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "automation.manage", command: "confirm", revision: 2,
+      confirmationText: "PROJEKTSTATUS-AUTOMATION AKTIVIEREN", enabled: false,
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisAutomationManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 2, "PROJEKTSTATUS-AUTOMATION AKTIVIEREN");
+  });
+
+  it("cancels an automation dry-run without changing the switch", async () => {
+    mocks.cancelJarvisAutomationManagementDraft.mockResolvedValueOnce({ actionId: "automation.manage", state: "cancelled" });
+    const response = (await POST(request("POST", { actorId: "user-1", actionId: "automation.manage", command: "cancel", revision: 3 }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.cancelJarvisAutomationManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 3);
+    expect(mocks.confirmJarvisAutomationManagementDraft).not.toHaveBeenCalled();
   });
 
   it("passes only the exact project-status phrase to the bound status draft", async () => {

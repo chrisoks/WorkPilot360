@@ -8,6 +8,7 @@ import {
   Prisma,
   Role,
   type JarvisActionDraft,
+  type User,
 } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
@@ -35,6 +36,7 @@ import {
   type JarvisPersonnelManagementDraftView,
   type JarvisEmployeeCostManagementDraftView,
   type JarvisBulkUpdateDraftView,
+  type JarvisAutomationManagementDraftView,
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
@@ -66,6 +68,7 @@ import {
   canManageCatalogItems,
   canManageUsers,
   canAccessEmployeeCosts,
+  canManageStatusRules,
   canManageOffers,
   canDeleteOffers,
   canDeleteInvoices,
@@ -74,6 +77,13 @@ import {
   canSendInvoiceDocuments,
   canSendOfferDocuments,
 } from "@/lib/permissions";
+import {
+  evaluateProjectStatusAutomationManagement,
+  executeProjectStatusAutomationManagement,
+  getProjectStatusAutomationConfirmationText,
+  ProjectStatusAutomationManagementServiceError,
+  type ProjectStatusAutomationManagementRequest,
+} from "@/lib/automation/project-status-automation-management-service";
 import {
   createProjectLogbookEntry,
   ProjectLogbookServiceError,
@@ -1030,6 +1040,22 @@ const bulkUpdateContextSchema = z.object({
   mode: z.enum(["apply", "rollback"]), sourceRequestId: z.string().optional(), targetCategory: z.string(),
   items: z.array(bulkUpdateItemSchema).max(25),
   excluded: z.array(z.object({ customerNumber: z.string(), reason: z.string() }).strict()),
+  checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string() }).strict()),
+  warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
+}).strict();
+
+const automationManagementPayloadSchema = z.object({ enabled: z.boolean() }).strict();
+const automationManagementContextSchema = z.object({
+  currentEnabled: z.boolean(),
+  targetEnabled: z.boolean(),
+  monitoredProjects: z.number().int().min(0),
+  responsibleNotices: z.number().int().min(0),
+  managementNotices: z.number().int().min(0),
+  missingResponsible: z.number().int().min(0),
+  items: z.array(z.object({
+    projectId: z.string(), projectNumber: z.string(), projectTitle: z.string(), customer: z.string(),
+    status: z.string(), elapsedDays: z.number().int().min(0), stage: z.enum(["responsible", "management"]), responsibleName: z.string(),
+  }).strict()).max(100),
   checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string() }).strict()),
   warnings: z.array(z.string()), blockingIssues: z.array(z.string()), fingerprint: z.string().length(64),
 }).strict();
@@ -4277,6 +4303,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "bulk.update") {
     return getJarvisBulkUpdateDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "automation.manage") {
+    return getJarvisAutomationManagementDraft(previewId, binding, now);
   }
   if (draft?.actionId === "project.status.change") {
     return getJarvisProjectStatusDraft(previewId, binding, now);
@@ -10649,6 +10678,116 @@ export async function confirmJarvisBulkUpdateDraft(previewId: string, binding: J
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof ContactBulkCategoryServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : error.code === "conflict" ? "conflict" : "invalid_input", error.message, error.code === "invalid_input" ? 400 : 409);
     throw new JarvisActionDraftError("execution_failed", "Die Massenänderung wurde nicht ausgeführt; alle Kontakte blieben unverändert.", 500);
+  }
+}
+
+function mayManageProjectStatusAutomation(binding: JarvisTaskDraftBinding) {
+  return canManageStatusRules(binding.profile.sessionActor) && canManageStatusRules(binding.profile.effectiveActor);
+}
+
+function validateAutomationManagementBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId || draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId || draft.impersonating !== binding.profile.isImpersonating) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Automationsänderung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  }
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit dem Automations-Dry-Run geändert. Bitte prüfe erneut.", 409);
+  if (!integrityMatches(draft)) throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Automationsänderung ist ungültig.", 409);
+  const payload = automationManagementPayloadSchema.safeParse(draft.payload);
+  const context = automationManagementContextSchema.safeParse(draft.context);
+  if (draft.actionId !== "automation.manage" || !payload.success || !context.success || hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash) throw new JarvisActionDraftError("integrity_failed", "Automationsänderung oder Dry-Run stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundAutomationManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Automationsänderung wurde nicht gefunden.", 404);
+  validateAutomationManagementBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validateAutomationManagementBinding(current, binding) };
+}
+
+function toJarvisAutomationManagementDraftView(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding): JarvisAutomationManagementDraftView {
+  const { context } = validateAutomationManagementBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayManageProjectStatusAutomation(binding);
+  const ready = state === "awaiting_confirmation" && permitted && context.blockingIssues.length === 0;
+  const reason: JarvisAutomationManagementDraftView["confirmation"]["reason"] = state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" : state === "executing" ? "executing" : !permitted ? "not_permitted" : context.blockingIssues.length ? "blocked" : "ready";
+  return {
+    version: 2, previewId: draft.id, actionId: "automation.manage", title: "Projektstatus-Automation kontrolliert ändern",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state, revision: draft.revision, expiresAt: draft.expiresAt.toISOString(), currentEnabled: context.currentEnabled, targetEnabled: context.targetEnabled,
+    monitoredProjects: context.monitoredProjects, responsibleNotices: context.responsibleNotices, managementNotices: context.managementNotices, missingResponsible: context.missingResponsible,
+    fields: [
+      { label: "Automation", value: "Projektstatus-Frühwarnung" },
+      { label: "Aktuell", value: context.currentEnabled ? "Aktiv" : "Inaktiv" },
+      { label: "Nach Ausführung", value: context.targetEnabled ? "Aktiv" : "Inaktiv" },
+    ],
+    items: context.items, checks: context.checks, warnings: context.warnings,
+    blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Diese Rollenkombination darf Automationen nicht konfigurieren."] : [])],
+    confirmation: { enabled: ready, reason, requiredText: getProjectStatusAutomationConfirmationText(context.targetEnabled) },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" ? { result: { entityType: "organization-setting" as const, entityId: `${draft.organizationId}:deadlines`, label: "Status-Automation öffnen" } } : {}),
+  };
+}
+
+export async function createPersistedJarvisAutomationManagementDraft(input: { preview: JarvisActionPreview<"automation.manage">; organizationId: string; sessionId: string; profile: JarvisAccessProfile; users: readonly User[]; now?: Date }) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Automationsänderung ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayManageProjectStatusAutomation(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Automationen nicht konfigurieren.", 403);
+  const now = input.now ?? new Date(); const payload = automationManagementPayloadSchema.parse(input.preview.payload); const actorIds = getActorIds(input.profile);
+  const evaluation = await evaluateProjectStatusAutomationManagement({ organizationId: input.organizationId, users: input.users, request: payload });
+  const context = automationManagementContextSchema.parse(evaluation); const state = context.blockingIssues.length ? "awaiting_input" : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = { id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId, sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role, effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role, impersonating: input.profile.isImpersonating, actionId: "automation.manage", state, revision: 1, payloadHash: hashJson(payload), contextHash: hashJson(context), expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null, executedAt: null, resultEntityType: null, resultEntityId: null, lastErrorCode: context.blockingIssues.length ? "automation_validation" : null };
+  const created = await prisma.$transaction(async (tx) => { const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } }); await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked", reasonCode: context.blockingIssues.length ? "automation_validation" : undefined }); return draft; });
+  return toJarvisAutomationManagementDraftView(created, input);
+}
+
+export async function getJarvisAutomationManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) { const { draft } = await loadBoundAutomationManagementDraft(previewId, binding, now); return toJarvisAutomationManagementDraftView(draft, binding); }
+
+export async function cancelJarvisAutomationManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundAutomationManagementDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisAutomationManagementDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Automationsänderung kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Automationsänderung wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => { const changed = await tx.jarvisActionDraft.updateMany({ where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag }, data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) } }); if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Automationsänderung wurde bereits verändert.", 409); const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } }); await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" }); return current; });
+  return toJarvisAutomationManagementDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisAutomationManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundAutomationManagementDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisAutomationManagementDraftView(loaded.draft, binding);
+  const requiredText = getProjectStatusAutomationConfirmationText(loaded.context.targetEnabled);
+  if (confirmationText.trim() !== requiredText) throw new JarvisActionDraftError("invalid_input", `Gib zur Bestätigung exakt „${requiredText}“ ein.`, 400);
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur der aktuelle, vollständig geprüfte Automations-Dry-Run darf bestätigt werden.", 409);
+  if (!mayManageProjectStatusAutomation(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Automationen nicht konfigurieren.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } }); if (!current) throw new JarvisActionDraftError("not_found", "Die Automationsänderung wurde nicht gefunden.", 404);
+      const parsed = validateAutomationManagementBinding(current, binding); if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Automationsänderung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true } });
+      if (!actor || !canManageStatusRules(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Automationsberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null }; const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } }); if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Automationsänderung wird bereits verarbeitet.", 409);
+      await executeProjectStatusAutomationManagement({ tx, organizationId: binding.organizationId, actorId: actor.id, requestId: current.id, request: parsed.payload as ProjectStatusAutomationManagementRequest, expectedFingerprint: parsed.context.fingerprint });
+      const resultId = `${binding.organizationId}:deadlines`; const executedAt = new Date(); const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "organization-setting", resultEntityId: resultId }; const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "organization-setting", resultEntityId: resultId, integrityTag: createIntegrityTag(executedData) } }); await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed" }); return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisAutomationManagementDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") { const latest = await loadBoundAutomationManagementDraft(previewId, binding, now); if (latest.draft.state === "executed") return toJarvisAutomationManagementDraftView(latest.draft, binding); }
+    if (error instanceof JarvisActionDraftError) throw error;
+    const automationErrorCode = error instanceof ProjectStatusAutomationManagementServiceError
+      ? error.code
+      : error && typeof error === "object" && "code" in error && ["invalid_input", "stale_context", "conflict"].includes(String(error.code))
+        ? String(error.code) as "invalid_input" | "stale_context" | "conflict"
+        : null;
+    if (automationErrorCode) {
+      throw new JarvisActionDraftError(
+        automationErrorCode,
+        error instanceof Error ? error.message : "Die Automationseinstellungen haben sich seit dem Dry-Run verändert.",
+        automationErrorCode === "invalid_input" ? 400 : 409
+      );
+    }
+    throw new JarvisActionDraftError("execution_failed", "Die Projektstatus-Automation wurde nicht geändert; alle Einstellungen blieben unverändert.", 500);
   }
 }
 

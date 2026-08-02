@@ -79,6 +79,21 @@ async function main() {
   });
   if (!actor) throw new Error("Kein aktiver Geschäftsführungs-Testakteur gefunden.");
 
+  const automationSetting = await prisma.organizationSetting.findUnique({
+    where: {
+      organizationId_key: {
+        organizationId: actor.organizationId,
+        key: "deadlines",
+      },
+    },
+    select: { value: true },
+  });
+  const automationSettingValue =
+    automationSetting?.value && typeof automationSetting.value === "object" && !Array.isArray(automationSetting.value)
+      ? automationSetting.value
+      : {};
+  const currentAutomationEnabled = automationSettingValue.projectStatusEscalationEnabled === true;
+
   const now = new Date();
   const paymentInvoice = await prisma.invoice.findFirst({
     where: {
@@ -339,6 +354,7 @@ async function main() {
   let personnelManagementDraftPrepared = false;
   let employeeCostManagementDraftPrepared = false;
   let bulkUpdateDraftPrepared = false;
+  let automationManagementDraftPrepared = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -366,6 +382,7 @@ async function main() {
         const isPersonnelManagementCase = item.question.includes("QAP-700");
         const isEmployeeCostManagementCase = item.question.includes("QAL-800");
         const isBulkUpdateCase = item.question.includes("QAB-900");
+        const isAutomationManagementCase = item.question.includes("Projektstatus-Frühwarnung");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -408,6 +425,8 @@ async function main() {
               ? `Ändere Lohnkosten für ${personnelTarget.email}: Monatsgehalt: 3.200; Vollkostenfaktor: 1,4.`
             : isBulkUpdateCase
               ? `Archiviere die Kontakte ${bulkContacts.map((contact) => contact.customerNumber).join(", ")} als Gruppenaktion.`
+            : isAutomationManagementCase && currentAutomationEnabled
+              ? "Deaktiviere die Projektstatus-Frühwarnung."
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -545,6 +564,22 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Massenänderungsfrage hat keinen vollständigen, unblockierten Dry-Run mit zwei Kontakten erzeugt." });
           } else {
             bulkUpdateDraftPrepared = true;
+          }
+        }
+        if (isAutomationManagementCase) {
+          if (payload.actionDraft?.actionId !== "automation.manage") {
+            failures.push({ id: item.id, status: response.status, error: "Die Automationsfrage hat keine kontrollierte automation.manage-Vorschau erzeugt." });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length ||
+            payload.actionDraft.currentEnabled !== currentAutomationEnabled ||
+            payload.actionDraft.targetEnabled !== !currentAutomationEnabled ||
+            typeof payload.actionDraft.monitoredProjects !== "number"
+          ) {
+            failures.push({ id: item.id, status: response.status, error: "Die Automationsfrage hat keinen vollständigen, unblockierten und zustandsgebundenen Dry-Run erzeugt." });
+          } else {
+            automationManagementDraftPrepared = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -1063,6 +1098,7 @@ async function main() {
     personnelManagementDraftPrepared,
     employeeCostManagementDraftPrepared,
     bulkUpdateDraftPrepared,
+    automationManagementDraftPrepared,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId

@@ -66,6 +66,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisPersonnelManagementDraft: vi.fn(),
   createPersistedJarvisEmployeeCostManagementDraft: vi.fn(),
   createPersistedJarvisBulkUpdateDraft: vi.fn(),
+  createPersistedJarvisAutomationManagementDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -169,6 +170,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisEmployeeCostManagementDraft,
   createPersistedJarvisBulkUpdateDraft:
     mocks.createPersistedJarvisBulkUpdateDraft,
+  createPersistedJarvisAutomationManagementDraft:
+    mocks.createPersistedJarvisAutomationManagementDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3510,6 +3513,23 @@ describe("POST /api/jarvis/chat", () => {
     }));
     expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.bulk-update", actionDraft: { actionId: "bulk.update", items: [{ customerNumber: "7001" }, { customerNumber: "7002" }] } });
     expect(mocks.createPersistedJarvisBulkUpdateDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "bulk.update", payload: { mode: "apply", customerNumbers: ["7001", "7002"], targetCategory: "Archiv" } }) }));
+  });
+
+  it("prepares a project-status automation switch only as a dry-run-bound draft", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisAutomationManagementDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "automation.manage", title: "Projektstatus-Automation kontrolliert ändern",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T08:00:00.000Z",
+      currentEnabled: false, targetEnabled: true, monitoredProjects: 3, responsibleNotices: 1, managementNotices: 1, missingResponsible: 0,
+      fields: [], items: [], checks: [], warnings: [], blockingIssues: [], confirmation: { enabled: true, reason: "ready", requiredText: "PROJEKTSTATUS-AUTOMATION AKTIVIEREN" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Aktiviere die Projektstatus-Frühwarnung" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.automation-management", actionDraft: { actionId: "automation.manage", targetEnabled: true } });
+    expect(mocks.createPersistedJarvisAutomationManagementDraft).toHaveBeenCalledWith(expect.objectContaining({ users: expect.any(Array), preview: expect.objectContaining({ actionId: "automation.manage", payload: { enabled: true } }) }));
   });
 
   it("asks for a documented reason before preparing a project-status change", async () => {

@@ -18,6 +18,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "personnel.manage",
   "payroll.manage",
   "bulk.update",
+  "automation.manage",
   "planning.prepare",
   "time.prepare",
   "project-logbook.prepare",
@@ -292,6 +293,10 @@ const bulkUpdatePreviewPayloadSchema = z.discriminatedUnion("mode", [
   }).strict(),
 ]);
 
+const automationManagementPreviewPayloadSchema = z.object({
+  enabled: z.boolean(),
+}).strict();
+
 const offerPreviewLineSchema = z
   .object({
     catalogItemId: boundedId.optional(),
@@ -445,6 +450,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "personnel.manage": personnelManagementPreviewPayloadSchema,
   "payroll.manage": employeeCostManagementPreviewPayloadSchema,
   "bulk.update": bulkUpdatePreviewPayloadSchema,
+  "automation.manage": automationManagementPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
@@ -476,6 +482,7 @@ export type JarvisActionPreviewPayloadMap = {
   "personnel.manage": z.infer<typeof personnelManagementPreviewPayloadSchema>;
   "payroll.manage": z.infer<typeof employeeCostManagementPreviewPayloadSchema>;
   "bulk.update": z.infer<typeof bulkUpdatePreviewPayloadSchema>;
+  "automation.manage": z.infer<typeof automationManagementPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "project-logbook.prepare": z.infer<
@@ -1340,6 +1347,31 @@ export type JarvisBulkUpdateDraftView = Omit<
   items: Array<{ id: string; customerNumber: string; label: string; before: string; after: string; updatedAt: string }>;
   excluded: Array<{ customerNumber: string; reason: string }>;
   result?: { entityType: "contact"; entityId: string; label: string };
+};
+
+export type JarvisAutomationManagementDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus" | "projectId" | "result"
+> & {
+  actionId: "automation.manage";
+  title: "Projektstatus-Automation kontrolliert ändern";
+  currentEnabled: boolean;
+  targetEnabled: boolean;
+  monitoredProjects: number;
+  responsibleNotices: number;
+  managementNotices: number;
+  missingResponsible: number;
+  items: Array<{
+    projectId: string;
+    projectNumber: string;
+    projectTitle: string;
+    customer: string;
+    status: string;
+    elapsedDays: number;
+    stage: "responsible" | "management";
+    responsibleName: string;
+  }>;
+  result?: { entityType: "organization-setting"; entityId: string; label: string };
 };
 
 export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView, "actionId" | "title" | "targetStatus"> & {

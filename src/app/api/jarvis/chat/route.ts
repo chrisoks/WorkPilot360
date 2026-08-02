@@ -110,6 +110,7 @@ import {
   createPersistedJarvisPersonnelManagementDraft,
   createPersistedJarvisEmployeeCostManagementDraft,
   createPersistedJarvisBulkUpdateDraft,
+  createPersistedJarvisAutomationManagementDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -203,6 +204,7 @@ import {
   looksLikeContactBulkCategoryRequest,
   looksLikeContactBulkRollbackRequest,
 } from "@/lib/jarvis/bulk-update-intake";
+import { extractProjectStatusAutomationRequest } from "@/lib/jarvis/automation-management-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -1147,6 +1149,24 @@ async function buildJarvisBulkUpdateDraft(input: {
     return { type: "answer" as const, topicId: "action.bulk-update", message: details.mode === "rollback" ? "Ich habe die protokollierte Massenänderung und jeden aktuellen Kontaktstand geprüft. Die Rückrollung stellt nur dann alle Ausgangskategorien gemeinsam wieder her, wenn seitdem kein Zielkontakt verändert wurde. Erst die exakte Bestätigungsphrase führt sie genau einmal aus." : "Ich habe einen rein lesenden Dry-Run erstellt. Prüfe Trefferzahl, vollständige Kontaktliste, Alt-/Neuwerte und Ausschlüsse. Die Ausführung ist auf 25 ausdrücklich genannte Kundennummern begrenzt, läuft vollständig oder gar nicht und protokolliert einen exakten Wiederherstellungsstand. Erst die exakte Bestätigungsphrase ändert alle angezeigten Kategorien genau einmal.", actionDraft };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.bulk-update.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Massenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts geändert.` };
+  }
+}
+
+async function buildJarvisAutomationManagementDraft(input: {
+  request: { enabled: boolean };
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  users: Awaited<ReturnType<typeof getDemoContext>>["users"];
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.automation-management.session-required", message: "Für eine Automationsänderung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts geändert." };
+  const preview = createJarvisActionPreview({ previewId: randomUUID(), actionId: "automation.manage", payload: input.request, organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString() });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.automation-management.refused", message: `${preview.message} Es wurde nichts geändert und keine Automation ausgeführt.` };
+  try {
+    const actionDraft = await createPersistedJarvisAutomationManagementDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile, users: input.users });
+    return { type: "answer" as const, topicId: "action.automation-management", message: "Ich habe den aktuellen Schalter und einen rein lesenden Projektstatus-Dry-Run geprüft. JARVIS ändert in diesem Schritt nur die Aktivierung der bestehenden Frühwarnung: keine Meldung, keine E-Mail, kein Schedulerlauf und keine Projektstatusänderung. Erst die exakte Bestätigungsphrase ändert den Schalter genau einmal.", actionDraft };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.automation-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Automationsänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts geändert und keine Automation ausgeführt.` };
   }
 }
 
@@ -3154,6 +3174,13 @@ export async function POST(req: Request) {
   if (looksLikeContactBulkCategoryRequest(message) || looksLikeContactBulkRollbackRequest(message)) {
     return respond(
       await buildJarvisBulkUpdateDraft({ question: message, organizationId: organization.id, sessionId: actorResult.sessionId, accessProfile }),
+      "management"
+    );
+  }
+  const automationManagementRequest = extractProjectStatusAutomationRequest(message);
+  if (automationManagementRequest) {
+    return respond(
+      await buildJarvisAutomationManagementDraft({ request: automationManagementRequest, organizationId: organization.id, sessionId: actorResult.sessionId, accessProfile, users }),
       "management"
     );
   }

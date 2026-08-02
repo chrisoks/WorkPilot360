@@ -4,7 +4,7 @@ import { Role } from "@prisma/client";
 const fake = vi.hoisted(() => {
   const drafts = new Map<string, Record<string, any>>();
   const audits: Array<Record<string, any>> = [];
-  const users = [
+  const users: any[] = [
     {
       id: "user-1",
       organizationId: "org-1",
@@ -154,6 +154,15 @@ const fake = vi.hoisted(() => {
     warnings: ["Nur Kategorien ändern sich."], blockingIssues: [], fingerprint: "4".repeat(64),
   }));
   const executeContactBulkCategory = vi.fn(async (input: Record<string, any>) => { bulkUpdates.push(input); return { requestId: input.requestId, sourceRequestId: input.request.mode === "rollback" ? input.request.sourceRequestId : input.requestId, count: 2 }; });
+  const automationChanges: Array<Record<string, any>> = [];
+  const evaluateProjectStatusAutomationManagement = vi.fn(async ({ request }: { request: { enabled: boolean } }) => ({
+    currentEnabled: !request.enabled, targetEnabled: request.enabled, monitoredProjects: 3,
+    responsibleNotices: 1, managementNotices: 1, missingResponsible: 0,
+    items: [{ projectId: "project-1", projectNumber: "MKG-209", projectTitle: "Marketing", customer: "Musterkunde", status: "Umsetzung", elapsedDays: 18, stage: "responsible", responsibleName: "Jarvis Tester" }],
+    checks: [{ key: "dry-run", label: "Aktueller Dry-Run", status: "ok", detail: "Geprüft." }],
+    warnings: ["Keine unmittelbare Zustellung."], blockingIssues: [], fingerprint: "3".repeat(64),
+  }));
+  const executeProjectStatusAutomationManagement = vi.fn(async (input: Record<string, any>) => { automationChanges.push(input); return { projectStatusEscalationEnabled: input.request.enabled }; });
   const projectLifecycleChanges: Array<Record<string, any>> = [];
   const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
     reason,
@@ -753,6 +762,7 @@ const fake = vi.hoisted(() => {
       personnelChanges.length = 0;
       employeeCostChanges.length = 0;
       bulkUpdates.length = 0;
+      automationChanges.length = 0;
       projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
@@ -783,6 +793,8 @@ const fake = vi.hoisted(() => {
       executeEmployeeCostChange.mockClear();
       evaluateContactBulkCategory.mockClear();
       executeContactBulkCategory.mockClear();
+      evaluateProjectStatusAutomationManagement.mockClear();
+      executeProjectStatusAutomationManagement.mockClear();
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
       createProjectLogbookEntry.mockClear();
@@ -841,6 +853,9 @@ const fake = vi.hoisted(() => {
     bulkUpdates,
     evaluateContactBulkCategory,
     executeContactBulkCategory,
+    automationChanges,
+    evaluateProjectStatusAutomationManagement,
+    executeProjectStatusAutomationManagement,
     evaluateProjectStatusChange,
     executeProjectStatusChange,
     projectLifecycleChanges,
@@ -908,6 +923,14 @@ vi.mock("@/lib/contacts/contact-bulk-category-service", () => ({
   executeContactBulkCategory: fake.executeContactBulkCategory,
   getContactBulkCategoryConfirmationText: (evaluation: { mode: string; items: unknown[]; sourceRequestId?: string }) => evaluation.mode === "rollback" ? `MASSENÄNDERUNG ZURÜCKROLLEN ${evaluation.sourceRequestId}` : `MASSENÄNDERUNG AUSFÜHREN ${evaluation.items.length} KONTAKTE`,
   ContactBulkCategoryServiceError: class ContactBulkCategoryServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
+vi.mock("@/lib/automation/project-status-automation-management-service", () => ({
+  evaluateProjectStatusAutomationManagement: fake.evaluateProjectStatusAutomationManagement,
+  executeProjectStatusAutomationManagement: fake.executeProjectStatusAutomationManagement,
+  getProjectStatusAutomationConfirmationText: (enabled: boolean) => enabled ? "PROJEKTSTATUS-AUTOMATION AKTIVIEREN" : "PROJEKTSTATUS-AUTOMATION DEAKTIVIEREN",
+  ProjectStatusAutomationManagementServiceError: class ProjectStatusAutomationManagementServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
 }));
@@ -1110,6 +1133,9 @@ import {
   cancelJarvisBulkUpdateDraft,
   confirmJarvisBulkUpdateDraft,
   createPersistedJarvisBulkUpdateDraft,
+  cancelJarvisAutomationManagementDraft,
+  confirmJarvisAutomationManagementDraft,
+  createPersistedJarvisAutomationManagementDraft,
   cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft,
   createPersistedJarvisProjectStatusDraft,
@@ -3215,6 +3241,39 @@ describe("persistent JARVIS bulk-update drafts", () => {
     const cancellable = await createPersistedJarvisBulkUpdateDraft({ ...binding(), now: baseNow, preview: preview("bulk-update-cancel") });
     expect((await cancelJarvisBulkUpdateDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
     expect(fake.bulkUpdates).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS automation-management drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string, enabled = true) => ({
+    version: 1 as const, previewId, actionId: "automation.manage" as const,
+    actionTitle: "Automation konfigurieren oder ausführen", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { enabled }, execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("changes only the reviewed switch exactly once", async () => {
+    const created = await createPersistedJarvisAutomationManagementDraft({ ...binding(), users: fake.users, now: baseNow, preview: preview("automation-1") });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", currentEnabled: false, targetEnabled: true, confirmation: { requiredText: "PROJEKTSTATUS-AUTOMATION AKTIVIEREN" } });
+    const first = await confirmJarvisAutomationManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisAutomationManagementDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("org-1:deadlines");
+    expect(fake.automationChanges).toHaveLength(1);
+    expect(fake.executeProjectStatusAutomationManagement).toHaveBeenCalledWith(expect.objectContaining({ requestId: "automation-1", expectedFingerprint: "3".repeat(64), request: { enabled: true } }));
+  });
+
+  it("rejects an inexact phrase and cancels without changing the switch", async () => {
+    const wrong = await createPersistedJarvisAutomationManagementDraft({ ...binding(), users: fake.users, now: baseNow, preview: preview("automation-wrong") });
+    await expect(confirmJarvisAutomationManagementDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisAutomationManagementDraft({ ...binding(), users: fake.users, now: baseNow, preview: preview("automation-cancel") });
+    expect((await cancelJarvisAutomationManagementDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    expect(fake.automationChanges).toHaveLength(0);
+  });
+
+  it("rejects leadership because configuration requires master-data authority", async () => {
+    await expect(createPersistedJarvisAutomationManagementDraft({ organizationId: "org-1", sessionId: "session-1", profile: profile(Role.FUEHRUNGSKRAFT), users: fake.users, now: baseNow, preview: preview("automation-lead") })).rejects.toMatchObject({ code: "scope_mismatch" });
   });
 });
 

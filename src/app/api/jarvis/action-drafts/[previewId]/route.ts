@@ -28,6 +28,7 @@ import {
   cancelJarvisPersonnelManagementDraft,
   cancelJarvisEmployeeCostManagementDraft,
   cancelJarvisBulkUpdateDraft,
+  cancelJarvisAutomationManagementDraft,
   cancelJarvisTimeDraft,
   cancelJarvisVehicleTripCalculationDraft,
   cancelJarvisWinterCalculationDraft,
@@ -71,6 +72,7 @@ import {
   confirmJarvisPersonnelManagementDraft,
   confirmJarvisEmployeeCostManagementDraft,
   confirmJarvisBulkUpdateDraft,
+  confirmJarvisAutomationManagementDraft,
   confirmJarvisTimeDraft,
   confirmJarvisVehicleTripCalculationDraft,
   confirmJarvisWinterCalculationDraft,
@@ -220,6 +222,7 @@ export async function PATCH(
     const isPersonnelManagement = body.actionId === "personnel.manage";
     const isEmployeeCostManagement = body.actionId === "payroll.manage";
     const isBulkUpdate = body.actionId === "bulk.update";
+    const isAutomationManagement = body.actionId === "automation.manage";
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
@@ -241,7 +244,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
+    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isAutomationManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -508,6 +511,7 @@ export async function POST(
     const isPersonnelManagement = body.actionId === "personnel.manage";
     const isEmployeeCostManagement = body.actionId === "payroll.manage";
     const isBulkUpdate = body.actionId === "bulk.update";
+    const isAutomationManagement = body.actionId === "automation.manage";
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
@@ -580,6 +584,12 @@ export async function POST(
           )
         : isBulkUpdate
         ? await cancelJarvisBulkUpdateDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isAutomationManagement
+        ? await cancelJarvisAutomationManagementDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -722,6 +732,8 @@ export async function POST(
           ? "Die Lohnkostenänderung wurde abgebrochen. Mitarbeiterkosten und historische Kostensnapshots blieben unverändert."
           : isBulkUpdate
           ? "Die Massenänderung wurde abgebrochen. Alle Kontakte und Kategorien blieben unverändert."
+          : isAutomationManagement
+          ? "Die Automationsänderung wurde abgebrochen. Schalter, Regeln, Projekte und Meldungen blieben unverändert."
           : isProjectLifecycle
           ? "Die Projektarchivierung wurde abgebrochen. Projekt und sämtliche verknüpften Fachdaten blieben unverändert."
           : isProjectStatus
@@ -831,6 +843,13 @@ export async function POST(
         )
       : isBulkUpdate
       ? await confirmJarvisBulkUpdateDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isAutomationManagement
+      ? await confirmJarvisAutomationManagementDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -1016,6 +1035,8 @@ export async function POST(
             ? "Die Lohn- und Mitarbeiterkosten wurden nach deiner exakten Bestätigung genau einmal geändert. Historische Kostensnapshots blieben unverändert; der neue Satz gilt für künftige Abschlüsse und Kalkulationen."
             : isBulkUpdate
             ? "Die geprüften Kontaktkategorien wurden nach deiner exakten Bestätigung vollständig und genau einmal geändert. Der Wiederherstellungsstand wurde gemeinsam protokolliert."
+            : isAutomationManagement
+            ? "Der Schalter der Projektstatus-Automation wurde nach deiner exakten Bestätigung genau einmal geändert. Dieser Schritt hat keine Meldung, E-Mail, Scheduler-Ausführung oder Projektstatusänderung ausgelöst."
             : isProjectLifecycle
             ? "Das Projekt wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Timeline, Logbuch und Audit wurden gemeinsam geschrieben; alle Verknüpfungen blieben erhalten."
             : isProjectStatus
@@ -1073,6 +1094,8 @@ export async function POST(
             ? "Die Lohn- und Mitarbeiterkosten wurden nicht geändert."
             : isBulkUpdate
             ? "Die Kontakt-Massenänderung wurde nicht ausgeführt."
+            : isAutomationManagement
+            ? "Die Projektstatus-Automation wurde nicht geändert."
             : isProjectLifecycle
             ? "Das Projekt wurde nicht archiviert oder wiederhergestellt."
             : isProjectStatus
