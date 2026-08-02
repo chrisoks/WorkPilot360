@@ -23,10 +23,12 @@ function source(overrides: Partial<Awaited<ReturnType<ProjectStatusAutomationSta
       schedulerLastStatus: "ok",
       schedulerLastHttpStatus: 200,
       deliveryEnabled: true,
+      systemMailConfigured: true,
       monitoredProjects: 12,
       responsibleNotices: 2,
       managementNotices: 3,
       missingResponsible: 1,
+      ambiguousResponsible: 1,
       openDeliveryEvents: 4,
       latestDeliveryEventAt: "2026-08-02T06:15:00.000Z",
       configurationChangeCount: 1,
@@ -49,6 +51,18 @@ function source(overrides: Partial<Awaited<ReturnType<ProjectStatusAutomationSta
         resolved: false,
         createdAt: "2026-08-02T06:15:00.000Z",
       }],
+      activeManagementRecipients: ["Christian Eid"],
+      plannedRecipientNotifications: 2,
+      alreadyOpenRecipientNotifications: 1,
+      noticesWithoutRecipient: 1,
+      deliveryPlans: [{
+        projectLabel: "GLR-450 · Fassadenreinigung",
+        status: "Umsetzung",
+        stage: "management",
+        newRecipientNames: ["Christian Eid"],
+        alreadyOpenRecipientNames: ["Max Mustermann"],
+        blockers: ["Verantwortlichkeit „Nicht gepflegt“ ist keinem aktiven Benutzer zugeordnet."],
+      }],
       ...overrides,
     }),
   };
@@ -63,6 +77,7 @@ describe("JARVIS project-status automation status", () => {
     "Warum kommen aus der Projektstatus-Automation keine Meldungen?",
     "Wann lief der Projektstatus-Scheduler zuletzt?",
     "Zeig mir das Ausführungsprotokoll der Projektstatus-Automation.",
+    "Wer wird von der Projektstatus-Automation benachrichtigt und was blockiert die Zustellung?",
   ])("recognizes a read-only diagnostic: %s", (question) => {
     expect(looksLikeProjectStatusAutomationStatusQuestion(question)).toBe(true);
   });
@@ -114,6 +129,33 @@ describe("JARVIS project-status automation status", () => {
     expect(response?.message).toContain("nicht vollständig betriebsbereit");
     expect(response?.message).toContain("12 überwachte Projekte");
     expect(JSON.stringify(response)).toContain("Kill-Switch aus");
+  });
+
+  it("shows recipients, duplicate suppression and delivery blockers without sending", async () => {
+    const response = await resolveJarvisProjectStatusAutomationStatus({
+      question: "Wer wird von der Projektstatus-Automation benachrichtigt und was blockiert die Zustellung?",
+      organizationId: "org-1",
+      users,
+      accessProfile: managementProfile,
+      source: source({
+        organizationEnabled: false,
+        schedulerEnabled: false,
+        schedulerRunning: false,
+        deliveryEnabled: false,
+        systemMailConfigured: false,
+      }),
+    });
+    expect(response?.structured?.title).toBe("Projektstatus-Automation · Zustellbarkeitsdiagnose");
+    expect(response?.message).toContain("2 neue Empfänger-Hinweise");
+    expect(response?.message).toContain("1 durch bereits offene Hinweise abgedeckt");
+    const rendered = JSON.stringify(response);
+    expect(rendered).toContain("Empfängerplan (2 neue Hinweise)");
+    expect(rendered).toContain("neu: Christian Eid");
+    expect(rendered).toContain("bereits offen: Max Mustermann");
+    expect(rendered).toContain("fachliche Organisationsschalter ist ausgeschaltet");
+    expect(rendered).toContain("Systemmail ist nicht vollständig konfiguriert");
+    expect(rendered).toContain("Eine fällige Schwelle hat eine mehrdeutige Namenszuordnung");
+    expect(rendered).toContain("Best-Effort-Kanal");
   });
 
   it("separates configuration changes from actual delivery events in history", async () => {

@@ -630,8 +630,11 @@ async function main() {
             !payload.structured?.facts?.some((fact) => fact.label === "Organisation") ||
             !payload.structured?.facts?.some((fact) => fact.label === "Serverscheduler") ||
             !payload.structured?.facts?.some((fact) => fact.label === "Zustellung") ||
+            !payload.structured?.facts?.some((fact) => fact.label === "Systemmail") ||
             !payload.structured?.sections?.some((section) => section.title.startsWith("Konfigurationsänderungen")) ||
             !payload.structured?.sections?.some((section) => section.title.startsWith("Tatsächliche Zustellereignisse")) ||
+            !payload.structured?.sections?.some((section) => section.title.startsWith("Empfängerplan")) ||
+            !payload.structured?.sections?.some((section) => section.title === "Zustellhindernisse") ||
             !payload.structured?.sections?.some((section) => section.title === "Wichtige Trennung")
           ) {
             failures.push({ id: item.id, status: response.status, error: "Die Automations-Statusfrage hat keine vollständige rein lesende Betriebsdiagnose erzeugt." });
