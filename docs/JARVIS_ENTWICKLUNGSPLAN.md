@@ -3075,3 +3075,53 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `728456`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
+
+## 31. Projektstatus-Frühwarnung kontrolliert schalten
+
+`automation.manage` schaltet ausschließlich die bereits vorhandene
+Projektstatus-Frühwarnung ein oder aus. Der erste bewusst schmale
+Vertikalschnitt verändert weder die sechs bestehenden Statusregeln noch deren
+Schwellen. Er startet keinen Scheduler, versendet keine Meldung oder E-Mail und
+ändert keinen Projektstatus. Regelbearbeitung und weitere Automationsfamilien
+bleiben nachfolgende, getrennt abzusichernde Vertikalschnitte.
+
+Vor jedem Schaltvorgang wertet JARVIS den aktuellen Regelstand rein lesend aus
+und zeigt die Zahl der überwachten Projekte, aktuelle Treffer für
+Verantwortliche und Geschäftsführung sowie fehlende eindeutige
+Zuständigkeiten. Ein bereits vorhandener Zielzustand blockiert als wirkungslose
+Aktion. Sitzung und effektiver Akteur benötigen beide Stammdatenrecht; damit
+dürfen nur Administration und Geschäftsführung vorbereiten und ausführen,
+Führungskräfte bewusst nicht. Erst `PROJEKTSTATUS-AUTOMATION AKTIVIEREN` oder
+`PROJEKTSTATUS-AUTOMATION DEAKTIVIEREN` darf den Schalter ändern.
+
+Der Fachservice
+`src/lib/automation/project-status-automation-management-service.ts` bindet
+Organisation, exakten `updatedAt`-Stand und die vollständigen aktuellen sowie
+vorgeschlagenen Einstellungen per SHA-256. Sitzung, Rollenpaar, Impersonation,
+TTL, Revision, HMAC, Payload- und Kontexthash werden erneut geprüft.
+Serialisierbare Transaktion, organisationsgebundener PostgreSQL-Advisory-Lock,
+`FOR UPDATE`, unveränderte Vollkonfiguration und Audit
+`automation.project-status.changed` sichern Parallelzugriff und Exactly-once.
+Nach Ausführung öffnet die Karte die bestehende Status-Automationsansicht.
+
+Lokal bestanden 170 Testdateien mit 1.698 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, `db push`, leerer Schema-Diff
+und der 90-Seiten-Build. Die isolierte lokale und produktive QA bestätigte die
+Führungskraft-Sperre, exakten Dry-Run, Abbruch, falsche/exakte Phrase, Stale
+Context, Änderung und exakte Wiederherstellung, Exactly-once-Audit sowie das
+Ausbleiben unmittelbarer Benachrichtigungen und Eskalationsereignisse mit null
+Rückständen. Der echte UI-Klicktest bestätigte Karte, reale Auswirkungszahlen,
+gesperrten/freigegebenen Button, Aktivierung, Navigation und Deaktivierung; der
+ursprüngliche Einstellungsstand wurde anschließend exakt wiederhergestellt.
+Der permanente Korpus blieb exakt 110 Fälle groß und bestand lokal sowie
+produktiv 110/110; produktiv wurden 27 Aktionsentwürfe nur vorbereitet und 0
+ausgeführt.
+
+Produktiv abgenommen auf Runtime-Commit
+`f7130b75f39fb846ac84323d32b1facdfbb5d5fd`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T055638Z-before-jarvis-automation-management`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `732182`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.

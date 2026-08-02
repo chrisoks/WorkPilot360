@@ -1,5 +1,33 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projektstatus-Automationsschalter 2026-08-02: `automation.manage`
+  aktiviert oder deaktiviert ausschließlich die bestehende
+  Projektstatus-Frühwarnung. Vorher zeigt JARVIS einen rein lesenden Dry-Run
+  mit überwachten Projekten, aktueller Verantwortlichen-/Geschäftsführungsstufe
+  und fehlenden Zuständigkeiten. Dieser Schritt startet keinen Scheduler,
+  versendet keine Meldung oder E-Mail und ändert keinen Projektstatus oder
+  Schwellenwert. Sitzung und effektiver Akteur benötigen beide
+  Stammdatenrecht, damit nur Administration/Geschäftsführung konfigurieren
+  darf; Führungskraft ist bewusst ausgeschlossen. Exakte Phrasen:
+  `PROJEKTSTATUS-AUTOMATION AKTIVIEREN` und
+  `PROJEKTSTATUS-AUTOMATION DEAKTIVIEREN`. Organisation, Sitzung, Rollenpaar,
+  Impersonation, TTL, Revision, HMAC, Payload-/Kontexthash, vollständiger
+  Einstellungsfingerprint, serialisierbare Transaktion,
+  PostgreSQL-Advisory-Lock und `FOR UPDATE` sichern Stale Context und
+  Exactly-once. Audit: `automation.project-status.changed`; Fachservice:
+  `src/lib/automation/project-status-automation-management-service.ts`;
+  isolierte QA: `scripts/qa-jarvis-automation-management.mjs`.
+  Runtime-Commit `f7130b75f39fb846ac84323d32b1facdfbb5d5fd`; verifiziertes
+  Backup: `/var/backups/workpilot360/20260802T055638Z-before-jarvis-automation-management`.
+  Lokal bestanden 170/170 Testdateien mit 1.698/1.698 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, leerer Schema-Diff und 90-Seiten-Build.
+  Echter UI-Klicktest, lokale und produktive isolierte QA sowie 110/110
+  Produktionsfragen sind grün; produktiv 27 nur vorbereitete Aktionen, null
+  Ausführungen und null Rückstände. Dashboard und Anfrageformular HTTP 200,
+  Live-Prisma-Diff leer. WorkPilot PID `732182`, KlinikNavigator unverändert
+  PID `398228`. Prisma-, Storage- und Online-Anfragen-Invarianten blieben
+  unverändert.
+
 - JARVIS kontrollierte Kontakt-Massenänderung 2026-08-02: `bulk.update` ist
   für die gemeinsame Änderung der Kontaktkategorie von 2 bis höchstens 25
   ausdrücklich per Kundennummer genannten Kontakten produktiv freigegeben.

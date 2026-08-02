@@ -506,3 +506,35 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   169/169 Testdateien, 1.687/1.687 Tests, echter UI-Klicktest, 110/110
   Produktionsfragen, 26 nur vorbereitete Aktionen, null Rückstände,
   Live-Prisma-Diff leer. WorkPilot PID `728456`, KlinikNavigator PID `398228`.
+
+## Projektstatus-Frühwarnung kontrolliert schalten
+
+- Kritische JARVIS-Aktion `automation.manage`; der erste Vertikalschnitt
+  ändert nur `projectStatusEscalationEnabled` innerhalb der bestehenden
+  organisationsgebundenen `deadlines`-Einstellung.
+- Intake: `src/lib/jarvis/automation-management-intake.ts`; Fachservice:
+  `src/lib/automation/project-status-automation-management-service.ts`;
+  persistenter Entwurf und Ausführung über
+  `src/lib/jarvis/action-draft-store.ts` und
+  `/api/jarvis/action-drafts/[previewId]`.
+- Dry-Run: überwachte Projekte, aktuelle Verantwortlichen- und
+  Geschäftsführungsstufe, fehlende Zuständigkeiten und höchstens 100 konkrete
+  Treffer. Die Oberfläche zeigt höchstens 25 Treffer kompakt an.
+- Abgrenzung: kein Schedulerlauf, keine Zustellung, keine E-Mail, kein
+  Projektstatuswechsel und keine Änderung der sechs Regel- oder Schwellenwerte.
+- Berechtigung: Administration/Geschäftsführung auf Sitzungs- und Effektivebene;
+  Führungskraft bleibt für Konfiguration gesperrt. Exakte Phrasen:
+  `PROJEKTSTATUS-AUTOMATION AKTIVIEREN` und
+  `PROJEKTSTATUS-AUTOMATION DEAKTIVIEREN`.
+- Sicherheit: vollständiger SHA-256-Einstellungsfingerprint inklusive
+  `updatedAt`, HMAC, Organisation, Sitzung, Rollenpaar, Impersonation, TTL,
+  Revision, serialisierbare Transaktion, Advisory-Lock, `FOR UPDATE` und
+  Exactly-once-Audit `automation.project-status.changed`.
+- Permanente Abnahme: exakt 110 Fragen; isolierte Ausführungs-QA:
+  `scripts/qa-jarvis-automation-management.mjs`.
+- Produktivabnahme: Runtime
+  `f7130b75f39fb846ac84323d32b1facdfbb5d5fd`, Backup
+  `/var/backups/workpilot360/20260802T055638Z-before-jarvis-automation-management`,
+  170/170 Testdateien, 1.698/1.698 Tests, echter UI-Klicktest, 110/110
+  Produktionsfragen, 27 nur vorbereitete Aktionen, null Rückstände,
+  Live-Prisma-Diff leer. WorkPilot PID `732182`, KlinikNavigator PID `398228`.
