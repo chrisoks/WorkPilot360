@@ -30,6 +30,7 @@ import {
   type JarvisProjectMasterDataDraftView,
   type JarvisProjectStatusDraftView,
   type JarvisProjectLifecycleDraftView,
+  type JarvisStampSessionTransitionDraftView,
   type JarvisOnlineRequestConversionDraftView,
   type JarvisContactManagementDraftView,
   type JarvisContactDeletionDraftView,
@@ -134,6 +135,14 @@ import {
   saveProjectTimeEntry,
   WITHOUT_OFFER_ASSIGNMENT,
 } from "@/lib/time/project-time-entry-service";
+import {
+  evaluateStampSessionTransition,
+  executeStampSessionTransition,
+  getStampSessionTransitionConfirmationText,
+  matchesStampSessionTransitionConfirmation,
+  StampSessionServiceError,
+  type StampSessionTransition,
+} from "@/lib/time/stamp-session-service";
 import {
   createConfirmedOfferDraft,
   evaluateOfferDraft,
@@ -536,6 +545,51 @@ const timeContextSchema = z
       .string()
       .datetime({ offset: true })
       .optional(),
+  })
+  .strict();
+
+const stampSessionTransitionPayloadSchema = z
+  .object({ action: z.enum(["pause", "resume"]) })
+  .strict();
+
+const stampSessionSnapshotSchema = z
+  .object({
+    id: z.string().trim().min(1).max(120),
+    organizationId: z.string().trim().min(1).max(120),
+    userId: z.string().trim().min(1).max(120),
+    employee: z.string().max(500),
+    mode: z.enum(["project", "unproductive"]),
+    projectId: z.string().max(120),
+    projectLabel: z.string().max(1000),
+    trade: z.string().max(500),
+    planningEntryId: z.string().max(120),
+    planningBillingGroupId: z.string().max(120),
+    billingCatalogItemId: z.string().max(120),
+    billingCatalogItemLabel: z.string().max(1000),
+    marketingContentItemId: z.string().max(120),
+    marketingContentTitle: z.string().max(1000),
+    marketingContentType: z.string().max(240),
+    comment: z.string().max(2000),
+    startedAt: z.string().datetime({ offset: true }),
+    accumulatedMs: z.number().int().nonnegative(),
+    pauseStartedAt: z.string().datetime({ offset: true }).nullable(),
+    pauseMs: z.number().int().nonnegative(),
+    createdAt: z.string().datetime({ offset: true }),
+    updatedAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+
+const stampSessionTransitionContextSchema = z
+  .object({
+    action: z.enum(["pause", "resume"]),
+    session: stampSessionSnapshotSchema.nullable(),
+    currentState: z.enum(["running", "paused", "missing"]),
+    targetState: z.enum(["running", "paused"]),
+    displayElapsedMs: z.number().int().nonnegative(),
+    displayPauseMs: z.number().int().nonnegative(),
+    fingerprint: z.string().length(64),
+    warnings: z.array(z.string().max(1000)),
+    blockingIssues: z.array(z.string().max(1000)),
   })
   .strict();
 
@@ -1811,8 +1865,9 @@ async function appendAuditEvent(
         | "taskComment"
         | "project"
         | "contact"
-        | "catalogItem"
-        | "user";
+         | "catalogItem"
+         | "user"
+         | "activeStampSession";
     };
   }
 ) {
@@ -1841,6 +1896,510 @@ async function appendAuditEvent(
       resultEntityId: input.result?.id,
     },
   });
+}
+
+function validateStampSessionTransitionBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating ||
+    binding.profile.isImpersonating ||
+    actorIds.sessionActorId !== actorIds.effectiveActorId
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Persönliche Live-Stempelungen dürfen nur in der eigenen, nicht vertretenen Sitzung bedient werden.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit der Stempelprüfung geändert. Bitte beginne neu.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis der Stempelaktion ist ungültig.",
+      409
+    );
+  }
+  const payload = stampSessionTransitionPayloadSchema.safeParse(draft.payload);
+  const context = stampSessionTransitionContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "time.session.manage" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Stempelaktion oder Fachkontext stimmen nicht mit dem gespeicherten Nachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundStampSessionTransitionDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Die persönliche Stempelaktion wurde nicht gefunden.",
+      404
+    );
+  }
+  const parsed = validateStampSessionTransitionBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return {
+    draft: current,
+    ...validateStampSessionTransitionBinding(current, binding),
+    originalContext: parsed.context,
+  };
+}
+
+function stampTransitionStateLabel(state: string, operation: StampSessionTransition) {
+  if (state === "executed") return operation === "pause" ? "Pausiert" : "Fortgesetzt";
+  if (state === "executing") return "Wird geändert";
+  if (state === "cancelled") return "Abgebrochen";
+  if (state === "expired") return "Abgelaufen";
+  return state === "awaiting_confirmation" ? "Bereit" : "Prüfung";
+}
+
+function toJarvisStampSessionTransitionDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisStampSessionTransitionDraftView {
+  const { payload, context } = validateStampSessionTransitionBinding(draft, binding);
+  const state = draft.state as JarvisStampSessionTransitionDraftView["state"];
+  const displayedState = state === "executed" ? context.targetState : context.currentState;
+  const permitted =
+    !binding.profile.isImpersonating &&
+    binding.profile.sessionActor.id === binding.profile.effectiveActor.id;
+  const ready =
+    permitted &&
+    state === "awaiting_confirmation" &&
+    context.blockingIssues.length === 0;
+  const reason: JarvisStampSessionTransitionDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : !permitted
+              ? "not_permitted"
+              : ready
+                ? "ready"
+                : "blocked";
+  const session = context.session;
+  const elapsedMinutes = Math.round(context.displayElapsedMs / 60_000);
+  const pauseMinutes = Math.round(context.displayPauseMs / 60_000);
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "time.session.manage",
+    title: "Eigene laufende Stempelung kontrolliert bedienen",
+    badge: stampTransitionStateLabel(state, payload.action) as JarvisStampSessionTransitionDraftView["badge"],
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    operation: payload.action,
+    sessionId: session?.id ?? "",
+    currentState: displayedState,
+    targetState: context.targetState,
+    fields: [
+      {
+        label: "Aktion",
+        value: payload.action === "pause" ? "Persönliche Stempelung pausieren" : "Persönliche Stempelung fortsetzen",
+      },
+      {
+        label: "Arbeitsbezug",
+        value: session?.projectLabel || (session?.mode === "unproductive" ? "Unproduktiv" : "Keine aktive Stempelung"),
+      },
+      { label: "Tätigkeit", value: session?.comment || "-" },
+      { label: "Erfasste Arbeitszeit", value: `${elapsedMinutes} Minuten` },
+      { label: "Bisherige Pause", value: `${pauseMinutes} Minuten` },
+    ],
+    checks: [
+      {
+        key: "personal-session",
+        label: "Persönliche Sitzung",
+        status: permitted ? "ok" : "blocked",
+        detail: permitted
+          ? "Die Aktion betrifft ausschließlich deine eigene laufende Stempelung."
+          : "Vertretung und Fremdstempelung sind für diesen JARVIS-Weg ausgeschlossen.",
+      },
+      {
+        key: "current-state",
+        label: state === "executed" ? "Ausgeführter Zustand" : "Aktueller Zustand",
+        status: context.blockingIssues.length ? "blocked" : "ok",
+        detail:
+          displayedState === "running"
+            ? "Die Stempelung läuft."
+            : displayedState === "paused"
+              ? "Die Stempelung ist pausiert."
+              : "Es gibt keine aktive Stempelung.",
+      },
+    ],
+    warnings: context.warnings,
+    blockingIssues: [
+      ...context.blockingIssues,
+      ...(!permitted
+        ? ["Persönliche Live-Stempelungen können nicht in Vertretung ausgeführt werden."]
+        : []),
+    ],
+    confirmation: {
+      enabled: ready,
+      reason,
+      requiredText: getStampSessionTransitionConfirmationText(payload.action),
+    },
+    cancellation: {
+      enabled: state === "awaiting_input" || state === "awaiting_confirmation",
+    },
+    ...(state === "executed" && draft.resultEntityId
+      ? {
+          result: {
+            entityType: "activeStampSession" as const,
+            entityId: draft.resultEntityId,
+            label: "Stempelstatus aktualisiert",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisStampSessionTransitionDraft(input: {
+  preview: JarvisActionPreview<"time.session.manage">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für eine persönliche Stempelaktion ist eine aktuelle serverseitige Sitzung erforderlich.",
+      401
+    );
+  }
+  const actorIds = getActorIds(input.profile);
+  if (
+    input.profile.isImpersonating ||
+    actorIds.sessionActorId !== actorIds.effectiveActorId
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Persönliche Live-Stempelungen dürfen nicht in Vertretung bedient werden.",
+      403
+    );
+  }
+  const payload = stampSessionTransitionPayloadSchema.parse(input.preview.payload);
+  const actor = await prisma.user.findFirst({
+    where: {
+      id: actorIds.effectiveActorId,
+      organizationId: input.organizationId,
+      isActive: true,
+    },
+  });
+  if (!actor) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Der angemeldete Benutzer ist nicht mehr aktiv.",
+      409
+    );
+  }
+  const context = stampSessionTransitionContextSchema.parse(
+    await evaluateStampSessionTransition({
+      organizationId: input.organizationId,
+      userId: actor.id,
+      action: payload.action,
+      now: input.now,
+    })
+  );
+  const now = input.now ?? new Date();
+  const state = context.blockingIssues.length
+    ? "awaiting_input"
+    : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: false,
+    actionId: "time.session.manage",
+    state,
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: context.blockingIssues.length ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft,
+      eventType: context.blockingIssues.length
+        ? "draft_created_blocked"
+        : "draft_created_ready",
+    });
+    return draft;
+  });
+  return toJarvisStampSessionTransitionDraftView(created, input);
+}
+
+export async function getJarvisStampSessionTransitionDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundStampSessionTransitionDraft(
+    previewId,
+    binding,
+    now
+  );
+  return toJarvisStampSessionTransitionDraftView(draft, binding);
+}
+
+export async function cancelJarvisStampSessionTransitionDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundStampSessionTransitionDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (draft.state === "cancelled") {
+    return toJarvisStampSessionTransitionDraftView(draft, binding);
+  }
+  if (
+    !OPEN_DRAFT_STATES.includes(draft.state as never) ||
+    draft.revision !== expectedRevision
+  ) {
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "conflict",
+      "Die Stempelaktion ist nicht mehr abbrechbar oder wurde verändert.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Stempelaktion wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisStampSessionTransitionDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisStampSessionTransitionDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  confirmationText: string,
+  now = new Date()
+) {
+  const loaded = await loadBoundStampSessionTransitionDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (loaded.draft.state === "executed") {
+    return toJarvisStampSessionTransitionDraftView(loaded.draft, binding);
+  }
+  if (
+    !matchesStampSessionTransitionConfirmation(
+      loaded.payload.action,
+      confirmationText
+    )
+  ) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      `Gib zur Bestätigung exakt „${getStampSessionTransitionConfirmationText(loaded.payload.action)}“ ein.`,
+      400
+    );
+  }
+  if (
+    loaded.draft.state !== "awaiting_confirmation" ||
+    loaded.draft.revision !== expectedRevision
+  ) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "conflict",
+      "Die Stempelaktion ist nicht mehr aktuell oder ausführbar.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  try {
+    const executed = await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`jarvis-draft:${loaded.draft.id}`}, 0)
+          )
+        `;
+        const current = await tx.jarvisActionDraft.findUnique({
+          where: { id: loaded.draft.id },
+        });
+        if (!current) {
+          throw new JarvisActionDraftError(
+            "not_found",
+            "Die Stempelaktion wurde nicht gefunden.",
+            404
+          );
+        }
+        const parsed = validateStampSessionTransitionBinding(current, binding);
+        if (current.state === "executed") return current;
+        if (
+          current.state !== "awaiting_confirmation" ||
+          current.revision !== expectedRevision ||
+          current.expiresAt.getTime() <= now.getTime()
+        ) {
+          throw new JarvisActionDraftError(
+            current.expiresAt.getTime() <= now.getTime()
+              ? "expired"
+              : "conflict",
+            "Die Stempelaktion ist nicht mehr ausführbar.",
+            current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+          );
+        }
+        const actor = await tx.user.findFirst({
+          where: {
+            id: current.effectiveActorId,
+            organizationId: binding.organizationId,
+            isActive: true,
+          },
+        });
+        if (!actor || actor.id !== current.sessionActorId) {
+          throw new JarvisActionDraftError(
+            "role_changed",
+            "Der persönliche Benutzerkontext ist nicht mehr aktuell.",
+            409
+          );
+        }
+        const session = await executeStampSessionTransition({
+          db: tx,
+          organizationId: binding.organizationId,
+          userId: actor.id,
+          action: parsed.payload.action,
+          expectedFingerprint: parsed.context.fingerprint,
+          now,
+        });
+        const executedData: DraftIntegrityData = {
+          ...current,
+          state: "executed",
+          confirmedAt: now,
+          executedAt: now,
+          resultEntityType: "activeStampSession",
+          resultEntityId: session.id,
+          lastErrorCode: null,
+        };
+        const finalDraft = await tx.jarvisActionDraft.update({
+          where: { id: current.id },
+          data: {
+            state: "executed",
+            confirmedAt: now,
+            executedAt: now,
+            resultEntityType: "activeStampSession",
+            resultEntityId: session.id,
+            lastErrorCode: null,
+            integrityTag: createIntegrityTag(executedData),
+          },
+        });
+        await appendAuditEvent(tx, {
+          draft: finalDraft,
+          eventType: "draft_confirmed_and_executed",
+          result: { id: session.id, entityType: "activeStampSession" },
+        });
+        return finalDraft;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    return toJarvisStampSessionTransitionDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof StampSessionServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "stale_context" ? "stale_context" : error.code === "not_found" ? "not_found" : "conflict",
+        error.message,
+        error.status
+      );
+    }
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Die persönliche Stempelung wurde nicht verändert. Bitte den aktuellen Zustand neu prüfen.",
+      500
+    );
+  }
 }
 
 async function expireDraftIfNeeded(
@@ -4310,6 +4869,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "time.prepare") {
     return getJarvisTimeDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "time.session.manage") {
+    return getJarvisStampSessionTransitionDraft(previewId, binding, now);
   }
   if (draft?.actionId === "winter-calculation.prepare") {
     return getJarvisWinterCalculationDraft(previewId, binding, now);

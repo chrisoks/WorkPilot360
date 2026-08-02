@@ -204,6 +204,25 @@ const fake = vi.hoisted(() => {
     projectLifecycleChanges.push(row);
     return { project: row, replayed: false };
   });
+  const stampSessionTransitions: Array<Record<string, any>> = [];
+  const stampSession = {
+    id: "stamp-1", organizationId: "org-1", userId: "user-1", employee: "Jarvis Tester",
+    mode: "project", projectId: "project-1", projectLabel: "MKG-209 · Marketing", trade: "Marketing",
+    planningEntryId: "", planningBillingGroupId: "", billingCatalogItemId: "", billingCatalogItemLabel: "",
+    marketingContentItemId: "", marketingContentTitle: "", marketingContentType: "", comment: "Kampagne umsetzen",
+    startedAt: "2026-07-29T19:00:00.000Z", accumulatedMs: 3_600_000, pauseStartedAt: null,
+    pauseMs: 0, createdAt: "2026-07-29T19:00:00.000Z", updatedAt: "2026-07-29T19:00:00.000Z",
+  };
+  const evaluateStampSessionTransition = vi.fn(async ({ action }: { action: "pause" | "resume" }) => ({
+    action, session: { ...stampSession, pauseStartedAt: action === "resume" ? "2026-07-29T19:45:00.000Z" : null },
+    currentState: action === "pause" ? "running" : "paused", targetState: action === "pause" ? "paused" : "running",
+    displayElapsedMs: 3_600_000, displayPauseMs: action === "resume" ? 900_000 : 0,
+    fingerprint: "6".repeat(64), warnings: [], blockingIssues: [],
+  }));
+  const executeStampSessionTransition = vi.fn(async (input: Record<string, any>) => {
+    stampSessionTransitions.push(input);
+    return { ...stampSession, pauseStartedAt: input.action === "pause" ? baseNow.toISOString() : null };
+  });
   const evaluateInvoicePayment = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate?: string }) => ({
     invoice: {
       id: invoiceId,
@@ -730,6 +749,7 @@ const fake = vi.hoisted(() => {
         ? [{ nextNumber: 10100 }]
         : [{ locked: 1 }]
     ),
+    $executeRaw: vi.fn(async () => 1),
     $transaction: vi.fn(async (callback: (tx: any) => unknown) =>
       callback(prisma)
     ),
@@ -803,6 +823,9 @@ const fake = vi.hoisted(() => {
       executeProjectStatusAutomationManagement.mockClear();
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
+      stampSessionTransitions.length = 0;
+      evaluateStampSessionTransition.mockClear();
+      executeStampSessionTransition.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -867,6 +890,9 @@ const fake = vi.hoisted(() => {
     projectLifecycleChanges,
     evaluateProjectLifecycle,
     executeProjectLifecycle,
+    stampSessionTransitions,
+    evaluateStampSessionTransition,
+    executeStampSessionTransition,
   };
 });
 
@@ -959,6 +985,13 @@ vi.mock("@/lib/projects/project-lifecycle-service", () => ({
   getProjectLifecycleConfirmationText: (projectNumber: string, action: string) => action === "archive" ? `PROJEKT ARCHIVIEREN ${projectNumber}` : `PROJEKT WIEDERHERSTELLEN ${projectNumber}`,
   matchesProjectLifecycleConfirmation: (projectNumber: string, action: string, value: string) => value.trim() === (action === "archive" ? `PROJEKT ARCHIVIEREN ${projectNumber}` : `PROJEKT WIEDERHERSTELLEN ${projectNumber}`),
   ProjectLifecycleServiceError: class ProjectLifecycleServiceError extends Error { code = "invalid_input"; },
+}));
+vi.mock("@/lib/time/stamp-session-service", () => ({
+  evaluateStampSessionTransition: fake.evaluateStampSessionTransition,
+  executeStampSessionTransition: fake.executeStampSessionTransition,
+  getStampSessionTransitionConfirmationText: (action: string) => action === "pause" ? "STEMPELUNG PAUSIEREN" : "STEMPELUNG FORTSETZEN",
+  matchesStampSessionTransitionConfirmation: (action: string, value: string) => value.trim() === (action === "pause" ? "STEMPELUNG PAUSIEREN" : "STEMPELUNG FORTSETZEN"),
+  StampSessionServiceError: class StampSessionServiceError extends Error { code = "conflict"; },
 }));
 vi.mock("@/lib/invoices/invoice-draft-service", () => ({
   evaluateInvoiceDraft: fake.evaluateInvoiceDraft,
@@ -1150,6 +1183,9 @@ import {
   cancelJarvisProjectLifecycleDraft,
   confirmJarvisProjectLifecycleDraft,
   createPersistedJarvisProjectLifecycleDraft,
+  cancelJarvisStampSessionTransitionDraft,
+  confirmJarvisStampSessionTransitionDraft,
+  createPersistedJarvisStampSessionTransitionDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 import { calculateWinterService } from "@/lib/winter-service/calculation";
@@ -3429,5 +3465,35 @@ describe("persistent JARVIS project lifecycle drafts", () => {
     const cancellable = await createPersistedJarvisProjectLifecycleDraft({ ...binding(), now: baseNow, preview: preview("project-archive-cancel") });
     expect((await cancelJarvisProjectLifecycleDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
     expect(fake.projectLifecycleChanges).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS personal stamp-session drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string, action: "pause" | "resume" = "pause") => ({
+    version: 1 as const, previewId, actionId: "time.session.manage" as const,
+    actionTitle: "Eigene laufende Stempelung kontrolliert bedienen", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { action }, execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("changes the own session exactly once after the exact phrase", async () => {
+    const created = await createPersistedJarvisStampSessionTransitionDraft({ ...binding(), now: baseNow, preview: preview("stamp-pause-1") });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", operation: "pause", confirmation: { requiredText: "STEMPELUNG PAUSIEREN" } });
+    const first = await confirmJarvisStampSessionTransitionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisStampSessionTransitionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("stamp-1");
+    expect(fake.stampSessionTransitions).toHaveLength(1);
+    expect(fake.executeStampSessionTransition).toHaveBeenCalledWith(expect.objectContaining({ action: "pause", userId: "user-1", expectedFingerprint: "6".repeat(64) }));
+  });
+
+  it("rejects inexact confirmation, cancellation, and represented sessions without writing", async () => {
+    const wrong = await createPersistedJarvisStampSessionTransitionDraft({ ...binding(), now: baseNow, preview: preview("stamp-wrong") });
+    await expect(confirmJarvisStampSessionTransitionDraft(wrong.previewId, binding(), wrong.revision, "stempelung pausieren", baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisStampSessionTransitionDraft({ ...binding(), now: baseNow, preview: preview("stamp-cancel") });
+    expect((await cancelJarvisStampSessionTransitionDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    await expect(createPersistedJarvisStampSessionTransitionDraft({ organizationId: "org-1", sessionId: "session-1", profile: profile(Role.GESCHAEFTSFUEHRER, "user-2"), now: baseNow, preview: preview("stamp-impersonated") })).rejects.toMatchObject({ code: "scope_mismatch" });
+    expect(fake.stampSessionTransitions).toHaveLength(0);
   });
 });

@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisProjectLifecycleDraft: vi.fn(),
   cancelJarvisOnlineRequestConversionDraft: vi.fn(),
   confirmJarvisOnlineRequestConversionDraft: vi.fn(),
+  cancelJarvisStampSessionTransitionDraft: vi.fn(),
+  confirmJarvisStampSessionTransitionDraft: vi.fn(),
   cancelJarvisContactManagementDraft: vi.fn(),
   confirmJarvisContactManagementDraft: vi.fn(),
   cancelJarvisContactDeletionDraft: vi.fn(),
@@ -99,6 +101,10 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.cancelJarvisOnlineRequestConversionDraft,
   confirmJarvisOnlineRequestConversionDraft:
     mocks.confirmJarvisOnlineRequestConversionDraft,
+  cancelJarvisStampSessionTransitionDraft:
+    mocks.cancelJarvisStampSessionTransitionDraft,
+  confirmJarvisStampSessionTransitionDraft:
+    mocks.confirmJarvisStampSessionTransitionDraft,
   cancelJarvisContactManagementDraft: mocks.cancelJarvisContactManagementDraft,
   confirmJarvisContactManagementDraft: mocks.confirmJarvisContactManagementDraft,
   cancelJarvisContactDeletionDraft: mocks.cancelJarvisContactDeletionDraft,
@@ -369,6 +375,8 @@ describe("JARVIS action-draft API", () => {
     mocks.confirmJarvisProjectLifecycleDraft.mockResolvedValue({ ...draft, actionId: "project.archive", state: "executed", result: { entityType: "project", entityId: "project-1", label: "Projekt öffnen" } });
     mocks.cancelJarvisOnlineRequestConversionDraft.mockResolvedValue({ ...draft, actionId: "online-request.convert", state: "cancelled" });
     mocks.confirmJarvisOnlineRequestConversionDraft.mockResolvedValue({ ...draft, actionId: "online-request.convert", state: "executed", result: { entityType: "project", entityId: "project-online-1", label: "Neues Projekt öffnen" } });
+    mocks.cancelJarvisStampSessionTransitionDraft.mockResolvedValue({ ...draft, actionId: "time.session.manage", state: "cancelled" });
+    mocks.confirmJarvisStampSessionTransitionDraft.mockResolvedValue({ ...draft, actionId: "time.session.manage", state: "executed", operation: "pause", result: { entityType: "activeStampSession", entityId: "stamp-1", label: "Stempelstatus aktualisiert" } });
     mocks.completeJarvisInvoiceDeliveryDraft.mockResolvedValue({
       ...draft,
       actionId: "document.send",
@@ -1499,6 +1507,18 @@ describe("JARVIS action-draft API", () => {
       expect.anything(),
       3,
       "ONLINE-ANFRAGE UMWANDELN OKI-20260802-A1B2C3"
+    );
+    expect(mocks.confirmJarvisProjectLifecycleDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact personal stamp phrase to the session-bound draft", async () => {
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "time.session.manage", command: "confirm", revision: 5,
+      confirmationText: "STEMPELUNG PAUSIEREN", userId: "other-user", action: "stop",
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisStampSessionTransitionDraft).toHaveBeenCalledWith(
+      "preview-1", expect.anything(), 5, "STEMPELUNG PAUSIEREN"
     );
     expect(mocks.confirmJarvisProjectLifecycleDraft).not.toHaveBeenCalled();
   });

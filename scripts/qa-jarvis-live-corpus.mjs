@@ -69,7 +69,7 @@ async function main() {
   if (!Array.isArray(corpus) || corpus.length !== 110) {
     throw new Error(`Der permanente Korpus enthält ${corpus?.length ?? 0} statt 110 Fragen.`);
   }
-  const actor = await prisma.user.findFirst({
+  const primaryActor = await prisma.user.findFirst({
     where: {
       role: Role.GESCHAEFTSFUEHRER,
       isActive: true,
@@ -77,7 +77,19 @@ async function main() {
     orderBy: { createdAt: "asc" },
     select: { id: true, organizationId: true },
   });
-  if (!actor) throw new Error("Kein aktiver Geschäftsführungs-Testakteur gefunden.");
+  if (!primaryActor) throw new Error("Kein aktiver Geschäftsführungs-Testakteur gefunden.");
+  const [actorCandidates, occupiedStampSessions] = await Promise.all([
+    prisma.user.findMany({
+      where: { organizationId: primaryActor.organizationId, role: Role.GESCHAEFTSFUEHRER, isActive: true },
+      orderBy: { createdAt: "asc" }, select: { id: true, organizationId: true },
+    }),
+    prisma.activeStampSession.findMany({
+      where: { organizationId: primaryActor.organizationId }, select: { userId: true },
+    }),
+  ]);
+  const occupiedActorIds = new Set(occupiedStampSessions.map((session) => session.userId));
+  const actor = actorCandidates.find((candidate) => !occupiedActorIds.has(candidate.id));
+  if (!actor) throw new Error("Kein aktiver Geschäftsführungs-Testakteur ohne echte laufende Stempelung gefunden.");
 
   const automationSetting = await prisma.organizationSetting.findUnique({
     where: {
@@ -106,6 +118,16 @@ async function main() {
   const targetManagementAfterDays = currentResponsibleAfterDays === 10 && currentManagementAfterDays === 20 ? 21 : 20;
 
   const now = new Date();
+  const corpusStampSession = await prisma.activeStampSession.create({
+    data: {
+      id: randomUUID(), organizationId: actor.organizationId, userId: actor.id,
+      employee: "QA JARVIS Korpus", mode: "unproductive", projectId: "",
+      projectLabel: "QA JARVIS Korpus", comment: "QA JARVIS permanente Vorschauprüfung",
+      startedAt: new Date(now.getTime() - 30 * 60 * 1000), accumulatedMs: 0n,
+      pauseStartedAt: null, pauseMs: 0n,
+    },
+    select: { id: true, startedAt: true, accumulatedMs: true, pauseStartedAt: true, pauseMs: true, updatedAt: true },
+  });
   const paymentInvoice = await prisma.invoice.findFirst({
     where: {
       organizationId: actor.organizationId,
@@ -415,6 +437,7 @@ async function main() {
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
   let onlineRequestConversionDraftPrepared = false;
+  let stampSessionDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -444,6 +467,7 @@ async function main() {
         const isAutomationRuleManagementCase = item.question.includes("Projektstatus-Regel Umsetzung");
         const isAutomationStatusCase = item.question.includes("Projektstatus-Automation wirklich");
         const isOnlineRequestConversionCase = item.question.includes("QA-OKI-100");
+        const isStampSessionCase = item.question === "Pausiere meine laufende Stempelung.";
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -712,6 +736,22 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Online-Anfragen-Frage hat keine vollständige, unblockierte und ausschließlich auf ein neues Projekt gerichtete Vorschau erzeugt." });
           } else {
             onlineRequestConversionDraftPrepared = true;
+          }
+        }
+        if (isStampSessionCase) {
+          if (payload.actionDraft?.actionId !== "time.session.manage") {
+            failures.push({ id: item.id, status: response.status, error: "Die persönliche Stempelfrage hat keine kontrollierte time.session.manage-Vorschau erzeugt." });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.confirmation?.requiredText !== "STEMPELUNG PAUSIEREN" ||
+            payload.actionDraft.operation !== "pause" ||
+            payload.actionDraft.sessionId !== corpusStampSession.id ||
+            payload.actionDraft.blockingIssues?.length
+          ) {
+            failures.push({ id: item.id, status: response.status, error: "Die persönliche Stempelfrage hat keine vollständige, unblockierte und sitzungsgebundene Pausenvorschau erzeugt." });
+          } else {
+            stampSessionDraftPrepared = true;
           }
         }
         if (isReminderCase && reminderInvoice) {
@@ -1159,6 +1199,17 @@ async function main() {
     if (!currentOnlineRequest || currentOnlineRequest.status !== onlineRequest.status || currentOnlineRequest.convertedProjectId !== onlineRequest.convertedProjectId || currentOnlineRequest.updatedAt.toISOString() !== onlineRequest.updatedAt.toISOString() || onlineConvertedAuditWrites !== 0 || onlineCreatedProjects !== 0) {
       failures.push({ id: "side-effect-online-request-conversion", status: 0, error: "Die 110-Fragen-Prüfung hat eine Online-Anfrage unerwartet umgewandelt oder ein Projekt erzeugt." });
     }
+    const currentCorpusStampSession = await prisma.activeStampSession.findUnique({ where: { id: corpusStampSession.id } });
+    if (
+      !currentCorpusStampSession ||
+      currentCorpusStampSession.startedAt.toISOString() !== corpusStampSession.startedAt.toISOString() ||
+      currentCorpusStampSession.accumulatedMs !== corpusStampSession.accumulatedMs ||
+      currentCorpusStampSession.pauseStartedAt !== corpusStampSession.pauseStartedAt ||
+      currentCorpusStampSession.pauseMs !== corpusStampSession.pauseMs ||
+      currentCorpusStampSession.updatedAt.toISOString() !== corpusStampSession.updatedAt.toISOString()
+    ) {
+      failures.push({ id: "side-effect-stamp-session", status: 0, error: "Die 110-Fragen-Prüfung hat die persönliche QA-Stempelung unerwartet verändert." });
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -1203,6 +1254,7 @@ async function main() {
     await prisma.employeeCostCalculation.deleteMany({ where: { id: employeeCostTarget.id, organizationId: actor.organizationId } });
     await prisma.user.deleteMany({ where: { id: personnelTarget.id, organizationId: actor.organizationId } });
     await prisma.authSession.deleteMany({ where: { id: sessionId } });
+    await prisma.activeStampSession.deleteMany({ where: { id: corpusStampSession.id, userId: actor.id, comment: "QA JARVIS permanente Vorschauprüfung" } });
   }
 
   const remainingDrafts = createdDraftIds.size
@@ -1237,6 +1289,7 @@ async function main() {
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     onlineRequestConversionDraftPrepared,
+    stampSessionDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
       ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
       : 0,
@@ -1257,6 +1310,7 @@ async function main() {
     qaBulkContactRemaining: await prisma.contact.count({ where: { id: { in: bulkContacts.map((contact) => contact.id) } } }),
     qaOnlineRequestRemaining: await prisma.onlineRequest.count({ where: { id: onlineRequest.id } }),
     qaOnlineContactRemaining: await prisma.contact.count({ where: { id: onlineContact.id } }),
+    qaStampSessionRemaining: await prisma.activeStampSession.count({ where: { id: corpusStampSession.id } }),
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

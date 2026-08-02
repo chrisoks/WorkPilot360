@@ -330,6 +330,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: canManageProjectTimeEntries,
   },
   {
+    id: "time.session.manage",
+    title: "Eigene laufende Stempelung bedienen",
+    category: "time",
+    risk: "critical",
+    confirmation: "critical",
+    dataClasses: ["internal"],
+    implementation: "available",
+    canUse: isActiveInternalUser,
+  },
+  {
     id: "project.status.change",
     title: "Projektstatus kontrolliert ändern",
     category: "project",

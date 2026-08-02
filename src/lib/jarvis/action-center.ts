@@ -22,6 +22,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "automation.manage",
   "planning.prepare",
   "time.prepare",
+  "time.session.manage",
   "project-logbook.prepare",
   "task-comment.prepare",
   "offer.prepare",
@@ -198,6 +199,12 @@ const projectLifecyclePreviewPayloadSchema = z
     projectId: boundedId,
     lifecycleAction: z.enum(["archive", "restore"]),
     reason: boundedText(500),
+  })
+  .strict();
+
+const stampSessionTransitionPreviewPayloadSchema = z
+  .object({
+    action: z.enum(["pause", "resume"]),
   })
   .strict();
 
@@ -468,6 +475,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "automation.manage": automationManagementPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
+  "time.session.manage": stampSessionTransitionPreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
   "task-comment.prepare": taskCommentPreviewPayloadSchema,
   "offer.prepare": offerPreviewPayloadSchema,
@@ -503,6 +511,9 @@ export type JarvisActionPreviewPayloadMap = {
   "automation.manage": z.infer<typeof automationManagementPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
+  "time.session.manage": z.infer<
+    typeof stampSessionTransitionPreviewPayloadSchema
+  >;
   "project-logbook.prepare": z.infer<
     typeof projectLogbookPreviewPayloadSchema
   >;
@@ -1405,6 +1416,23 @@ export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView,
   title: "Projekt kontrolliert archivieren oder wiederherstellen";
   lifecycleAction: "archive" | "restore";
   targetStatus: string;
+};
+
+export type JarvisStampSessionTransitionDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus" | "projectId" | "result"
+> & {
+  actionId: "time.session.manage";
+  title: "Eigene laufende Stempelung kontrolliert bedienen";
+  operation: "pause" | "resume";
+  sessionId: string;
+  currentState: "running" | "paused" | "missing";
+  targetState: "running" | "paused";
+  result?: {
+    entityType: "activeStampSession";
+    entityId: string;
+    label: string;
+  };
 };
 
 export type JarvisOnlineRequestConversionDraftView = Omit<

@@ -31,6 +31,7 @@ import {
   cancelJarvisBulkUpdateDraft,
   cancelJarvisAutomationManagementDraft,
   cancelJarvisTimeDraft,
+  cancelJarvisStampSessionTransitionDraft,
   cancelJarvisVehicleTripCalculationDraft,
   cancelJarvisWinterCalculationDraft,
   completeJarvisPlanningDraft,
@@ -76,6 +77,7 @@ import {
   confirmJarvisBulkUpdateDraft,
   confirmJarvisAutomationManagementDraft,
   confirmJarvisTimeDraft,
+  confirmJarvisStampSessionTransitionDraft,
   confirmJarvisVehicleTripCalculationDraft,
   confirmJarvisWinterCalculationDraft,
   getJarvisActionDraft,
@@ -240,6 +242,7 @@ export async function PATCH(
     const isInvoiceCredit = body.actionId === "invoice.credit";
     const isInvoiceDelivery = body.actionId === "document.send";
     const isTime = body.actionId === "time.prepare";
+    const isStampSessionTransition = body.actionId === "time.session.manage";
     const isWinterCalculation =
       body.actionId === "winter-calculation.prepare";
     const isVehicleTripCalculation =
@@ -247,7 +250,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isOnlineRequestConversion || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isAutomationManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization
+    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isOnlineRequestConversion || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isAutomationManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization || isStampSessionTransition
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -532,6 +535,7 @@ export async function POST(
     const isInvoiceCredit = body.actionId === "invoice.credit";
     const isInvoiceDelivery = body.actionId === "document.send";
     const isTime = body.actionId === "time.prepare";
+    const isStampSessionTransition = body.actionId === "time.session.manage";
     const isWinterCalculation =
       body.actionId === "winter-calculation.prepare";
     const isVehicleTripCalculation =
@@ -542,6 +546,12 @@ export async function POST(
     if (body.command === "cancel") {
       const actionDraft = isOfferFinalization
         ? await cancelJarvisOfferFinalizationDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isStampSessionTransition
+        ? await cancelJarvisStampSessionTransitionDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -728,6 +738,8 @@ export async function POST(
       return NextResponse.json({
         message: isOfferFinalization
           ? "Die Angebotsfinalisierung wurde abgebrochen. Das Angebot blieb ein Entwurf."
+          : isStampSessionTransition
+          ? "Die Stempelaktion wurde abgebrochen. Die persönliche laufende Stempelung blieb unverändert."
           : isTaskLifecycle
           ? "Die Aufgabenänderung wurde abgebrochen. Aufgabe, Kommentare, Beteiligte, Links, Zeiten und Folgeaufgaben blieben unverändert."
           : isProjectMasterData
@@ -801,6 +813,13 @@ export async function POST(
     }
     const actionDraft = isOfferFinalization
       ? await confirmJarvisOfferFinalizationDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isStampSessionTransition
+      ? await confirmJarvisStampSessionTransitionDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -1040,6 +1059,8 @@ export async function POST(
         actionDraft.state === "executed"
           ? isOfferFinalization
             ? "Das Angebot wurde nach deiner kritischen Bestätigung genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert."
+            : isStampSessionTransition
+            ? `Die persönliche laufende Stempelung wurde nach deiner exakten Bestätigung genau einmal ${actionDraft.actionId === "time.session.manage" && actionDraft.operation === "pause" ? "pausiert" : "fortgesetzt"}. Projekt, Zeiteinträge und Abrechnung blieben unverändert.`
             : isTaskLifecycle
             ? "Die Aufgabe wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten."
             : isProjectMasterData
@@ -1103,6 +1124,8 @@ export async function POST(
             : "Die Aufgabe wurde nach deiner Bestätigung genau einmal angelegt."
           : isOfferFinalization
             ? "Das Angebot wurde nicht finalisiert."
+            : isStampSessionTransition
+            ? "Die persönliche laufende Stempelung wurde nicht verändert."
             : isTaskLifecycle
             ? "Die Aufgabe wurde nicht archiviert oder wiederhergestellt."
             : isProjectMasterData

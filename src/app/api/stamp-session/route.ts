@@ -12,6 +12,10 @@ import {
   shouldOfferStampImplementationTransition,
 } from "@/lib/projects/stamp-status-automation";
 import { recordStatusTransition } from "@/lib/status-tracking";
+import {
+  executeStampSessionTransition,
+  StampSessionServiceError,
+} from "@/lib/time/stamp-session-service";
 
 type DemoUser = {
   id: string;
@@ -1411,52 +1415,20 @@ export async function PATCH(req: Request) {
   if (!stampUserResult.ok) {
     return sessionBoundActorResponse(stampUserResult);
   }
-  const session = await getActiveSession(organization.id, userId);
-
-  if (!session) {
-    return NextResponse.json({ error: "Keine aktive Stempelung gefunden." }, { status: 404 });
-  }
-
-  const now = new Date();
-
-  if (action === "pause") {
-    if (session.pauseStartedAt) {
-      return NextResponse.json(formatSession(session));
+  try {
+    const session = await executeStampSessionTransition({
+      organizationId: organization.id,
+      userId: stampUserResult.actor.id,
+      action,
+      allowAlreadyInTargetState: true,
+    });
+    return NextResponse.json(session);
+  } catch (error) {
+    if (error instanceof StampSessionServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
-
-    const startedAt = normalizeStoredStampDate(session.startedAt, now.getTime()) ?? session.startedAt;
-    const accumulatedMs = toMillis(session.accumulatedMs) + Math.max(0, now.getTime() - startedAt.getTime());
-    const rows = await prisma.$queryRaw<ActiveStampSessionRow[]>`
-      UPDATE "ActiveStampSession"
-      SET "accumulatedMs" = ${accumulatedMs},
-          "pauseStartedAt" = ${now},
-          "updatedAt" = ${now}
-      WHERE "organizationId" = ${organization.id}
-        AND "userId" = ${userId}
-      RETURNING *
-    `;
-
-    return NextResponse.json(formatSession(rows[0]));
+    throw error;
   }
-
-  if (!session.pauseStartedAt) {
-    return NextResponse.json(formatSession(session));
-  }
-
-  const pauseStartedAt = normalizeStoredStampDate(session.pauseStartedAt, now.getTime()) ?? session.pauseStartedAt;
-  const pauseMs = toMillis(session.pauseMs) + Math.max(0, now.getTime() - pauseStartedAt.getTime());
-  const rows = await prisma.$queryRaw<ActiveStampSessionRow[]>`
-    UPDATE "ActiveStampSession"
-    SET "pauseMs" = ${pauseMs},
-        "startedAt" = ${now},
-        "pauseStartedAt" = NULL,
-        "updatedAt" = ${now}
-    WHERE "organizationId" = ${organization.id}
-      AND "userId" = ${userId}
-    RETURNING *
-  `;
-
-  return NextResponse.json(formatSession(rows[0]));
 }
 
 export async function DELETE(req: Request) {

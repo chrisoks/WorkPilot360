@@ -271,6 +271,7 @@ describe("JARVIS action registry", () => {
       "project-logbook.create",
       "time.prepare",
       "time.create",
+      "time.session.manage",
     ]);
   });
 

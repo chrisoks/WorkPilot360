@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisProjectStatusDraft: vi.fn(),
   createPersistedJarvisProjectLifecycleDraft: vi.fn(),
   createPersistedJarvisOnlineRequestConversionDraft: vi.fn(),
+  createPersistedJarvisStampSessionTransitionDraft: vi.fn(),
   createPersistedJarvisContactManagementDraft: vi.fn(),
   createPersistedJarvisContactDeletionDraft: vi.fn(),
   createPersistedJarvisCatalogManagementDraft: vi.fn(),
@@ -162,6 +163,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisProjectLifecycleDraft,
   createPersistedJarvisOnlineRequestConversionDraft:
     mocks.createPersistedJarvisOnlineRequestConversionDraft,
+  createPersistedJarvisStampSessionTransitionDraft:
+    mocks.createPersistedJarvisStampSessionTransitionDraft,
   createPersistedJarvisContactManagementDraft:
     mocks.createPersistedJarvisContactManagementDraft,
   createPersistedJarvisContactDeletionDraft:
@@ -3780,6 +3783,28 @@ describe("POST /api/jarvis/chat", () => {
       })
     );
     requestLookup.mockRestore();
+  });
+
+  it("prepares pausing the own live stamp session without changing it immediately", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisStampSessionTransitionDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "time.session.manage", title: "Eigene laufende Stempelung kontrolliert bedienen",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T12:00:00.000Z",
+      operation: "pause", sessionId: "stamp-1", currentState: "running", targetState: "paused",
+      fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "STEMPELUNG PAUSIEREN" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Pausiere meine laufende Stempelung." }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.stamp-session", actionDraft: { actionId: "time.session.manage", operation: "pause", confirmation: { enabled: true } } });
+    expect(mocks.createPersistedJarvisStampSessionTransitionDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1", sessionId: "session-1",
+      preview: expect.objectContaining({ actionId: "time.session.manage", payload: { action: "pause" } }),
+    }));
   });
 
   it("prepares an invoice draft with preflight but never fakturizes or sends", async () => {

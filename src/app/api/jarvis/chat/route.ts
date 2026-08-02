@@ -122,6 +122,7 @@ import {
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
   createPersistedJarvisTimeDraft,
+  createPersistedJarvisStampSessionTransitionDraft,
   createPersistedJarvisVehicleTripCalculationDraft,
   createPersistedJarvisWinterCalculationDraft,
   JarvisActionDraftError,
@@ -210,6 +211,7 @@ import {
   looksLikeContactBulkRollbackRequest,
 } from "@/lib/jarvis/bulk-update-intake";
 import { extractProjectStatusAutomationRequest } from "@/lib/jarvis/automation-management-intake";
+import { extractStampSessionTransition } from "@/lib/jarvis/stamp-session-intake";
 import { resolveJarvisProjectStatusAutomationStatus } from "@/lib/jarvis/automation-status-analysis";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
@@ -1203,6 +1205,65 @@ async function buildJarvisProjectLifecycleDraft(input: {
     return { type: "answer" as const, topicId: "action.project-lifecycle", message: "Ich habe den vollständigen Projektlebenszyklus serverseitig geprüft. Kontrolliere vorherigen und neuen Status, Grund, Planungen, Aufgaben, laufende Stempelungen, Angebote, Rechnungen, Zeiten, Dateien und Online-Anfragen. Erst die exakte Bestätigungsphrase archiviert oder stellt das Projekt genau einmal wieder her; verknüpfte Fachdaten werden nicht gelöscht oder umgehängt.", actionDraft };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.project-lifecycle.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Projektarchivierung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.` };
+  }
+}
+
+async function buildJarvisStampSessionTransitionDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.stamp-session.session-required",
+      message:
+        "Für eine persönliche Stempelaktion ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const action = extractStampSessionTransition(input.question);
+  if (!action) return null;
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "time.session.manage",
+    payload: { action },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.stamp-session.refused",
+      message: `${preview.message} Es wurde nichts verändert.`,
+    };
+  }
+  try {
+    const actionDraft =
+      await createPersistedJarvisStampSessionTransitionDraft({
+        preview: preview.value,
+        organizationId: input.organizationId,
+        sessionId: input.sessionId,
+        profile: input.accessProfile,
+      });
+    return {
+      type: "answer" as const,
+      topicId: "action.stamp-session",
+      message:
+        "Ich habe ausschließlich deine eigene laufende Stempelung und ihren aktuellen Zustand geprüft. Kontrolliere Arbeitsbezug, Tätigkeit und Zeitstand. Erst die exakte Bestätigungsphrase pausiert oder setzt diese persönliche Stempelung genau einmal fort; Projekt, abgeschlossene Zeiten und Abrechnung bleiben unverändert.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.stamp-session.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Die persönliche Stempelaktion konnte nicht sicher vorbereitet werden."
+      } Es wurde nichts verändert.`,
+    };
   }
 }
 
@@ -3219,6 +3280,16 @@ export async function POST(req: Request) {
       topicId: "security.refusal",
       message: getJarvisAuthorizationRefusalMessage(authorization, message),
     });
+  }
+  const stampSessionTransition = extractStampSessionTransition(message);
+  if (stampSessionTransition) {
+    const response = await buildJarvisStampSessionTransitionDraft({
+      question: message,
+      organizationId: organization.id,
+      sessionId: actorResult.sessionId,
+      accessProfile,
+    });
+    if (response) return respond(response, "system");
   }
   if (looksLikeOnlineRequestConversionRequest(message)) {
     return respond(
