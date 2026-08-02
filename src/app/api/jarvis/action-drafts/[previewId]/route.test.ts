@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   completeJarvisTaskDraft: vi.fn(),
   cancelJarvisTaskDraft: vi.fn(),
   confirmJarvisTaskDraft: vi.fn(),
+  cancelJarvisTimeManagementDraft: vi.fn(),
+  confirmJarvisTimeManagementDraft: vi.fn(),
   cancelJarvisProjectMasterDataDraft: vi.fn(),
   confirmJarvisProjectMasterDataDraft: vi.fn(),
   cancelJarvisProjectStatusDraft: vi.fn(),
@@ -91,6 +93,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   completeJarvisTaskDraft: mocks.completeJarvisTaskDraft,
   cancelJarvisTaskDraft: mocks.cancelJarvisTaskDraft,
   confirmJarvisTaskDraft: mocks.confirmJarvisTaskDraft,
+  cancelJarvisTimeManagementDraft: mocks.cancelJarvisTimeManagementDraft,
+  confirmJarvisTimeManagementDraft: mocks.confirmJarvisTimeManagementDraft,
   cancelJarvisProjectMasterDataDraft: mocks.cancelJarvisProjectMasterDataDraft,
   confirmJarvisProjectMasterDataDraft: mocks.confirmJarvisProjectMasterDataDraft,
   cancelJarvisProjectStatusDraft: mocks.cancelJarvisProjectStatusDraft,
@@ -255,6 +259,17 @@ describe("JARVIS action-draft API", () => {
       ...draft,
       state: "executed",
       result: { entityType: "task", entityId: "task-1", label: "Öffnen" },
+    });
+    mocks.cancelJarvisTimeManagementDraft.mockResolvedValue({
+      ...draft,
+      actionId: "time.manage",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisTimeManagementDraft.mockResolvedValue({
+      ...draft,
+      actionId: "time.manage",
+      state: "executed",
+      result: { entityType: "projectTimeEntry", entityId: "entry-1", label: "Zeiteintrag öffnen" },
     });
     mocks.confirmJarvisPlanningDraft.mockImplementation(
       async (
@@ -1281,6 +1296,19 @@ describe("JARVIS action-draft API", () => {
     expect(response.status).toBe(200);
     expect(mocks.confirmJarvisProjectMasterDataDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 5, "PROJEKT ÄNDERN GLR-449");
     expect(mocks.confirmJarvisProjectStatusDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the exact time-entry phrase to the bound management draft", async () => {
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "time.manage", command: "confirm", revision: 6,
+      confirmationText: "ZEITEINTRAG KORRIGIEREN entry-1",
+      changes: { startTime: "00:00" },
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisTimeManagementDraft).toHaveBeenCalledWith(
+      "preview-1", expect.anything(), 6, "ZEITEINTRAG KORRIGIEREN entry-1"
+    );
+    expect(mocks.confirmJarvisTimeDraft).not.toHaveBeenCalled();
   });
 
   it("passes only the exact contact phrase to the bound contact draft", async () => {

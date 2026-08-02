@@ -891,3 +891,33 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   null QA-Rückstände und leerer Live-Prisma-Diff. Dashboard und öffentliches
   Formular HTTP 200; WorkPilot PID `769535`, KlinikNavigator unverändert PID
   `398228`.
+
+## Bestehende Zeiteinträge kontrolliert verwalten
+
+- Aktions-ID `time.manage`; JARVIS verlangt eine vollständige eindeutige
+  Zeiteintrags-ID, einen nachvollziehbaren Grund und bei Korrekturen mindestens
+  ein zulässiges Änderungsfeld.
+- Normale Zeitoberfläche und JARVIS verwenden ausschließlich
+  `src/lib/time/project-time-entry-management-service.ts`. Direkte Browser-
+  Historien und unkontrollierte Upserts bestehender Zeiten sind gesperrt.
+- Bereits gelöschte oder über `invoiceId`, `invoiceNumber` oder `invoicedAt`
+  rechnungsgebundene Einträge sperren fail-closed. Projekt, Mitarbeiter,
+  Herkunft, Planung, Marketingbezug und historischer Stundenkostensatz können
+  über den Änderungsvertrag nicht umgehängt werden.
+- Der vollständige fachlich relevante Zeilenstand einschließlich Kosten-,
+  Rechnungs-, Marketing-, Freigabe-, Historien- und Löschdaten ist per SHA-256
+  gebunden. Ausführung erfolgt serialisierbar unter organisations- und
+  zeiteintragsbezogenem PostgreSQL-Advisory-Lock sowie Zeilensperre.
+- Korrekturen berechnen Dauer und Kostensnapshot mit dem historischen
+  Stundensatz neu. Löschungen sind logisch. Bearbeitungsgrund, Akteur,
+  Vorher-/Nachherwerte und Zeitpunkt werden nur serverseitig ergänzt.
+- Exakte Phrasen: `ZEITEINTRAG KORRIGIEREN <ID>` und
+  `ZEITEINTRAG LÖSCHEN <ID>`. Der persistente Entwurf bindet Organisation,
+  Sitzung, Session-/Effektividentität, Rollen, Impersonation, Revision,
+  Ablauf, Payload-/Kontexthashes und HMAC. Replay schreibt genau einmal;
+  veralteter Kontext sperrt.
+- Permanenter Korpus exakt 110; isolierte Rollen-, Mandanten-, Rechnungs-,
+  Sitzungs-, Exactly-once- und Normalrouten-QA:
+  `scripts/qa-jarvis-time-entry-management.mjs`. Keine Prisma-Schemaänderung;
+  `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten bleiben
+  unverändert.

@@ -814,6 +814,20 @@ const fake = vi.hoisted(() => {
     saveProjectTimeEntry: vi.fn(async ({ payload }: { payload: { id: string } }) => ({
       id: payload.id,
     })),
+    evaluateProjectTimeEntryManagement: vi.fn(async ({ entryId, action, reason }: { entryId: string; action: "update" | "delete"; reason: string }) => ({
+      action,
+      reason,
+      fingerprint: "f".repeat(64),
+      entry: {
+        id: entryId, mode: "project", projectId: "project-1", projectLabel: "GLR-1 · Projekt Eins",
+        trade: "Glasreinigung", offerId: "offer-1", offerLabel: "ANG-1", billingCatalogItemId: "", billingCatalogItemLabel: "",
+        userId: "employee-1", employee: "Emil Arbeit", entrySource: "manual", date: "2026-08-01",
+        startTime: "08:00", endTime: "10:00", durationMs: 6_300_000, pauseMs: 900_000,
+        comment: "Fenster", invoiceId: "", invoiceNumber: "", invoicedAt: "", completionStatus: "",
+        overtimeApprovalStatus: "not_required", deletedAt: "", createdAt: "2026-08-01T10:00:00.000Z",
+      },
+    })),
+    executeProjectTimeEntryManagementInTransaction: vi.fn(async ({ entryId }: { entryId: string }) => ({ id: entryId })),
     reset() {
       drafts.clear();
       audits.length = 0;
@@ -837,6 +851,8 @@ const fake = vi.hoisted(() => {
       employeeCostChanges.length = 0;
       bulkUpdates.length = 0;
       automationChanges.length = 0;
+      this.evaluateProjectTimeEntryManagement.mockClear();
+      this.executeProjectTimeEntryManagementInTransaction.mockClear();
       projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
@@ -1166,6 +1182,14 @@ vi.mock("@/lib/time/project-time-entry-service", () => ({
     }
   },
 }));
+vi.mock("@/lib/time/project-time-entry-management-service", () => ({
+  evaluateProjectTimeEntryManagement: fake.evaluateProjectTimeEntryManagement,
+  executeProjectTimeEntryManagementInTransaction: fake.executeProjectTimeEntryManagementInTransaction,
+  getProjectTimeEntryManagementConfirmationText: (entryId: string, action: string) =>
+    `ZEITEINTRAG ${action === "delete" ? "LÖSCHEN" : "KORRIGIEREN"} ${entryId}`,
+  matchesProjectTimeEntryManagementConfirmation: (entryId: string, action: string, text: string) =>
+    text === `ZEITEINTRAG ${action === "delete" ? "LÖSCHEN" : "KORRIGIEREN"} ${entryId}`,
+}));
 vi.mock("@/lib/vehicle-fuel-prices", () => ({
   loadVehicleFuelPrices: vi.fn(async () => ({
     status: "live",
@@ -1226,6 +1250,10 @@ import {
   confirmJarvisTimeDraft,
   createPersistedJarvisTimeDraft,
   getJarvisTimeDraft,
+  cancelJarvisTimeManagementDraft,
+  confirmJarvisTimeManagementDraft,
+  createPersistedJarvisTimeManagementDraft,
+  getJarvisTimeManagementDraft,
   completeJarvisOfferDraft,
   confirmJarvisOfferDraft,
   createPersistedJarvisOfferDraft,
@@ -3649,5 +3677,120 @@ describe("persistent JARVIS personal stamp-session drafts", () => {
     expect((await cancelJarvisStampSessionTransitionDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
     await expect(createPersistedJarvisStampSessionTransitionDraft({ organizationId: "org-1", sessionId: "session-1", profile: profile(Role.GESCHAEFTSFUEHRER, "user-2"), now: baseNow, preview: preview("stamp-impersonated") })).rejects.toMatchObject({ code: "scope_mismatch" });
     expect(fake.stampSessionTransitions).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS time-entry management drafts", () => {
+  beforeEach(() => fake.reset());
+
+  const preview = (
+    previewId: string,
+    action: "update" | "delete" = "update"
+  ) => ({
+    version: 1 as const,
+    previewId,
+    actionId: "time.manage" as const,
+    actionTitle: "Zeiteintrag kontrolliert korrigieren oder löschen",
+    state: "awaiting_confirmation" as const,
+    organizationId: "org-1",
+    sessionActorId: "user-1",
+    effectiveActorId: "user-1",
+    impersonating: false,
+    payload: {
+      entryId: "time-1",
+      action,
+      reason: action === "delete" ? "Doppelte Buchung" : "Uhrzeit falsch erfasst",
+      ...(action === "update" ? { changes: { startTime: "08:15" } } : {}),
+    },
+    execution: { enabled: false as const, reason: "preview_only" as const },
+    audit: [],
+  });
+
+  it("binds the reviewed correction and executes it exactly once", async () => {
+    const created = await createPersistedJarvisTimeManagementDraft({
+      ...binding(),
+      now: baseNow,
+      preview: preview("time-manage-update"),
+    });
+
+    expect(created).toMatchObject({
+      state: "awaiting_confirmation",
+      entryId: "time-1",
+      projectId: "project-1",
+      lifecycleAction: "update",
+      confirmation: {
+        enabled: true,
+        requiredText: "ZEITEINTRAG KORRIGIEREN time-1",
+      },
+    });
+    expect((await getJarvisTimeManagementDraft(created.previewId, binding(), baseNow)).revision).toBe(1);
+
+    const first = await confirmJarvisTimeManagementDraft(
+      created.previewId,
+      binding(),
+      created.revision,
+      created.confirmation.requiredText,
+      baseNow
+    );
+    const replay = await confirmJarvisTimeManagementDraft(
+      created.previewId,
+      binding(),
+      created.revision,
+      created.confirmation.requiredText,
+      baseNow
+    );
+
+    expect(first).toMatchObject({ state: "executed", result: { entityId: "time-1" } });
+    expect(replay.result?.entityId).toBe("time-1");
+    expect(fake.executeProjectTimeEntryManagementInTransaction).toHaveBeenCalledTimes(1);
+    expect(fake.executeProjectTimeEntryManagementInTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "org-1",
+      entryId: "time-1",
+      action: "update",
+      reason: "Uhrzeit falsch erfasst",
+      expectedFingerprint: "f".repeat(64),
+      changes: { startTime: "08:15" },
+    }));
+  });
+
+  it("requires the exact deletion phrase and can be cancelled without writing", async () => {
+    const wrong = await createPersistedJarvisTimeManagementDraft({
+      ...binding(),
+      now: baseNow,
+      preview: preview("time-manage-delete-wrong", "delete"),
+    });
+    expect(wrong.confirmation.requiredText).toBe("ZEITEINTRAG LÖSCHEN time-1");
+    await expect(confirmJarvisTimeManagementDraft(
+      wrong.previewId,
+      binding(),
+      wrong.revision,
+      wrong.confirmation.requiredText.toLowerCase(),
+      baseNow
+    )).rejects.toMatchObject({ code: "invalid_input" });
+
+    const cancellable = await createPersistedJarvisTimeManagementDraft({
+      ...binding(),
+      now: baseNow,
+      preview: preview("time-manage-delete-cancel", "delete"),
+    });
+    const cancelled = await cancelJarvisTimeManagementDraft(
+      cancellable.previewId,
+      binding(),
+      cancellable.revision,
+      baseNow
+    );
+    expect(cancelled.state).toBe("cancelled");
+    expect(fake.executeProjectTimeEntryManagementInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects employees before creating a critical management draft", async () => {
+    await expect(createPersistedJarvisTimeManagementDraft({
+      organizationId: "org-1",
+      sessionId: "session-1",
+      profile: profile(Role.MITARBEITER, "user-2"),
+      now: baseNow,
+      preview: preview("time-manage-employee"),
+    })).rejects.toMatchObject({ code: "scope_mismatch" });
+    expect(fake.evaluateProjectTimeEntryManagement).not.toHaveBeenCalled();
   });
 });

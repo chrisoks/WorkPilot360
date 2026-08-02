@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
@@ -10,6 +9,10 @@ import {
   ProjectTimeEntryServiceError,
   saveProjectTimeEntry,
 } from "@/lib/time/project-time-entry-service";
+import {
+  evaluateProjectTimeEntryManagement,
+  executeProjectTimeEntryManagement,
+} from "@/lib/time/project-time-entry-management-service";
 
 type DemoUser = {
   id: string;
@@ -62,16 +65,6 @@ type ProjectTimeEntryRow = {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getUserName(user: Pick<DemoUser, "firstName" | "lastName" | "email">) {
-  return `${user.firstName} ${user.lastName}`.trim() || user.email;
-}
-
-function formatDateKeyDisplay(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return value || "-";
-  return `${match[3]}.${match[2]}.${match[1]}`;
 }
 
 function normalizeDateKeyValue(value: string) {
@@ -239,11 +232,48 @@ export async function POST(req: Request) {
   }
 }
 
+export async function PATCH(req: Request) {
+  const body = await req.json();
+  const { organization, users } = await getDemoContext();
+  await ensureProjectTimeEntryTable();
+  const actorResult = await getSessionBoundActor(req, users, body.actorUserId);
+  if (!actorResult.ok) return sessionBoundActorResponse(actorResult);
+
+  try {
+    const evaluation = await evaluateProjectTimeEntryManagement({
+      organizationId: organization.id,
+      actor: actorResult.actor,
+      entryId: cleanString(body.id),
+      action: "update",
+      reason: cleanString(body.editReason || body.reason),
+    });
+    const saved = await executeProjectTimeEntryManagement({
+      organizationId: organization.id,
+      actor: actorResult.actor,
+      users,
+      entryId: evaluation.entry.id,
+      action: "update",
+      reason: evaluation.reason,
+      expectedFingerprint: evaluation.fingerprint,
+      changes: body,
+    });
+    return NextResponse.json(saved);
+  } catch (error) {
+    if (error instanceof ProjectTimeEntryServiceError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+    throw error;
+  }
+}
+
 export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = cleanString(searchParams.get("id"));
   const historyId = cleanString(searchParams.get("historyId"));
-  const note = cleanString(searchParams.get("note")) || "Zeiteintrag gelöscht";
+  const note = cleanString(searchParams.get("note"));
 
   if (!id) {
     return NextResponse.json({ error: "Zeiteintrag fehlt." }, { status: 400 });
@@ -258,9 +288,6 @@ export async function DELETE(req: Request) {
   }
   const actor = actorResult.actor;
   const includeInternalCosts = canViewInternalCostData(actor);
-
-  const actorName = getUserName(actor);
-  const actorCanManageProjectTime = canManageProjectTimeEntries(actor);
 
   const existingRows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
     SELECT *
@@ -298,36 +325,31 @@ export async function DELETE(req: Request) {
     return NextResponse.json(formatEntry(rows[0], { includeInternalCosts }));
   }
 
-  if (
-    !actorCanManageProjectTime &&
-    (existingEntry.entrySource !== "manual" || existingEntry.userId !== actor.id)
-  ) {
-    return NextResponse.json(
-      { error: "Du darfst diesen Zeiteintrag nicht loeschen." },
-      { status: 403 }
-    );
+  try {
+    const evaluation = await evaluateProjectTimeEntryManagement({
+      organizationId: organization.id,
+      actor,
+      entryId: id,
+      action: "delete",
+      reason: note,
+    });
+    const deleted = await executeProjectTimeEntryManagement({
+      organizationId: organization.id,
+      actor,
+      users,
+      entryId: id,
+      action: "delete",
+      reason: evaluation.reason,
+      expectedFingerprint: evaluation.fingerprint,
+    });
+    return NextResponse.json(deleted);
+  } catch (error) {
+    if (error instanceof ProjectTimeEntryServiceError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+    throw error;
   }
-
-  const currentHistory = Array.isArray(existingEntry.editHistory) ? existingEntry.editHistory : [];
-  const deleteHistory = {
-    id: randomUUID(),
-    actorUserId: actor.id,
-    actorName,
-    event: "Zeiteintrag gelöscht",
-    note,
-    previousValue: `${formatDateKeyDisplay(existingEntry.date)} ${existingEntry.startTime}-${existingEntry.endTime}, ${Number(existingEntry.durationMs)} ms`,
-    nextValue: "Gelöscht",
-    createdAt: new Date().toISOString(),
-  };
-
-  const rows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
-    UPDATE "ProjectTimeEntry"
-    SET "deletedAt" = CURRENT_TIMESTAMP,
-        "editHistory" = CAST(${JSON.stringify([deleteHistory, ...currentHistory])} AS jsonb)
-    WHERE "id" = ${id}
-      AND "organizationId" = ${organization.id}
-    RETURNING *
-  `;
-
-  return NextResponse.json(formatEntry(rows[0], { includeInternalCosts }));
 }

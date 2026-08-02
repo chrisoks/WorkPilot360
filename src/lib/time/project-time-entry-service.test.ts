@@ -461,4 +461,22 @@ describe("shared project time-entry service", () => {
       )
     ).toBe(false);
   });
+
+  it("blocks direct updates that bypass the controlled correction service", async () => {
+    const existing = row();
+    const { db, queryRaw } = database({ existing });
+    await expect(saveProjectTimeEntry({
+      db: db as never,
+      organizationId: "org-1",
+      actor: manager,
+      users: [manager, employee],
+      payload: payload({ startTime: "08:15", durationMs: 5_400_000 }),
+    })).rejects.toMatchObject({
+      code: "conflict",
+      message: expect.stringContaining("kontrollierten Korrekturweg"),
+    });
+    expect(queryRaw.mock.calls.some(([strings]) =>
+      strings.join(" ").includes('INSERT INTO "ProjectTimeEntry"')
+    )).toBe(false);
+  });
 });

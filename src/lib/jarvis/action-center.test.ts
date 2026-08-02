@@ -145,6 +145,45 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     });
   });
 
+  it("creates a critical bounded time-entry correction preview", () => {
+    const result = createJarvisActionPreview({
+      previewId: "preview-time-management",
+      actionId: "time.manage",
+      payload: {
+        entryId: "entry-123456",
+        action: "update",
+        reason: "Beginn falsch erfasst",
+        changes: { startTime: "08:15", pauseMs: 900_000 },
+      },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-02T13:00:00.000Z",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        actionId: "time.manage",
+        payload: {
+          entryId: "entry-123456",
+          action: "update",
+          changes: { startTime: "08:15", pauseMs: 900_000 },
+        },
+        execution: { enabled: false, reason: "preview_only" },
+      },
+    });
+  });
+
+  it("rejects a time-entry correction without changed fields", () => {
+    expect(createJarvisActionPreview({
+      previewId: "preview-time-management-empty",
+      actionId: "time.manage",
+      payload: { entryId: "entry-123456", action: "update", reason: "Falsch" },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-08-02T13:00:00.000Z",
+    })).toMatchObject({ ok: false });
+  });
+
   it("creates a critical project-status preview with only the intended fields", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-project-status",

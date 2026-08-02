@@ -101,6 +101,7 @@ import {
   createPersistedJarvisOfferLifecycleDraft,
   createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisTaskLifecycleDraft,
+  createPersistedJarvisTimeManagementDraft,
   createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft,
   createPersistedJarvisProjectLifecycleDraft,
@@ -168,6 +169,10 @@ import {
   extractTaskLifecycle,
   looksLikeTaskLifecycleRequest,
 } from "@/lib/jarvis/task-lifecycle-intake";
+import {
+  extractTimeEntryManagement,
+  looksLikeTimeEntryManagementRequest,
+} from "@/lib/jarvis/time-entry-management-intake";
 import {
   extractProjectMasterDataChangeRequest,
   looksLikeProjectMasterDataChangeRequest,
@@ -960,6 +965,79 @@ async function buildJarvisTaskLifecycleDraft(input: {
       type: "refusal" as const,
       topicId: "action.task-lifecycle.unavailable",
       message: `${error instanceof JarvisActionDraftError ? error.message : "Die Aufgabenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
+    };
+  }
+}
+
+async function buildJarvisTimeManagementDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.time-management.session-required",
+      message: "Für eine Korrektur oder Löschung eines Zeiteintrags ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const details = extractTimeEntryManagement(input.question);
+  if (!details.entryId) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.time-management.entry-required",
+      message: "Welcher Zeiteintrag soll geändert werden? Nenne bitte die eindeutige Zeiteintrags-ID aus der Zeitübersicht. Es wurde noch nichts verändert.",
+    };
+  }
+  if (!details.reason || details.reason.length < 3) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.time-management.reason-required",
+      message: `Für das ${details.action === "delete" ? "Löschen" : "Korrigieren"} brauche ich einen nachvollziehbaren Grund mit mindestens drei Zeichen. Es wurde noch nichts verändert.`,
+    };
+  }
+  if (details.action === "update" && (!details.changes || Object.keys(details.changes).length === 0)) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.time-management.changes-required",
+      message: "Welche Werte sollen korrigiert werden? Nenne mindestens eines der Felder Datum, Beginn, Ende, Pause oder Kommentar, zum Beispiel „Beginn: 08:15; Ende: 10:00“. Es wurde noch nichts verändert.",
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "time.manage",
+    payload: {
+      entryId: details.entryId,
+      action: details.action,
+      reason: details.reason,
+      ...(details.action === "update" ? { changes: details.changes } : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return { type: "refusal" as const, topicId: "action.time-management.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisTimeManagementDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.time-management",
+      message: "Ich habe den Zeiteintrag serverseitig geprüft. Kontrolliere Mitarbeiter, Projekt, bisherigen Zeitstand, Grund und alle ausdrücklich geänderten Felder. Bereits abgerechnete Zeiten bleiben gesperrt; erst die exakte Bestätigungsphrase führt die Änderung genau einmal aus.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.time-management.unavailable",
+      message: `${error instanceof JarvisActionDraftError ? error.message : "Die Zeiteintragsänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
     };
   }
 }
@@ -3587,6 +3665,17 @@ export async function POST(req: Request) {
   if (looksLikeTaskLifecycleRequest(message)) {
     return respond(
       await buildJarvisTaskLifecycleDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "management"
+    );
+  }
+  if (looksLikeTimeEntryManagementRequest(message)) {
+    return respond(
+      await buildJarvisTimeManagementDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,

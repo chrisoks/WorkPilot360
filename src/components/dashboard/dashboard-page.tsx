@@ -77,6 +77,7 @@ import type {
   JarvisOfferLifecycleDraftView,
   JarvisInvoiceLifecycleDraftView,
   JarvisTaskLifecycleDraftView,
+  JarvisTimeManagementDraftView,
   JarvisProjectMasterDataDraftView,
   JarvisContactManagementDraftView,
   JarvisContactDeletionDraftView,
@@ -773,6 +774,7 @@ type ManagementAiChatMessage = {
     | JarvisOfferLifecycleDraftView
     | JarvisInvoiceLifecycleDraftView
     | JarvisTaskLifecycleDraftView
+    | JarvisTimeManagementDraftView
     | JarvisProjectMasterDataDraftView
     | JarvisContactManagementDraftView
     | JarvisContactDeletionDraftView
@@ -2366,6 +2368,7 @@ function parseJarvisActionDraft(
   | JarvisOfferLifecycleDraftView
   | JarvisInvoiceLifecycleDraftView
   | JarvisTaskLifecycleDraftView
+  | JarvisTimeManagementDraftView
   | JarvisProjectMasterDataDraftView
   | JarvisContactManagementDraftView
   | JarvisContactDeletionDraftView
@@ -2400,6 +2403,7 @@ function parseJarvisActionDraft(
     parseJarvisOfferLifecycleDraft(value) ??
     parseJarvisInvoiceLifecycleDraft(value) ??
     parseJarvisTaskLifecycleDraft(value) ??
+    parseJarvisTimeManagementDraft(value) ??
     parseJarvisProjectMasterDataDraft(value) ??
     parseJarvisContactManagementDraft(value) ??
     parseJarvisContactDeletionDraft(value) ??
@@ -2797,6 +2801,29 @@ function parseJarvisTaskLifecycleDraft(
   const cancellation = candidate.cancellation as Record<string, unknown>;
   if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
   return candidate as unknown as JarvisTaskLifecycleDraftView;
+}
+
+function parseJarvisTimeManagementDraft(
+  value: unknown
+): JarvisTimeManagementDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 || candidate.actionId !== "time.manage" ||
+    typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
+    typeof candidate.entryId !== "string" || typeof candidate.projectId !== "string" ||
+    (candidate.lifecycleAction !== "update" && candidate.lifecycleAction !== "delete") ||
+    !Array.isArray(candidate.fields) || !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) || !Array.isArray(candidate.blockingIssues) ||
+    !candidate.confirmation || typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation || typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
+  return candidate as unknown as JarvisTimeManagementDraftView;
 }
 
 function parseJarvisProjectStatusDraft(
@@ -4016,11 +4043,11 @@ function JarvisOfferFinalizationCard({
   onChange,
   onOpenOffer,
 }: {
-  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView;
+  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisTimeManagementDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView;
   actorId: string;
   disabled: boolean;
-  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView, message?: string) => void;
-  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView) => void;
+  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisTimeManagementDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisTimeManagementDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisAutomationManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView | JarvisOnlineRequestConversionDraftView | JarvisStampSessionTransitionDraftView) => void;
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -4052,6 +4079,8 @@ function JarvisOfferFinalizationCard({
         ? parseJarvisOfferDecisionDraft(data?.actionDraft)
         : draft.actionId === "task.delete"
           ? parseJarvisTaskLifecycleDraft(data?.actionDraft)
+        : draft.actionId === "time.manage"
+          ? parseJarvisTimeManagementDraft(data?.actionDraft)
         : draft.actionId === "project.manage"
           ? parseJarvisProjectMasterDataDraft(data?.actionDraft)
         : draft.actionId === "contact.manage"
@@ -4090,6 +4119,10 @@ function JarvisOfferFinalizationCard({
           setError(data?.error ?? "Die persönliche Stempelung konnte nicht sicher geändert werden.");
           return;
         }
+        if (draft.actionId === "time.manage") {
+          setError(data?.error ?? "Der Zeiteintrag konnte nicht sicher korrigiert oder gelöscht werden.");
+          return;
+        }
         setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.manage" ? "Die Projektdaten konnten nicht sicher geändert werden." : draft.actionId === "contact.manage" ? "Der Kontakt konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "contact.delete" ? "Der Kontakt konnte nicht sicher endgültig gelöscht werden." : draft.actionId === "catalog.manage" ? "Die Katalogposition konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "personnel.manage" ? "Die Personalstammdaten konnten nicht sicher geändert werden." : draft.actionId === "payroll.manage" ? "Die Lohn- und Mitarbeiterkosten konnten nicht sicher geändert werden." : draft.actionId === "bulk.update" ? "Die Kontakt-Massenänderung konnte nicht sicher ausgeführt werden." : draft.actionId === "automation.manage" ? "Die Projektstatus-Automation konnte nicht sicher geändert werden." : draft.actionId === "project.archive" ? "Das Projekt konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
         return;
       }
@@ -4101,6 +4134,10 @@ function JarvisOfferFinalizationCard({
       }
       if (draft.actionId === "time.session.manage") {
         setError("Das Action Center ist gerade nicht erreichbar. Die persönliche Stempelung blieb unverändert.");
+        return;
+      }
+      if (draft.actionId === "time.manage") {
+        setError("Das Action Center ist gerade nicht erreichbar. Der Zeiteintrag blieb unverändert.");
         return;
       }
       setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Projektdaten blieben unverändert." : draft.actionId === "contact.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde kein Kontakt angelegt oder geändert." : draft.actionId === "contact.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Kontakt blieb erhalten." : draft.actionId === "catalog.manage" ? "Das Action Center ist gerade nicht erreichbar. Der Katalog blieb unverändert." : draft.actionId === "personnel.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Personalstammdaten blieben unverändert." : draft.actionId === "payroll.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Lohn- und Mitarbeiterkosten blieben unverändert." : draft.actionId === "bulk.update" ? "Das Action Center ist gerade nicht erreichbar. Alle Kontakte blieben unverändert." : draft.actionId === "automation.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Automation blieb unverändert." : draft.actionId === "project.archive" ? "Das Action Center ist gerade nicht erreichbar. Das Projekt blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
@@ -4389,6 +4426,35 @@ function JarvisOfferFinalizationCard({
         <div className={styles.jarvisActionDraftActions}>
           {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>Online-Anfrage jetzt umwandeln</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Umwandlung abbrechen</button> : null}
+          {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
+        </div>
+        <footer>{footer}</footer>
+      </section>
+    );
+  }
+
+  if (draft.actionId === "time.manage") {
+    const footer = draft.state === "executed"
+      ? draft.lifecycleAction === "delete"
+        ? "Der Zeiteintrag wurde genau einmal logisch gelöscht. Die serverseitige Bearbeitungshistorie bleibt nachvollziehbar."
+        : "Der Zeiteintrag wurde genau einmal korrigiert. Projekt, Mitarbeiter, Herkunft und historischer Kostensatz blieben unverändert."
+      : draft.state === "cancelled"
+        ? "Die Zeiteintragsänderung wurde beendet. Der Zeiteintrag blieb unverändert."
+        : draft.state === "expired"
+          ? "Die Zeiteintragsprüfung ist abgelaufen und muss mit dem aktuellen Datenstand neu erstellt werden."
+          : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung und den vollständig geprüften Zeiteintragsstand gebunden.`;
+    return (
+      <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
+        <header><div><span>Action Center · Kritische Zeiteintragsänderung</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+        <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+        <div className={styles.jarvisPlanningChecks}><strong>Aktuelle Zeiteintragsprüfung</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
+        {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
+        {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Zeiteintragsänderung ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+        {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
+        {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
+        <div className={styles.jarvisActionDraftActions}>
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.lifecycleAction === "delete" ? "Zeiteintrag jetzt löschen" : "Zeiteintrag jetzt korrigieren"}</button> : null}
+          {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Zeiteintragsänderung abbrechen</button> : null}
           {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
         </div>
         <footer>{footer}</footer>
@@ -15107,6 +15173,7 @@ export function DashboardPage() {
   const [stampEditEndTime, setStampEditEndTime] = useState("");
   const [stampEditPause, setStampEditPause] = useState("");
   const [stampEditComment, setStampEditComment] = useState("");
+  const [stampEditReason, setStampEditReason] = useState("");
   const [stampEditError, setStampEditError] = useState("");
   const [absences, setAbsences] = useState<AbsenceItem[]>([]);
   const [absenceHistoryEntries, setAbsenceHistoryEntries] = useState<AbsenceItem[]>([]);
@@ -30475,15 +30542,22 @@ await addProjectLogbookEntry(
 
     try {
       await Promise.all(
-        entriesToApprove.map((entry) =>
-          saveStampTimeEntry({
-            ...entry,
-            overtimeApprovalStatus: "approved",
-            overtimeApprovedByUserId: activeUserId,
-            overtimeApprovedByName: activeUser?.name ?? "",
-            overtimeApprovedAt: new Date().toISOString(),
-          })
-        )
+        entriesToApprove.map(async (entry) => {
+          const response = await fetch("/api/project-time-entries", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: entry.id,
+              actorUserId: activeUserId,
+              overtimeApprovalStatus: "approved",
+              editReason: `Überstundenfreigabe für ${formatProjectDate(dateKey)}`,
+            }),
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => null);
+            throw new Error(data?.error ?? "Überstunden konnten nicht freigegeben werden.");
+          }
+        })
       );
       await loadProjectTimeEntries();
     } catch {
@@ -30645,6 +30719,7 @@ await addProjectLogbookEntry(
     setStampEditEndTime(entry.endTime);
     setStampEditPause(formatStampDuration(entry.pauseMs));
     setStampEditComment(entry.comment);
+    setStampEditReason("");
     setStampEditError("");
   }
 
@@ -30686,6 +30761,7 @@ await addProjectLogbookEntry(
     setManualProjectTimeBillingCatalogItemId("");
     setManualProjectTimeBillingCatalogItemLabel("");
     setStampEditOfferId("");
+    setStampEditReason("");
     setStampEditError("");
   }
 
@@ -30816,11 +30892,17 @@ await addProjectLogbookEntry(
     setManualProjectTimeBillingCatalogItemId("");
     setManualProjectTimeBillingCatalogItemLabel("");
     setStampEditOfferId("");
+    setStampEditReason("");
     setStampEditError("");
   }
 
   async function saveEditedStampEntry() {
     if (!editingStampEntry) return;
+
+    if (stampEditReason.trim().length < 3) {
+      setStampEditError("Bitte einen nachvollziehbaren Korrekturgrund angeben.");
+      return;
+    }
 
     const startMinutes = parseStampTimeToMinutes(stampEditStartTime);
     const endMinutes = parseStampTimeToMinutes(stampEditEndTime);
@@ -30894,7 +30976,6 @@ await addProjectLogbookEntry(
         ? editingStampOfferOptions.find((offer) => offer.id === stampEditOfferId)
         : undefined;
 
-    const previousSummary = `${formatProjectDate(editingStampEntry.date)} ${editingStampEntry.startTime}-${editingStampEntry.endTime}, Pause ${formatStampDuration(editingStampEntry.pauseMs)}, ${formatStampDuration(editingStampEntry.durationMs)}`;
     const previousOfferLabel = editingStampEntry.offerLabel || "keine Auftragsgrundlage";
     const nextOfferLabel =
       stampEditOfferId === WITHOUT_OFFER_ASSIGNMENT
@@ -30902,7 +30983,6 @@ await addProjectLogbookEntry(
         : selectedOffer
           ? getTimeEntryOfferLabel(selectedOffer)
           : previousOfferLabel;
-    const nextSummary = `${formatProjectDate(normalizeDateKeyValue(stampEditDate.trim()))} ${stampEditStartTime}-${stampEditEndTime}, Pause ${formatStampDuration(pauseMs)}, ${formatStampDuration(rawDurationMs)}, Auftragsgrundlage: ${nextOfferLabel}`;
     const updatedEntry: StampTimeEntry = {
       ...editingStampEntry,
       trade: editingStampNeedsBillingContext
@@ -30922,23 +31002,33 @@ await addProjectLogbookEntry(
       pauseMs,
       durationMs: rawDurationMs,
       comment: stampEditComment.trim(),
-      editHistory: [
-        {
-          id: crypto.randomUUID(),
-          actorUserId: activeUserId,
-          actorName: activeUser?.name ?? "",
-          event: "Zeiteintrag bearbeitet",
-          note: stampEditComment.trim(),
-          previousValue: `${previousSummary}, Auftragsgrundlage: ${previousOfferLabel}`,
-          nextValue: nextSummary,
-          createdAt: new Date().toISOString(),
-        },
-        ...(editingStampEntry.editHistory ?? []),
-      ],
     };
 
     try {
-      await saveStampTimeEntry(updatedEntry);
+      const res = await fetch("/api/project-time-entries", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...updatedEntry,
+          actorUserId: activeUserId,
+          editReason: stampEditReason.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "Zeiteintrag konnte nicht gespeichert werden.");
+      }
+      const savedEntry = (await res.json()) as StampTimeEntry;
+      const normalizedSavedEntry = {
+        ...savedEntry,
+        date: normalizeDateKeyValue(savedEntry.date),
+      };
+      const replaceEntry = (entries: StampTimeEntry[]) => [
+        normalizedSavedEntry,
+        ...entries.filter((entry) => entry.id !== normalizedSavedEntry.id),
+      ];
+      setStampEntries(replaceEntry);
+      setProjectHistoryStampEntries(replaceEntry);
       closeStampEntryEditModal();
     } catch (error) {
       setStampEditError(
@@ -30949,14 +31039,21 @@ await addProjectLogbookEntry(
 
   async function deleteEditedStampEntry() {
     if (!editingStampEntry) return;
-    const shouldDelete = window.confirm("Diesen Zeiteintrag wirklich löschen?");
-    if (!shouldDelete) return;
+    const reason = window.prompt(
+      "Bitte den nachvollziehbaren Grund für das Löschen dieses Zeiteintrags angeben:"
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setStampEditError("Bitte einen nachvollziehbaren Löschgrund angeben.");
+      return;
+    }
+    if (!window.confirm("Diesen Zeiteintrag mit dem angegebenen Grund wirklich löschen?")) return;
 
     const params = new URLSearchParams({
       id: editingStampEntry.id,
       actorUserId: activeUserId,
       actorName: activeUser?.name ?? "",
-      note: stampEditComment.trim() || "Zeiteintrag gelöscht",
+      note: reason.trim(),
     });
     const res = await fetch(`/api/project-time-entries?${params.toString()}`, {
       method: "DELETE",
@@ -40584,6 +40681,7 @@ await addProjectLogbookEntry(
       | JarvisOfferLifecycleDraftView
       | JarvisInvoiceLifecycleDraftView
       | JarvisTaskLifecycleDraftView
+      | JarvisTimeManagementDraftView
       | JarvisProjectMasterDataDraftView
       | JarvisContactManagementDraftView
       | JarvisContactDeletionDraftView
@@ -40633,6 +40731,9 @@ await addProjectLogbookEntry(
       } else if (nextDraft.actionId === "task.delete") {
         void loadTasks();
         void loadNotifications(true);
+      } else if (nextDraft.actionId === "time.manage") {
+        void loadProjectTimeEntries();
+        if (nextDraft.projectId) void loadProjectHistoryStampEntries(nextDraft.projectId);
       } else if (nextDraft.actionId === "project.manage") {
         void loadHeroProjects();
         void loadProjectLogbookEntries();
@@ -76140,6 +76241,21 @@ await addProjectLogbookEntry(
                   onChange={(event) => setStampEditComment(event.target.value)}
                 />
               </label>
+              <label
+                className={styles.requiredPlanningField}
+                data-required-missing={stampEditReason.trim().length < 3 ? "true" : "false"}
+              >
+                Korrekturgrund *
+                <textarea
+                  rows={2}
+                  value={stampEditReason}
+                  onChange={(event) => {
+                    setStampEditReason(event.target.value);
+                    setStampEditError("");
+                  }}
+                  placeholder="Warum wird dieser Zeiteintrag korrigiert?"
+                />
+              </label>
               <section className={styles.timeEntryEditHistory}>
                 <h3>Bearbeitungshistorie</h3>
                 {(editingStampEntry.editHistory ?? []).length === 0 ? (
@@ -77442,6 +77558,7 @@ await addProjectLogbookEntry(
                     (message.actionDraft?.actionId === "offer.finalize" ||
                       message.actionDraft?.actionId === "offer.manage" ||
                       message.actionDraft?.actionId === "task.delete" ||
+                      message.actionDraft?.actionId === "time.manage" ||
                       message.actionDraft?.actionId === "project.manage" ||
                       message.actionDraft?.actionId === "contact.manage" ||
                       message.actionDraft?.actionId === "contact.delete" ||
@@ -77520,6 +77637,12 @@ await addProjectLogbookEntry(
                               return;
                             }
                             openEditModal(task);
+                            return;
+                          }
+                          if (offerDraft.actionId === "time.manage") {
+                            const project = heroProjects.find((candidate) => candidate.id === offerDraft.projectId);
+                            if (project) openProjectFile(project, { tab: "time" });
+                            else void loadProjectTimeEntries();
                             return;
                           }
                           if (offerDraft.actionId === "online-request.convert") {

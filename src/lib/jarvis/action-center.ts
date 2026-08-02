@@ -22,6 +22,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "automation.manage",
   "planning.prepare",
   "time.prepare",
+  "time.manage",
   "time.session.manage",
   "project-logbook.prepare",
   "task-comment.prepare",
@@ -139,6 +140,51 @@ const timePreviewPayloadSchema = z
       path: ["endAt"],
     }
   );
+
+const timeManagementChangesSchema = z
+  .object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+    endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+    pauseMs: z.number().int().min(0).max(86_400_000).optional(),
+    comment: z.string().trim().max(2000).optional(),
+    offerId: boundedId.optional(),
+    trade: optionalText(180),
+    billingCatalogItemId: boundedId.optional(),
+    completionStatus: z.enum(["", "finished", "interrupted"]).optional(),
+    overtimeApprovalStatus: z
+      .enum(["not_required", "pending", "approved"])
+      .optional(),
+  })
+  .strict();
+
+const timeManagementPreviewPayloadSchema = z
+  .object({
+    entryId: boundedId,
+    action: z.enum(["update", "delete"]),
+    reason: boundedText(500),
+    changes: timeManagementChangesSchema.optional(),
+  })
+  .strict()
+  .superRefine((payload, context) => {
+    if (
+      payload.action === "update" &&
+      (!payload.changes || Object.keys(payload.changes).length === 0)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["changes"],
+        message: "Für eine Korrektur ist mindestens eine Änderung erforderlich.",
+      });
+    }
+    if (payload.action === "delete" && payload.changes) {
+      context.addIssue({
+        code: "custom",
+        path: ["changes"],
+        message: "Beim Löschen sind keine Feldänderungen zulässig.",
+      });
+    }
+  });
 
 const projectLogbookPreviewPayloadSchema = z
   .object({
@@ -519,6 +565,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "automation.manage": automationManagementPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
+  "time.manage": timeManagementPreviewPayloadSchema,
   "time.session.manage": stampSessionTransitionPreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
   "task-comment.prepare": taskCommentPreviewPayloadSchema,
@@ -555,6 +602,7 @@ export type JarvisActionPreviewPayloadMap = {
   "automation.manage": z.infer<typeof automationManagementPreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
+  "time.manage": z.infer<typeof timeManagementPreviewPayloadSchema>;
   "time.session.manage": z.infer<
     typeof stampSessionTransitionPreviewPayloadSchema
   >;
@@ -855,6 +903,53 @@ export type JarvisTimeActionDraftView = {
   confirmation: JarvisTaskActionDraftView["confirmation"];
   cancellation: JarvisTaskActionDraftView["cancellation"];
   execution: JarvisTaskActionDraftView["execution"];
+  result?: {
+    entityType: "projectTimeEntry";
+    entityId: string;
+    label: string;
+  };
+};
+
+export type JarvisTimeManagementDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "time.manage";
+  title: "Zeiteintrag kontrolliert korrigieren oder löschen";
+  badge:
+    | "Prüfung"
+    | "Bereit"
+    | "Wird geändert"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Ausgeführt";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  entryId: string;
+  projectId: string;
+  lifecycleAction: "update" | "delete";
+  fields: Array<{ label: string; value: string }>;
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "ok" | "warning" | "blocked";
+    detail: string;
+  }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "blocked"
+      | "not_permitted"
+      | "expired"
+      | "cancelled"
+      | "executing"
+      | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
   result?: {
     entityType: "projectTimeEntry";
     entityId: string;

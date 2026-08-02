@@ -3600,3 +3600,59 @@ QA-Rückstände sind leer, Dashboard und öffentliches Formular antworten mit
 HTTP 200. WorkPilot PID `769535`, KlinikNavigator unverändert PID `398228`.
 Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
 Online-Anfragen-Invarianten blieben erhalten.
+
+## 42. Bestehende Zeiteinträge kontrolliert korrigieren und löschen
+
+JARVIS kann einen über seine vollständige Zeiteintrags-ID eindeutig benannten
+Eintrag als kritische Aktion zur Korrektur oder Löschung vorbereiten. Für eine
+Korrektur müssen Grund und mindestens ein zulässiges Änderungsfeld feststehen;
+für eine Löschung genügt ein nachvollziehbarer Grund. Die Vorschau zeigt
+Aktion, Zeiteintrags-ID, Projekt, Mitarbeiter, bisherigen Zeitrahmen, Grund und
+alle ausdrücklich geänderten Werte. Ausgeführt wird ausschließlich nach der
+exakten Phrase `ZEITEINTRAG KORRIGIEREN <ID>` beziehungsweise
+`ZEITEINTRAG LÖSCHEN <ID>`.
+
+Normale Zeitoberfläche und JARVIS verwenden denselben Fachservice
+`src/lib/time/project-time-entry-management-service.ts`. Bereits gelöschte
+oder in irgendeiner Form rechnungsgebundene Zeiten sperren fail-closed.
+Mitarbeitende dürfen im normalen Zeitbereich nur eigene manuelle Einträge
+ändern; die kritische JARVIS-Verwaltung bleibt auf die vorhandenen
+Zeitverwaltungsrollen begrenzt. Projekt, Mitarbeiter, Herkunft, Planung und
+Marketingbezug können über diesen Vertrag nicht umgehängt werden. Zulässig
+sind ausschließlich Datum, Beginn, Ende, Pause, Kommentar, Gewerk,
+Auftragsgrundlage, Abrechnungsleistung, Abschluss- und Überstundenstatus.
+
+Der vollständige fachlich relevante Zeilenstand einschließlich
+Rechnungsbindung, Kosten-Snapshots, Marketingbezug, Freigabedaten,
+Bearbeitungshistorie und Löschstatus ist per SHA-256 gebunden. Ausführung
+erfolgt serialisierbar unter organisations-/zeiteintragsbezogenem
+PostgreSQL-Advisory-Lock und Zeilensperre. Korrekturen bewahren den historischen
+Stundenkostensatz und berechnen nur den Kostensnapshot für die korrigierte
+Dauer neu; Löschungen sind logische Löschungen. Grund, Akteur, Vorher-/Nachher
+und Zeitpunkt werden ausschließlich serverseitig in der Bearbeitungshistorie
+ergänzt. Der persistente JARVIS-Entwurf bindet zusätzlich Organisation,
+Sitzung, Session- und Effektividentität, Rollen, Impersonation, Revision,
+Ablauf, Payload-/Kontexthashes und HMAC. Wiederholte Bestätigungen schreiben
+genau einmal; ein zwischenzeitlich geänderter Eintrag endet als
+`stale_context`.
+
+Die isolierte End-to-End-QA liegt in
+`scripts/qa-jarvis-time-entry-management.mjs` und deckt Rollen,
+Mandantentrennung, Rechnungsbindung, Abbruch, falsche Phrase, Sitzungsbindung,
+Korrektur und Soft-Delete exactly-once, Kosten-Snapshot, geschützte
+Identitätsfelder, normale API und rückstandsfreie Bereinigung ab. Der
+permanente Korpus bleibt exakt 110 Fragen groß und enthält einen
+ausschließlich vorbereitenden Korrekturfall. Die endgültigen lokalen und
+produktiven Release-Nachweise werden nach vollständiger Abnahme ergänzt.
+
+Lokal bestanden 183 Testdateien mit 1.811 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Die isolierte QA bestätigte Rollen- und Mandantengrenze,
+Rechnungsbindung, Abbruch, falsche/exakte Phrase, Sitzungsbindung, Korrektur
+und Soft-Delete exactly-once, unveränderten historischen Kostensatz,
+geschützte Identitätsfelder, dieselbe normale API und null Rückstände. Der
+permanente lokale Korpus bestand 110/110 mit 32 ausschließlich vorbereiteten
+und null ausgeführten Aktionen. Der echte Klicktest bestätigte die gesperrte
+Ausführung bei falscher Phrase, die Freigabe bei exakter Phrase, genau eine
+Korrektur, den korrigierten Beginn 08:15 im geöffneten Zeiteintrag und null
+Browserfehler; Klicktestdaten und Entwurf wurden vollständig entfernt.

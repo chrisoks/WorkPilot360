@@ -58,6 +58,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisInvoiceCreditDraft: vi.fn(),
   createPersistedJarvisInvoiceLifecycleDraft: vi.fn(),
   createPersistedJarvisTaskLifecycleDraft: vi.fn(),
+  createPersistedJarvisTimeManagementDraft: vi.fn(),
   createPersistedJarvisProjectMasterDataDraft: vi.fn(),
   createPersistedJarvisProjectStatusDraft: vi.fn(),
   createPersistedJarvisProjectLifecycleDraft: vi.fn(),
@@ -155,6 +156,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisInvoiceLifecycleDraft,
   createPersistedJarvisTaskLifecycleDraft:
     mocks.createPersistedJarvisTaskLifecycleDraft,
+  createPersistedJarvisTimeManagementDraft:
+    mocks.createPersistedJarvisTimeManagementDraft,
   createPersistedJarvisProjectMasterDataDraft:
     mocks.createPersistedJarvisProjectMasterDataDraft,
   createPersistedJarvisProjectStatusDraft:
@@ -4982,5 +4985,57 @@ describe("POST /api/jarvis/chat", () => {
 
     expect((await response.json()).topicId).toBe("project.health.full");
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("asks for the unique time-entry id before preparing a correction", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Korrigiere den Zeiteintrag wegen falscher Uhrzeit. Beginn: 08:15" }),
+    }));
+    expect(await response.json()).toMatchObject({
+      type: "clarification",
+      topicId: "action.time-management.entry-required",
+    });
+    expect(mocks.createPersistedJarvisTimeManagementDraft).not.toHaveBeenCalled();
+  });
+
+  it("prepares a bound time-entry correction without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisTimeManagementDraft.mockImplementationOnce(async ({ preview }) => ({
+      version: 2,
+      previewId: preview.previewId,
+      actionId: "time.manage",
+      title: "Zeiteintrag kontrolliert korrigieren oder löschen",
+      badge: "Bereit",
+      state: "awaiting_confirmation",
+      revision: 1,
+      expiresAt: "2026-08-02T16:00:00.000Z",
+      entryId: preview.payload.entryId,
+      projectId: "project-1",
+      lifecycleAction: preview.payload.action,
+      fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: `ZEITEINTRAG KORRIGIEREN ${preview.payload.entryId}` },
+      cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Korrigiere Zeiteintrags-ID entry-123456. Grund: Beginn falsch Beginn: 08:15 Ende: 10:00" }),
+    }));
+    expect(await response.json()).toMatchObject({
+      type: "answer",
+      topicId: "action.time-management",
+      actionDraft: { actionId: "time.manage", entryId: "entry-123456", lifecycleAction: "update" },
+    });
+    expect(mocks.createPersistedJarvisTimeManagementDraft).toHaveBeenCalledWith(expect.objectContaining({
+      preview: expect.objectContaining({
+        actionId: "time.manage",
+        payload: expect.objectContaining({ entryId: "entry-123456", action: "update", changes: { startTime: "08:15", endTime: "10:00" } }),
+      }),
+    }));
   });
 });

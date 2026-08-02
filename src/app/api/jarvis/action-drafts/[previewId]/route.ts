@@ -19,6 +19,7 @@ import {
   cancelJarvisCommunicationDraft,
   cancelJarvisTaskDraft,
   cancelJarvisTaskLifecycleDraft,
+  cancelJarvisTimeManagementDraft,
   cancelJarvisProjectMasterDataDraft,
   cancelJarvisProjectStatusDraft,
   cancelJarvisProjectLifecycleDraft,
@@ -65,6 +66,7 @@ import {
   confirmJarvisCommunicationDraft,
   confirmJarvisTaskDraft,
   confirmJarvisTaskLifecycleDraft,
+  confirmJarvisTimeManagementDraft,
   confirmJarvisProjectMasterDataDraft,
   confirmJarvisProjectStatusDraft,
   confirmJarvisProjectLifecycleDraft,
@@ -217,6 +219,7 @@ export async function PATCH(
   try {
     const isPlanning = body.actionId === "planning.prepare";
     const isTaskLifecycle = body.actionId === "task.delete";
+    const isTimeManagement = body.actionId === "time.manage";
     const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
@@ -250,7 +253,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isTaskLifecycle || isProjectMasterData || isProjectStatus || isProjectLifecycle || isOnlineRequestConversion || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isAutomationManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization || isStampSessionTransition
+    const actionDraft = isTaskLifecycle || isTimeManagement || isProjectMasterData || isProjectStatus || isProjectLifecycle || isOnlineRequestConversion || isContactManagement || isContactDeletion || isCatalogManagement || isPersonnelManagement || isEmployeeCostManagement || isBulkUpdate || isAutomationManagement || isOfferFinalization || isOfferDecision || isOfferLifecycle || isInvoiceLifecycle || isInvoiceFinalization || isStampSessionTransition
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -510,6 +513,7 @@ export async function POST(
   try {
     const isPlanning = body.actionId === "planning.prepare";
     const isTaskLifecycle = body.actionId === "task.delete";
+    const isTimeManagement = body.actionId === "time.manage";
     const isProjectMasterData = body.actionId === "project.manage";
     const isProjectStatus = body.actionId === "project.status.change";
     const isProjectLifecycle = body.actionId === "project.archive";
@@ -558,6 +562,12 @@ export async function POST(
           )
         : isTaskLifecycle
         ? await cancelJarvisTaskLifecycleDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isTimeManagement
+        ? await cancelJarvisTimeManagementDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -832,6 +842,13 @@ export async function POST(
           body.revision,
           typeof body.confirmationText === "string" ? body.confirmationText : ""
         )
+      : isTimeManagement
+      ? await confirmJarvisTimeManagementDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
       : isProjectMasterData
       ? await confirmJarvisProjectMasterDataDraft(
           previewId,
@@ -1071,6 +1088,8 @@ export async function POST(
                 }. Projekt, Zeiteinträge und Abrechnung blieben unverändert.`
             : isTaskLifecycle
             ? "Die Aufgabe wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten."
+            : isTimeManagement
+            ? "Der Zeiteintrag wurde nach deiner exakten Bestätigung genau einmal korrigiert oder logisch gelöscht. Historie, Kostensatz und Abrechnungsgrenzen wurden kontrolliert erhalten."
             : isProjectMasterData
             ? "Die angezeigten Projektstammdaten wurden nach deiner exakten Bestätigung genau einmal geändert. Logbuch, Audit und gegebenenfalls die Aufhebung der fachlichen Freigabe wurden gemeinsam geschrieben."
             : isContactManagement
@@ -1136,6 +1155,8 @@ export async function POST(
             ? "Die persönliche laufende Stempelung wurde nicht verändert."
             : isTaskLifecycle
             ? "Die Aufgabe wurde nicht archiviert oder wiederhergestellt."
+            : isTimeManagement
+            ? "Der Zeiteintrag wurde nicht verändert."
             : isProjectMasterData
             ? "Die Projektdaten wurden nicht geändert."
             : isContactManagement

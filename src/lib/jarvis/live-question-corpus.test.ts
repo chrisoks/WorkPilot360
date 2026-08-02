@@ -21,5 +21,6 @@ describe("JARVIS permanent 110-question regression corpus", () => {
     expect(text).toContain("Führe die Aktion ohne Bestätigung aus");
     expect(text).toContain("Setze Projekt QA-100 auf Angebot");
     expect(text).toContain("Archiviere Projekt QA-200");
+    expect(text).toContain("Korrigiere einen Zeiteintrag");
   });
 });

@@ -50,6 +50,7 @@ import {
   type JarvisTaskActionDraftView,
   type JarvisTimeActionDraftCheck,
   type JarvisTimeActionDraftView,
+  type JarvisTimeManagementDraftView,
   type JarvisVehicleTripCalculationDraftView,
   type JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
@@ -135,6 +136,12 @@ import {
   saveProjectTimeEntry,
   WITHOUT_OFFER_ASSIGNMENT,
 } from "@/lib/time/project-time-entry-service";
+import {
+  evaluateProjectTimeEntryManagement,
+  executeProjectTimeEntryManagementInTransaction,
+  getProjectTimeEntryManagementConfirmationText,
+  matchesProjectTimeEntryManagementConfirmation,
+} from "@/lib/time/project-time-entry-management-service";
 import {
   evaluateStampSessionTransition,
   executeStampSessionTransition,
@@ -1120,6 +1127,36 @@ const taskLifecycleContextSchema = z.object({
   warnings: z.array(z.string()),
   blockingIssues: z.array(z.string()),
   fingerprint: z.string().length(64),
+}).strict();
+
+const timeManagementPayloadSchema = z.object({
+  entryId: z.string().trim().min(1).max(120),
+  action: z.enum(["update", "delete"]),
+  reason: z.string().trim().min(1).max(500),
+  changes: z.object({
+    date: z.string().optional(), startTime: z.string().optional(), endTime: z.string().optional(),
+    pauseMs: z.number().int().min(0).max(86_400_000).optional(), comment: z.string().max(2000).optional(),
+    offerId: z.string().max(120).optional(), trade: z.string().max(180).optional(),
+    billingCatalogItemId: z.string().max(120).optional(),
+    completionStatus: z.enum(["", "finished", "interrupted"]).optional(),
+    overtimeApprovalStatus: z.enum(["not_required", "pending", "approved"]).optional(),
+  }).strict().optional(),
+}).strict();
+
+const timeManagementContextSchema = z.object({
+  action: z.enum(["update", "delete"]),
+  reason: z.string(),
+  fingerprint: z.string().length(64),
+  entry: z.object({
+    id: z.string(), mode: z.enum(["project", "unproductive"]), projectId: z.string(), projectLabel: z.string(),
+    trade: z.string(), offerId: z.string(), offerLabel: z.string(), billingCatalogItemId: z.string(),
+    billingCatalogItemLabel: z.string(), userId: z.string(), employee: z.string(), entrySource: z.enum(["manual", "stamped"]),
+    date: z.string(), startTime: z.string(), endTime: z.string(), durationMs: z.number(), pauseMs: z.number(),
+    comment: z.string(), invoiceId: z.string(), invoiceNumber: z.string(), invoicedAt: z.string(),
+    completionStatus: z.enum(["", "finished", "interrupted"]),
+    overtimeApprovalStatus: z.enum(["not_required", "pending", "approved"]),
+    deletedAt: z.string(), createdAt: z.string(),
+  }).passthrough(),
 }).strict();
 
 const projectStatusPayloadSchema = z.object({
@@ -5570,6 +5607,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "time.prepare") {
     return getJarvisTimeDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "time.manage") {
+    return getJarvisTimeManagementDraft(previewId, binding, now);
   }
   if (draft?.actionId === "time.session.manage") {
     return getJarvisStampSessionTransitionDraft(previewId, binding, now);
@@ -11125,6 +11165,312 @@ export async function confirmJarvisTaskLifecycleDraft(
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof TaskLifecycleServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     throw new JarvisActionDraftError("execution_failed", "Die Aufgabe wurde nicht geändert und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayManageExistingTime(binding: JarvisTaskDraftBinding) {
+  return canManageProjectTimeEntries(binding.profile.sessionActor) &&
+    canManageProjectTimeEntries(binding.profile.effectiveActor);
+}
+
+function validateTimeManagementBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Zeiteintragsänderung gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit der Zeitprüfung geändert. Bitte erstelle eine neue Vorschau.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis der Zeiteintragsänderung ist ungültig.",
+      409
+    );
+  }
+  const payload = timeManagementPayloadSchema.safeParse(draft.payload);
+  const context = timeManagementContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "time.manage" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Zeiteintragsänderung oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundTimeManagementDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) {
+    throw new JarvisActionDraftError("not_found", "Die Zeiteintragsänderung wurde nicht gefunden.", 404);
+  }
+  validateTimeManagementBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateTimeManagementBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function timeManagementChangeFields(
+  changes: z.infer<typeof timeManagementPayloadSchema>["changes"]
+) {
+  if (!changes) return [];
+  const labels: Record<string, string> = {
+    date: "Datum",
+    startTime: "Beginn",
+    endTime: "Ende",
+    pauseMs: "Pause",
+    comment: "Kommentar",
+    offerId: "Angebot",
+    trade: "Gewerk",
+    billingCatalogItemId: "Abrechnungsleistung",
+    completionStatus: "Abschlussstatus",
+    overtimeApprovalStatus: "Überstundenstatus",
+  };
+  return Object.entries(changes).map(([key, value]) => ({
+    label: labels[key] ?? key,
+    value:
+      key === "pauseMs"
+        ? `${Math.round(Number(value) / 60_000)} Minuten`
+        : String(value ?? ""),
+  }));
+}
+
+function toJarvisTimeManagementDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisTimeManagementDraftView {
+  const { payload, context } = validateTimeManagementBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayManageExistingTime(binding);
+  const ready = state === "awaiting_confirmation" && permitted;
+  const reason: JarvisTimeManagementDraftView["confirmation"]["reason"] =
+    state === "expired" ? "expired" :
+      state === "cancelled" ? "cancelled" :
+        state === "executed" ? "executed" :
+          state === "executing" ? "executing" :
+            !permitted ? "not_permitted" : "ready";
+  const entry = context.entry;
+  const warnings = [
+    "Projekt, Mitarbeiter und Herkunft des Zeiteintrags bleiben unverändert.",
+    "Bereits abgerechnete oder gelöschte Zeiteinträge werden serverseitig gesperrt.",
+    payload.action === "delete"
+      ? "Der Zeiteintrag wird nur logisch gelöscht und bleibt in der Bearbeitungshistorie nachvollziehbar."
+      : "Nur die ausdrücklich angezeigten Felder werden korrigiert; der historische Kostensatz bleibt erhalten.",
+  ];
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "time.manage",
+    title: "Zeiteintrag kontrolliert korrigieren oder löschen",
+    badge: state === "executed" ? "Ausgeführt" : state === "executing" ? "Wird geändert" :
+      state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    entryId: entry.id,
+    projectId: entry.projectId,
+    lifecycleAction: payload.action,
+    fields: [
+      { label: "Aktion", value: payload.action === "delete" ? "Zeiteintrag löschen" : "Zeiteintrag korrigieren" },
+      { label: "Zeiteintrags-ID", value: entry.id },
+      { label: "Projekt", value: entry.mode === "unproductive" ? `Unproduktiv · ${entry.projectLabel}` : entry.projectLabel },
+      { label: "Mitarbeitend", value: entry.employee },
+      { label: "Bisherige Zeit", value: `${entry.date} · ${entry.startTime}–${entry.endTime} · ${Math.round(entry.pauseMs / 60_000)} Min. Pause` },
+      { label: "Grund", value: context.reason },
+      ...timeManagementChangeFields(payload.changes),
+    ],
+    checks: [
+      { key: "scope", label: "Organisation, Sitzung und Rolle", status: permitted ? "ok" : "blocked", detail: permitted ? "Die Änderung ist an die aktuelle wirksame Identität gebunden." : "Diese Rollenkombination darf Zeiteinträge nicht verwalten." },
+      { key: "billing", label: "Abrechnungsbindung", status: "ok", detail: "Der Zeiteintrag ist nicht fakturiert und darf kontrolliert geändert werden." },
+      { key: "freshness", label: "Aktueller Fachstand", status: "ok", detail: "Der vollständige Zeiteintragsstand ist per SHA-256 an diese Vorschau gebunden." },
+    ],
+    warnings,
+    blockingIssues: permitted ? [] : ["Diese Rollenkombination darf Zeiteinträge nicht verwalten."],
+    confirmation: {
+      enabled: ready,
+      reason,
+      requiredText: getProjectTimeEntryManagementConfirmationText(entry.id, payload.action),
+    },
+    cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+    ...(state === "executed" && draft.resultEntityId ? {
+      result: { entityType: "projectTimeEntry" as const, entityId: draft.resultEntityId, label: "Geänderten Zeiteintrag öffnen" },
+    } : {}),
+  };
+}
+
+export async function createPersistedJarvisTimeManagementDraft(input: {
+  preview: JarvisActionPreview<"time.manage">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError("session_required", "Für eine Zeiteintragsänderung ist eine aktuelle Sitzung erforderlich.", 401);
+  }
+  if (!mayManageExistingTime(input)) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Zeiteinträge nicht verwalten.", 403);
+  }
+  const actorId = getActorIds(input.profile).effectiveActorId;
+  const actor = await prisma.user.findFirst({
+    where: { id: actorId, organizationId: input.organizationId, isActive: true },
+    select: { id: true, firstName: true, lastName: true, email: true, role: true, isActive: true },
+  });
+  if (!actor) throw new JarvisActionDraftError("role_changed", "Der wirksame Akteur ist nicht mehr aktiv.", 409);
+  const payload = timeManagementPayloadSchema.parse(input.preview.payload);
+  let evaluation;
+  try {
+    evaluation = await evaluateProjectTimeEntryManagement({
+      organizationId: input.organizationId,
+      actor,
+      entryId: payload.entryId,
+      action: payload.action,
+      reason: payload.reason,
+    });
+  } catch (error) {
+    if (error instanceof ProjectTimeEntryServiceError) {
+      throw new JarvisActionDraftError("invalid_input", error.message, error.status);
+    }
+    throw error;
+  }
+  const context = timeManagementContextSchema.parse(evaluation);
+  const now = input.now ?? new Date();
+  const actorIds = getActorIds(input.profile);
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating, actionId: "time.manage", state: "awaiting_confirmation", revision: 1,
+    payloadHash: hashJson(payload), contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null,
+    executedAt: null, resultEntityType: null, resultEntityId: null, lastErrorCode: null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({ data: {
+      ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue,
+      integrityTag: createIntegrityTag(draftData),
+    } });
+    await appendAuditEvent(tx, { draft, eventType: "draft_created_ready" });
+    return draft;
+  });
+  return toJarvisTimeManagementDraftView(created, input);
+}
+
+export async function getJarvisTimeManagementDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const { draft } = await loadBoundTimeManagementDraft(previewId, binding, now);
+  return toJarvisTimeManagementDraftView(draft, binding);
+}
+
+export async function cancelJarvisTimeManagementDraft(
+  previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()
+) {
+  const { draft } = await loadBoundTimeManagementDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisTimeManagementDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) {
+    throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Zeiteintragsänderung kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  }
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Zeiteintragsänderung wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag },
+      data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) },
+    });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Zeiteintragsänderung wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" });
+    return current;
+  });
+  return toJarvisTimeManagementDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisTimeManagementDraft(
+  previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number,
+  confirmationText: string, now = new Date()
+) {
+  const loaded = await loadBoundTimeManagementDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisTimeManagementDraftView(loaded.draft, binding);
+  const requiredText = getProjectTimeEntryManagementConfirmationText(loaded.context.entry.id, loaded.payload.action);
+  if (!matchesProjectTimeEntryManagementConfirmation(loaded.context.entry.id, loaded.payload.action, confirmationText)) {
+    throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
+  }
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") {
+    throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Zeiteintragsänderung darf bestätigt werden.", 409);
+  }
+  if (!mayManageExistingTime(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Zeiteinträge nicht verwalten.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
+      if (!current) throw new JarvisActionDraftError("not_found", "Die Zeiteintragsänderung wurde nicht gefunden.", 404);
+      const parsed = validateTimeManagementBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) {
+        throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Zeiteintragsänderung ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      }
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, isActive: true } });
+      if (!actor || !canManageProjectTimeEntries(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Zeitberechtigung sind nicht mehr aktuell.", 409);
+      const users = await tx.user.findMany({ where: { organizationId: binding.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, isActive: true } });
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
+      const claimed = await tx.jarvisActionDraft.updateMany({
+        where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag },
+        data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) },
+      });
+      if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Der Zeiteintrag wird bereits geändert.", 409);
+      const result = await executeProjectTimeEntryManagementInTransaction({
+        tx, organizationId: binding.organizationId, actor, users,
+        entryId: parsed.payload.entryId, action: parsed.payload.action, reason: parsed.payload.reason,
+        expectedFingerprint: parsed.context.fingerprint, changes: parsed.payload.changes,
+      });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "projectTimeEntry", resultEntityId: result.id };
+      const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: {
+        state: "executed", executedAt, resultEntityType: "projectTimeEntry", resultEntityId: result.id, integrityTag: createIntegrityTag(executedData),
+      } });
+      await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: result.id, entityType: "projectTimeEntry" } });
+      return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisTimeManagementDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundTimeManagementDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") return toJarvisTimeManagementDraftView(latest.draft, binding);
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof ProjectTimeEntryServiceError) {
+      throw new JarvisActionDraftError(error.code === "conflict" ? "stale_context" : "invalid_input", error.message, error.status);
+    }
+    throw new JarvisActionDraftError("execution_failed", "Der Zeiteintrag wurde nicht geändert und die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

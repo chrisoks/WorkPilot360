@@ -348,6 +348,7 @@ export async function saveProjectTimeEntry(input: {
   payload: ProjectTimeEntryWriteInput;
   createOnly?: boolean;
   createLogbookEntry?: boolean;
+  allowManagedUpdate?: boolean;
 }) {
   const db = input.db ?? prisma;
   const payload = input.payload;
@@ -385,6 +386,13 @@ export async function saveProjectTimeEntry(input: {
     throw new ProjectTimeEntryServiceError(
       "conflict",
       "Diese technische Ausführungs-ID ist bereits anderweitig gebunden.",
+      409
+    );
+  }
+  if (existingEntry && !input.createOnly && !input.allowManagedUpdate) {
+    throw new ProjectTimeEntryServiceError(
+      "conflict",
+      "Bestehende Zeiteinträge dürfen nur über den kontrollierten Korrekturweg geändert werden.",
       409
     );
   }
@@ -689,11 +697,13 @@ export async function saveProjectTimeEntry(input: {
           : entry
       )
     : [];
-  const laborCostRateSnapshot = await getEmployeeHourlyCostRateSnapshot(
-    db,
-    input.organizationId,
-    targetUser.id
-  );
+  const laborCostRateSnapshot = existingEntry
+    ? Number(existingEntry.laborCostRateSnapshot ?? 0)
+    : await getEmployeeHourlyCostRateSnapshot(
+        db,
+        input.organizationId,
+        targetUser.id
+      );
   const laborCostSnapshot = roundMoney(
     (durationMs / 3_600_000) * laborCostRateSnapshot
   );
