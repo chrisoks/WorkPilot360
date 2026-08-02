@@ -639,3 +639,30 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   Produktionsfragen, 28 nur vorbereitete Aktionen, null Ausführungen/
   Rückstände und leerer Live-Prisma-Diff. WorkPilot PID `741649`,
   KlinikNavigator PID `398228`.
+
+## Projektstatus-Automation: Verantwortlichen-Empfänger fail-closed auflösen
+
+- Gemeinsame Fachfunktion `resolveProjectResponsibleUser` in
+  `src/lib/projects/status-escalation.ts`; wird von Preview und realer
+  Synchronisation verwendet.
+- Normalisierung: aktive Benutzer, Vor-/Nachname, deutsche Kleinschreibung und
+  zusammengefasste Leerzeichen. Nur genau ein Treffer ergibt `matched` und
+  eine `responsibleUserId`.
+- Kein aktiver Treffer ergibt `missing`; mehrere aktive Treffer ergeben
+  `ambiguous`. Beide liefern `responsibleUserId = null` und verhindern damit
+  eine Verantwortlichen-Zustellung an eine geratene Person.
+- Managementeskalationen behalten alle aktiven Admins/Geschäftsführer als
+  zusätzliche Empfänger. Exactly-once und offene Ereignisse bleiben
+  unverändert.
+- JARVIS zeigt Auflösungsstatus, Trefferzahl, getrennte Missing-/Ambiguous-
+  Summen und die fail-closed-Begründung.
+- Permanente Tests: `src/lib/projects/status-escalation.test.ts` plus
+  `src/lib/jarvis/automation-status-analysis.test.ts`. Aktuelle lokale und
+  produktive aktive Doppel-Namen: 0.
+- Produktivabnahme: Runtime
+  `3da93965bba7f0c466563c8e8b752458552b2ac5`, Backup
+  `/var/backups/workpilot360/20260802T074500Z-before-jarvis-recipient-failclosed`,
+  172/172 Testdateien, 1.722/1.722 Tests, echter UI-Klicktest, 110/110
+  Produktionsfragen, 28 nur vorbereitete Aktionen, null Ausführungen/
+  Rückstände und leerer Live-Prisma-Diff. WorkPilot PID `743239`,
+  KlinikNavigator PID `398228`.

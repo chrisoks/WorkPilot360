@@ -1,5 +1,26 @@
 # WorkPilot360 Agent Handover
 
+- Projektstatus-Empfängerauflösung fail-closed 2026-08-02: Die gemeinsame
+  Fachlogik `resolveProjectResponsibleUser` liefert eine verantwortliche Person
+  nur noch bei genau einem aktiven, normalisierten Namens-Treffer. Leere,
+  unbekannte oder ausschließlich inaktive Treffer gelten als `missing`; zwei
+  oder mehr aktive Namens-Treffer als `ambiguous`. In beiden Fällen wird kein
+  Verantwortlichen-Hinweis an einen geratenen Benutzer zugestellt. Auf der
+  Managementstufe bleiben alle aktiven Admins/Geschäftsführer zusätzliche
+  Empfänger. Preview und JARVIS führen Auflösungsstatus und Trefferzahl mit;
+  JARVIS erklärt bei Mehrdeutigkeit ausdrücklich die fail-closed-Sperre.
+  Runtime-Commit `3da93965bba7f0c466563c8e8b752458552b2ac5`;
+  verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T074500Z-before-jarvis-recipient-failclosed`.
+  Lokal bestanden 172/172 Testdateien mit 1.722/1.722 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma und 90-Seiten-Build. Lokale sowie
+  produktive aktive Doppel-Namen: 0. Echter Klicktest zeigte 0 mehrdeutige
+  aktuelle Treffer, korrekte Empfängerdiagnose und Navigation; keine
+  Nebenwirkung. Lokaler/produktiver 110er-Korpus grün; produktiv 28 Aktionen
+  nur vorbereitet, null ausgeführt und null Rückstände. Dashboard/Formular
+  HTTP 200, Live-Prisma-Diff leer. WorkPilot PID `743239`, KlinikNavigator
+  unverändert PID `398228`.
+
 - JARVIS Projektstatus-Zustellbarkeitsdiagnose 2026-08-02: `automation.read`
   erklärt nun rein lesend, wer bei jeder aktuell fälligen Projektstatus-Schwelle
   einen neuen In-App-Hinweis erhalten würde, welcher Empfänger bereits durch

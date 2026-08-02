@@ -3295,3 +3295,42 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `741649`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
+
+## 36. Mehrdeutige Projektverantwortung fail-closed behandeln
+
+Die Empfängerdiagnose hat eine sicherheitsrelevante Altlogik sichtbar gemacht:
+Bei mehreren aktiven Benutzern mit demselben Vor- und Nachnamen wählte die
+Projektstatus-Auswertung zuvor den ersten Treffer. Die gemeinsame Fachfunktion
+`resolveProjectResponsibleUser` verlangt nun genau einen aktiven Treffer nach
+normalisierter Schreibweise und Leerzeichenbehandlung. Kein Name, kein aktiver
+Treffer oder nur inaktive Treffer ergeben `missing`; mehr als ein aktiver
+Treffer ergibt `ambiguous`. Nur `matched` enthält eine Benutzer-ID.
+
+Damit kann die reale Synchronisation einen Verantwortlichen-Hinweis nicht mehr
+an eine geratene Person senden. Auf Geschäftsführungs-Stufe bleiben die aktiven
+Admins/Geschäftsführer unabhängig davon zusätzliche Empfänger. Preview,
+Synchronisation und JARVIS verwenden dieselbe Auflösung. JARVIS zeigt bei
+Mehrdeutigkeit Trefferzahl und den Hinweis, dass aus Sicherheitsgründen an
+keinen dieser Benutzer zugestellt wird. Fehlend und mehrdeutig werden getrennt
+gezählt. Die bestehende Exactly-once-Sperre pro Projekt, Status, Stufe und
+Empfänger bleibt unverändert.
+
+Lokal bestanden 172 Testdateien mit 1.722 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, synchroner Datenbankstand und
+90-Seiten-Build. Permanente Tests decken eindeutigen, normalisierten,
+fehlenden, inaktiven und doppelten Namen ab. In den aktuellen lokalen und
+produktiven Daten gibt es 0 doppelte aktive Mitarbeiternamen. Der echte
+Klicktest zeigte weiterhin 208 geplante Managementhinweise, zwei aktive
+Managementempfänger und 0 aktuelle mehrdeutige Zuordnungen; Navigation und
+Datenbank blieben sauber. Der feste Korpus blieb exakt 110 Fälle und bestand
+lokal sowie produktiv 110/110; produktiv 28 Schreibentwürfe nur vorbereitet,
+null ausgeführt und null Rückstände.
+
+Produktiv abgenommen auf Runtime-Commit
+`3da93965bba7f0c466563c8e8b752458552b2ac5`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T074500Z-before-jarvis-recipient-failclosed`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `743239`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.
