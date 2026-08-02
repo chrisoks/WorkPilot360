@@ -3741,6 +3741,39 @@ KlinikNavigator unverändert PID `398228`. Keine Prisma-Schemaänderung;
 `StoredFile`, privater S3-Speicher und alle Online-Anfragen-Invarianten blieben
 erhalten.
 
+## 49. Geführte Angebots- und Nachtragserstellung
+
+Der kontrollierte Angebotsentwurf wird jetzt als geführter JARVIS-Dialog
+bedient. Natürlich formulierte Wünsche wie `JARVIS, schreib mir ein Angebot`
+fragen zuerst nach dem Kunden, zeigen danach ausschließlich dessen offene
+Projekte und führen anschließend über Angebotsmodalitäten,
+Leistungskatalogpositionen und die geprüfte Kalkulation. Kunden, Projekte und
+Katalogleistungen verwenden eine gemeinsame organisations- und
+rollenbegrenzte, tokenbasierte Volltextsuche; Bindestriche und Wortabstände
+verfälschen die Trefferzahl nicht. Große native Auswahllisten werden im
+geführten Weg nicht mehr ausgeliefert. Der vollständige Editor bleibt als
+bewusste Detailbearbeitung erhalten.
+
+Suche, Klickauswahl und Berechnung benötigen keinen zusätzlichen
+OpenAI-Aufruf. Der ausgewählte Projektstand wird sofort im bestehenden
+sitzungs-, revisions- und integritätsgebundenen `offer.prepare`-Entwurf
+gesichert. JARVIS verwendet weiterhin ausschließlich
+`src/lib/offers/offer-draft-service.ts`; erst die vorhandene ausdrückliche
+Schlussbestätigung darf genau einen Angebotsentwurf samt Historie erzeugen.
+Finalisierung und Versand bleiben getrennte Aktionen. Nachträge verwenden
+denselben Dialog, verlangen aber weiterhin Nachtragsart und ein gültiges
+Bezugsangebot des ausgewählten Projekts.
+
+Lokal bestanden 189 Testdateien mit 1.872 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung und der 90-Seiten-Build. Der
+permanente Korpus blieb exakt 110 Fragen groß und bestand 110/110 mit 32
+ausschließlich vorbereiteten und null ausgeführten Aktionen sowie null
+Rückständen. Der echte Klicktest führte von der natürlichen Anfrage über die
+bindestrichtolerante Kundensuche, vier offene Kundenprojekte, Projektauswahl,
+automatische Dauerlaufvorgaben und Katalogvolltextsuche bis zur geprüften
+Netto-/Bruttovorschau. Der finale Anlegeknopf wurde nicht ausgeführt; alle
+Testentwürfe wurden abgebrochen. Ein frischer Browserlauf blieb fehlerfrei.
+
 ## 45. Bestätigte Planungstermine kontrolliert absagen
 
 JARVIS kann einen über seine vollständige sichtbare ID eindeutig bestimmten

@@ -7288,6 +7288,109 @@
   resize: vertical;
 }
 
+.jarvisGuidedOffer {
+  background: linear-gradient(145deg, #eefafa, #ffffff);
+  border: 1px solid #9fcdd0;
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.jarvisGuidedOffer > strong {
+  color: #0f4f57;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.jarvisGuidedOffer p {
+  color: #526a72;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.jarvisGuidedOfferStep {
+  display: grid;
+  gap: 8px;
+}
+
+.jarvisGuidedSearchResults {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.jarvisGuidedSearchResults > small {
+  color: #64777e;
+  font-size: 0.7rem;
+  padding: 6px 2px;
+}
+
+.jarvisGuidedSearchResults > button {
+  background: #fff;
+  border: 1px solid #c5dcde;
+  border-radius: 9px;
+  color: #163b44;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.jarvisGuidedSearchResults > button:hover:not(:disabled),
+.jarvisGuidedSearchResults > button:focus-visible {
+  border-color: #0f7b83;
+  box-shadow: 0 3px 10px rgb(15 52 64 / 0.09);
+  outline: none;
+}
+
+.jarvisGuidedSearchResults > button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.jarvisGuidedSearchResults > button strong {
+  font-size: 0.74rem;
+}
+
+.jarvisGuidedSearchResults > button span {
+  color: #60747b;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.jarvisActionDraftEditor[data-guide-step] > label:first-of-type,
+.jarvisActionDraftEditor[data-guide-step] > .jarvisPlanningChecks > button {
+  display: none;
+}
+
+.jarvisActionDraftEditor[data-guide-step="customer"] > label,
+.jarvisActionDraftEditor[data-guide-step="customer"] > .jarvisPlanningChecks,
+.jarvisActionDraftEditor[data-guide-step="customer"] > button,
+.jarvisActionDraftEditor[data-guide-step="project"] > label,
+.jarvisActionDraftEditor[data-guide-step="project"] > .jarvisPlanningChecks,
+.jarvisActionDraftEditor[data-guide-step="project"] > button {
+  display: none;
+}
+
+.jarvisActionDraftEditor[data-guide-step="basics"] > .jarvisPlanningChecks {
+  display: none;
+}
+
+.jarvisActionDraftEditor[data-guide-step="positions"][data-show-details="false"] > label,
+.jarvisActionDraftEditor[data-guide-step="positions"][data-show-details="false"] > button {
+  display: none;
+}
+
+.jarvisActionDraftEditor[data-guide-step="review"][data-show-details="false"] > label,
+.jarvisActionDraftEditor[data-guide-step="review"][data-show-details="false"] > .jarvisPlanningChecks,
+.jarvisActionDraftEditor[data-guide-step="review"][data-show-details="false"] > button {
+  display: none;
+}
+
 .jarvisTimeDraftEditor {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

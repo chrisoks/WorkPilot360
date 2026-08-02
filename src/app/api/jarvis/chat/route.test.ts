@@ -3355,7 +3355,7 @@ describe("POST /api/jarvis/chat", () => {
         missingFields: expect.arrayContaining(["Projekt", "Ausführungsmonat", "Mindestens eine Position"]),
       },
     });
-    expect(payload.message).toContain("sicheren Angebotsentwurf vorbereitet");
+    expect(payload.message).toContain("Für welchen Kunden");
     expect(payload.message).not.toContain("noch nicht freigegeben");
     expect(mocks.createPersistedJarvisOfferDraft).toHaveBeenCalledTimes(1);
   });

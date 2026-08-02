@@ -16,6 +16,10 @@ describe("JARVIS offer intake", () => {
   it("recognizes creation but not offer reads or sending", () => {
     expect(looksLikeOfferDraftRequest("Erstelle ein Angebot für Projekt GLR-449")).toBe(true);
     expect(looksLikeOfferDraftRequest("Kannst du das Angebot für mich schreiben?")).toBe(true);
+    expect(looksLikeOfferDraftRequest("JARVIS, schreib mir ein Angebot.")).toBe(true);
+    expect(looksLikeOfferDraftRequest("Hey Jarvis, bitte erstelle einen Nachtrag.")).toBe(true);
+    expect(looksLikeOfferDraftRequest("Ich möchte ein Angebot für den Kunden anlegen.")).toBe(true);
+    expect(looksLikeOfferDraftRequest("Wie schreibe ich ein Angebot?")).toBe(false);
     expect(looksLikeOfferDraftRequest("Zeig mir offene Angebote")).toBe(false);
     expect(looksLikeOfferDraftRequest("Versende das Angebot")).toBe(false);
   });

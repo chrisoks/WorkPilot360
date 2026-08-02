@@ -18,8 +18,9 @@ const MONTHS: Record<string, number> = {
 export function looksLikeOfferDraftRequest(question: string) {
   const value = normalizeJarvisIntentText(question);
   const directCreationVerb =
-    /^\s*(?:erstell|erstelle|leg|lege|bereit|kalkulier|rechne|mach|schreib)\w*\b/.test(value) ||
-    /\b(?:kannst|konntest|wurdest|sollst)\b[^?!.]*\b(?:erstell|mach|schreib)\w*\b/.test(value);
+    /^(?:(?:hey|hallo)\s+)?(?:jarvis\s+)?(?:bitte\s+)?(?:erstell|erstelle|leg|lege|bereit|kalkulier|rechne|mach|schreib)\w*\b/.test(value) ||
+    /\b(?:kannst|konntest|wurdest|sollst|mochtest|willst)\b[^?!.]*\b(?:erstell|mach|schreib)\w*\b/.test(value) ||
+    /\bich\s+(?:mochte|will|brauch)\w*\b[^?!.]*\b(?:angebot|nachtrag|nachtragsangebot)\w*\b/.test(value);
   return (
     directCreationVerb &&
     /\b(?:angebot|nachtrag|nachtragsangebot)\w*\b/.test(value) &&

@@ -2639,6 +2639,8 @@ describe("persistent JARVIS offer drafts", () => {
       },
     });
     expect(created.state).toBe("awaiting_input");
+    expect(created.editor.projectOptions).toHaveLength(1);
+    expect(created.editor.catalogOptions).toEqual([]);
 
     const ready = await completeJarvisOfferDraft(
       created.previewId,
@@ -2674,6 +2676,9 @@ describe("persistent JARVIS offer drafts", () => {
       grossTotal: 130.9,
     });
     expect(ready.editor.lines[0]?.title).toBe("Glasreinigung Stunde");
+    expect(ready.editor.catalogOptions.map((option) => option.id)).toEqual([
+      "service-hourly",
+    ]);
 
     const first = await confirmJarvisOfferDraft(
       ready.previewId,

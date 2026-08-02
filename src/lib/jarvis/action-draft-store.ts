@@ -9594,8 +9594,12 @@ export async function toJarvisOfferDraftView(
     warnings: evaluated.warnings,
     editor: {
       ...evaluated.input,
-      projectOptions: workspace.projectOptions,
-      catalogOptions: workspace.catalogOptions,
+      projectOptions: workspace.projectOptions.filter(
+        (project) => project.id === evaluated.input.projectId
+      ),
+      catalogOptions: workspace.catalogOptions.filter((item) =>
+        evaluated.input.lines.some((line) => line.catalogItemId === item.id)
+      ),
       parentOfferOptions: workspace.parentOfferOptions.filter(
         (offer) => !evaluated.input.projectId || offer.projectId === evaluated.input.projectId
       ),

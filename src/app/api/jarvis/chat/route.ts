@@ -308,8 +308,9 @@ async function buildJarvisOfferDraft(input: {
     return {
       type: "answer" as const,
       topicId: "action.draft.offer",
-      message:
-        "Ich habe einen sicheren Angebotsentwurf vorbereitet. Wähle Projekt und Katalogpositionen, prüfe Mengen, Preise, Nachlass, Umsatzsteuer und Ausführungsmonat. Erst deine ausdrückliche Bestätigung legt genau einen Entwurf an; JARVIS finalisiert oder versendet ihn nicht.",
+      message: explicitProject?.id
+        ? "Ich habe das Projekt erkannt. Lass uns die Angebotsmodalitäten und Positionen jetzt Schritt für Schritt festlegen. Erst deine ausdrückliche Bestätigung legt genau einen Entwurf an; JARVIS finalisiert oder versendet ihn nicht."
+        : "Gerne. Für welchen Kunden soll ich das Angebot erstellen? Suche den Kunden unten; danach zeige ich dir ausschließlich seine offenen Projekte zur Auswahl.",
       actionDraft,
     };
   } catch (error) {
