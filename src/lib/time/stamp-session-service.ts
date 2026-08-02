@@ -105,7 +105,7 @@ function normalizeStoredStampDate(date: Date | null, nowMs = Date.now()) {
     : date;
 }
 
-function toSnapshot(
+export function toStampSessionSnapshot(
   row: ActiveStampSession,
   nowMs = Date.now()
 ): StampSessionSnapshot {
@@ -183,7 +183,7 @@ function evaluateLoadedSession(
   row: ActiveStampSession | null,
   now: Date
 ): StampSessionTransitionEvaluation {
-  const session = row ? toSnapshot(row, now.getTime()) : null;
+  const session = row ? toStampSessionSnapshot(row, now.getTime()) : null;
   const currentState = !session
     ? "missing"
     : session.pauseStartedAt
@@ -354,7 +354,7 @@ async function executeInTransaction(input: {
       },
     });
   }
-  return toSnapshot(updated, input.now.getTime());
+  return toStampSessionSnapshot(updated, input.now.getTime());
 }
 
 export async function executeStampSessionTransition(input: {

@@ -223,6 +223,19 @@ const fake = vi.hoisted(() => {
     stampSessionTransitions.push(input);
     return { ...stampSession, pauseStartedAt: input.action === "pause" ? baseNow.toISOString() : null };
   });
+  const stampSessionStarts: Array<Record<string, any>> = [];
+  const startEvaluation = {
+    action: "start" as const,
+    requested: { mode: "unproductive" as const, unproductiveLabel: "Büroorganisation", comment: "Ablage bearbeiten", confirmImplementationStatus: false },
+    effective: { mode: "unproductive" as const, projectId: "__unproductive__", projectLabel: "Büroorganisation", comment: "Ablage bearbeiten", trade: "", planningEntryId: "", planningBillingGroupId: "", billingCatalogItemId: "", billingCatalogItemLabel: "", confirmImplementationStatus: false },
+    project: null, billingCatalogItem: null, planningSource: null, existingSession: null,
+    isHourlyRecurring: false, statusTransition: null, fingerprint: "7".repeat(64), warnings: [], blockingIssues: [],
+  };
+  const evaluateStampSessionStart = vi.fn(async () => startEvaluation);
+  const executeStampSessionStart = vi.fn(async (input: Record<string, any>) => {
+    stampSessionStarts.push(input);
+    return { session: { ...stampSession, id: "stamp-started", mode: "unproductive", projectId: "__unproductive__", projectLabel: "Büroorganisation", comment: "Ablage bearbeiten" }, evaluation: startEvaluation };
+  });
   const evaluateInvoicePayment = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate?: string }) => ({
     invoice: {
       id: invoiceId,
@@ -824,8 +837,11 @@ const fake = vi.hoisted(() => {
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
       stampSessionTransitions.length = 0;
+      stampSessionStarts.length = 0;
       evaluateStampSessionTransition.mockClear();
       executeStampSessionTransition.mockClear();
+      evaluateStampSessionStart.mockClear();
+      executeStampSessionStart.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -893,6 +909,9 @@ const fake = vi.hoisted(() => {
     stampSessionTransitions,
     evaluateStampSessionTransition,
     executeStampSessionTransition,
+    stampSessionStarts,
+    evaluateStampSessionStart,
+    executeStampSessionStart,
   };
 });
 
@@ -992,6 +1011,12 @@ vi.mock("@/lib/time/stamp-session-service", () => ({
   getStampSessionTransitionConfirmationText: (action: string) => action === "pause" ? "STEMPELUNG PAUSIEREN" : "STEMPELUNG FORTSETZEN",
   matchesStampSessionTransitionConfirmation: (action: string, value: string) => value.trim() === (action === "pause" ? "STEMPELUNG PAUSIEREN" : "STEMPELUNG FORTSETZEN"),
   StampSessionServiceError: class StampSessionServiceError extends Error { code = "conflict"; },
+}));
+vi.mock("@/lib/time/stamp-session-start-service", () => ({
+  evaluateStampSessionStart: fake.evaluateStampSessionStart,
+  executeStampSessionStart: fake.executeStampSessionStart,
+  getStampSessionStartConfirmationText: () => "STEMPELUNG STARTEN UNPRODUKTIV",
+  matchesStampSessionStartConfirmation: (_evaluation: unknown, value: string) => value.trim() === "STEMPELUNG STARTEN UNPRODUKTIV",
 }));
 vi.mock("@/lib/invoices/invoice-draft-service", () => ({
   evaluateInvoiceDraft: fake.evaluateInvoiceDraft,
@@ -3486,6 +3511,29 @@ describe("persistent JARVIS personal stamp-session drafts", () => {
     expect(replay.result?.entityId).toBe("stamp-1");
     expect(fake.stampSessionTransitions).toHaveLength(1);
     expect(fake.executeStampSessionTransition).toHaveBeenCalledWith(expect.objectContaining({ action: "pause", userId: "user-1", expectedFingerprint: "6".repeat(64) }));
+  });
+
+  it("starts the own session exactly once after the exact start phrase", async () => {
+    const startPreview = {
+      version: 1 as const, previewId: "stamp-start-1", actionId: "time.session.manage" as const,
+      actionTitle: "Eigene Stempelung kontrolliert bedienen", state: "awaiting_confirmation" as const,
+      organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+      payload: { action: "start" as const, mode: "unproductive" as const, unproductiveLabel: "Büroorganisation", comment: "Ablage bearbeiten", confirmImplementationStatus: false },
+      execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+    };
+    const created = await createPersistedJarvisStampSessionTransitionDraft({ ...binding(), now: baseNow, preview: startPreview });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", operation: "start", confirmation: { requiredText: "STEMPELUNG STARTEN UNPRODUKTIV" } });
+    const first = await confirmJarvisStampSessionTransitionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisStampSessionTransitionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first).toMatchObject({ state: "executed", operation: "start", result: { entityId: "stamp-started" } });
+    expect(first.checks).toContainEqual(expect.objectContaining({
+      key: "active-session",
+      label: "Geprüfter Ausgangszustand",
+      detail: "Vor der Ausführung lief keine persönliche Stempelung; die neue Stempelung ist jetzt aktiv.",
+    }));
+    expect(replay.result?.entityId).toBe("stamp-started");
+    expect(fake.stampSessionStarts).toHaveLength(1);
+    expect(fake.executeStampSessionStart).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", expectedFingerprint: "7".repeat(64), requestId: "stamp-start-1", source: "jarvis" }));
   });
 
   it("rejects inexact confirmation, cancellation, and represented sessions without writing", async () => {

@@ -438,6 +438,7 @@ async function main() {
   let projectLifecycleDraftPrepared = false;
   let onlineRequestConversionDraftPrepared = false;
   let stampSessionDraftPrepared = false;
+  let stampSessionStartDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -468,6 +469,7 @@ async function main() {
         const isAutomationStatusCase = item.question.includes("Projektstatus-Automation wirklich");
         const isOnlineRequestConversionCase = item.question.includes("QA-OKI-100");
         const isStampSessionCase = item.question === "Pausiere meine laufende Stempelung.";
+        const isStampSessionStartCase = item.question.startsWith("Starte meine Stempelung unproduktiv.");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -752,6 +754,19 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die persönliche Stempelfrage hat keine vollständige, unblockierte und sitzungsgebundene Pausenvorschau erzeugt." });
           } else {
             stampSessionDraftPrepared = true;
+          }
+        }
+        if (isStampSessionStartCase) {
+          if (payload.actionDraft?.actionId !== "time.session.manage" || payload.actionDraft.operation !== "start") {
+            failures.push({ id: item.id, status: response.status, error: "Die Startfrage hat keine kontrollierte time.session.manage-Startvorschau erzeugt." });
+          } else if (
+            payload.actionDraft.state !== "awaiting_input" ||
+            payload.actionDraft.confirmation?.enabled !== false ||
+            !payload.actionDraft.blockingIssues?.some((issue) => issue.includes("bereits eine persönliche Stempelung"))
+          ) {
+            failures.push({ id: item.id, status: response.status, error: "Die Startfrage hat die bereits laufende persönliche Stempelung nicht fail-closed erkannt." });
+          } else {
+            stampSessionStartDraftPrepared = true;
           }
         }
         if (isReminderCase && reminderInvoice) {
@@ -1290,6 +1305,7 @@ async function main() {
     projectLifecycleDraftPrepared,
     onlineRequestConversionDraftPrepared,
     stampSessionDraftPrepared,
+    stampSessionStartDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
       ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
       : 0,

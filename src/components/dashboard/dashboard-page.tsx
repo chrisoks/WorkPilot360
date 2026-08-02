@@ -3082,7 +3082,7 @@ function parseJarvisStampSessionTransitionDraft(
     typeof candidate.state !== "string" ||
     typeof candidate.revision !== "number" ||
     typeof candidate.expiresAt !== "string" ||
-    (candidate.operation !== "pause" && candidate.operation !== "resume") ||
+    !["start", "pause", "resume"].includes(String(candidate.operation)) ||
     typeof candidate.sessionId !== "string" ||
     !["running", "paused", "missing"].includes(String(candidate.currentState)) ||
     !["running", "paused"].includes(String(candidate.targetState)) ||
@@ -4338,7 +4338,9 @@ function JarvisOfferFinalizationCard({
 
   if (draft.actionId === "time.session.manage") {
     const footer = draft.state === "executed"
-      ? `Die persönliche Stempelung wurde genau einmal ${draft.operation === "pause" ? "pausiert" : "fortgesetzt"}. Projekt, Zeiten und Abrechnung blieben unverändert.`
+      ? draft.operation === "start"
+        ? "Die persönliche Stempelung wurde genau einmal gestartet. Der angezeigte Arbeits- und Abrechnungskontext ist jetzt aktiv."
+        : `Die persönliche Stempelung wurde genau einmal ${draft.operation === "pause" ? "pausiert" : "fortgesetzt"}. Projekt, Zeiten und Abrechnung blieben unverändert.`
       : draft.state === "cancelled"
         ? "Die Stempelaktion wurde beendet. Die persönliche Stempelung blieb unverändert."
         : draft.state === "expired"
@@ -4354,7 +4356,7 @@ function JarvisOfferFinalizationCard({
         {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur bewussten Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
         {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
         <div className={styles.jarvisActionDraftActions}>
-          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.operation === "pause" ? "Stempelung jetzt pausieren" : "Stempelung jetzt fortsetzen"}</button> : null}
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.operation === "start" ? "Stempelung jetzt starten" : draft.operation === "pause" ? "Stempelung jetzt pausieren" : "Stempelung jetzt fortsetzen"}</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Stempelaktion abbrechen</button> : null}
         </div>
         <footer>{footer}</footer>

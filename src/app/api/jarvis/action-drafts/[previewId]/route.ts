@@ -1060,7 +1060,9 @@ export async function POST(
           ? isOfferFinalization
             ? "Das Angebot wurde nach deiner kritischen Bestätigung genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert."
             : isStampSessionTransition
-            ? `Die persönliche laufende Stempelung wurde nach deiner exakten Bestätigung genau einmal ${actionDraft.actionId === "time.session.manage" && actionDraft.operation === "pause" ? "pausiert" : "fortgesetzt"}. Projekt, Zeiteinträge und Abrechnung blieben unverändert.`
+            ? actionDraft.actionId === "time.session.manage" && actionDraft.operation === "start"
+              ? "Deine persönliche Stempelung wurde nach deiner exakten Bestätigung genau einmal gestartet."
+              : `Die persönliche laufende Stempelung wurde nach deiner exakten Bestätigung genau einmal ${actionDraft.actionId === "time.session.manage" && actionDraft.operation === "pause" ? "pausiert" : "fortgesetzt"}. Projekt, Zeiteinträge und Abrechnung blieben unverändert.`
             : isTaskLifecycle
             ? "Die Aufgabe wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten."
             : isProjectMasterData

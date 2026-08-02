@@ -3807,6 +3807,30 @@ describe("POST /api/jarvis/chat", () => {
     }));
   });
 
+  it("prepares starting the own live project stamp without writing immediately", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const projectLookup = vi.spyOn(prisma.workPilotProject, "findMany").mockResolvedValueOnce([{ id: "project-1", projectNumber: "HAS-1" }] as never);
+    mocks.createPersistedJarvisStampSessionTransitionDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "time.session.manage", title: "Eigene Stempelung kontrolliert bedienen",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T12:00:00.000Z",
+      operation: "start", sessionId: "", currentState: "missing", targetState: "running",
+      fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "STEMPELUNG STARTEN HAS-1" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Starte meine Stempelung auf Projekt HAS-1. Tätigkeit: Objektkontrolle" }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.stamp-session-start", actionDraft: { actionId: "time.session.manage", operation: "start" } });
+    expect(mocks.createPersistedJarvisStampSessionTransitionDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1", sessionId: "session-1",
+      preview: expect.objectContaining({ actionId: "time.session.manage", payload: expect.objectContaining({ action: "start", mode: "project", projectId: "project-1", comment: "Objektkontrolle" }) }),
+    }));
+    projectLookup.mockRestore();
+  });
+
   it("prepares an invoice draft with preflight but never fakturizes or sends", async () => {
     const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
     mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });

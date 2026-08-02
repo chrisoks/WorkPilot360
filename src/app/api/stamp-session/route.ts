@@ -7,15 +7,13 @@ import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-a
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { prisma } from "@/lib/db/client";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
-import {
-  shouldApplyStampInterruptionTransition,
-  shouldOfferStampImplementationTransition,
-} from "@/lib/projects/stamp-status-automation";
+import { shouldApplyStampInterruptionTransition } from "@/lib/projects/stamp-status-automation";
 import { recordStatusTransition } from "@/lib/status-tracking";
 import {
   executeStampSessionTransition,
   StampSessionServiceError,
 } from "@/lib/time/stamp-session-service";
+import { executeStampSessionStart } from "@/lib/time/stamp-session-start-service";
 
 type DemoUser = {
   id: string;
@@ -113,14 +111,6 @@ type AutoInvoiceContactRow = {
   postalCode: string | null;
   city: string | null;
   paymentTermDays: number | null;
-};
-
-type HourlyPlanningStampContext = {
-  planningEntryId: string;
-  planningBillingGroupId: string;
-  planningTrade: string;
-  billingCatalogItemId: string;
-  billingCatalogItemLabel: string;
 };
 
 type CatalogInvoiceItemRow = {
@@ -974,59 +964,6 @@ function timeToMinutes(value: string | null) {
   return hours * 60 + minutes;
 }
 
-async function findHourlyPlanningStampContext(
-  organizationId: string,
-  userId: string,
-  projectId: string,
-  startedAt: Date
-): Promise<HourlyPlanningStampContext | null> {
-  if (!userId || !projectId || projectId === "__unproductive__") return null;
-
-  const dateKey = formatDateKey(startedAt);
-  const currentMinutes = timeToMinutes(formatTime(startedAt));
-  const rows = await prisma.$queryRaw<Array<{
-    id: string;
-    startTime: string | null;
-    endTime: string | null;
-    planningTrade: string | null;
-    billingCatalogItemId: string | null;
-    billingCatalogItemLabel: string | null;
-    billingGroupId: string | null;
-  }>>`
-    SELECT "id", "startTime", "endTime", "planningTrade", "billingCatalogItemId", "billingCatalogItemLabel", "billingGroupId"
-    FROM "PlanningEntry"
-    WHERE "organizationId" = ${organizationId}
-      AND "deletedAt" IS NULL
-      AND "userId" = ${userId}
-      AND "projectId" = ${projectId}
-      AND "date" = ${dateKey}
-      AND COALESCE("planningTrade", '') <> ''
-      AND "billingCatalogItemId" IS NOT NULL
-      AND COALESCE("billingCatalogItemLabel", '') <> ''
-    ORDER BY "startTime" ASC
-  `;
-
-  if (rows.length === 0) return null;
-
-  const matchingRow =
-    currentMinutes === null
-      ? rows[0]
-      : rows.find((row) => {
-          const startMinutes = timeToMinutes(row.startTime);
-          const endMinutes = timeToMinutes(row.endTime);
-          if (startMinutes === null || endMinutes === null) return false;
-          return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-        }) ?? rows[0];
-
-  return {
-    planningEntryId: matchingRow.id,
-    planningBillingGroupId: cleanString(matchingRow.billingGroupId),
-    planningTrade: cleanString(matchingRow.planningTrade),
-    billingCatalogItemId: cleanString(matchingRow.billingCatalogItemId),
-    billingCatalogItemLabel: cleanString(matchingRow.billingCatalogItemLabel),
-  };
-}
-
 function getBerlinOffsetMs(timestampMs: number) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Europe/Berlin",
@@ -1202,7 +1139,6 @@ export async function POST(req: Request) {
   const requestedPlanningEntryId = mode === "project" ? cleanString(body.planningEntryId) : "";
   const requestedPlanningBillingGroupId = mode === "project" ? cleanString(body.planningBillingGroupId) : "";
   const requestedBillingCatalogItemId = mode === "project" ? cleanString(body.billingCatalogItemId) : "";
-  const requestedBillingCatalogItemLabel = mode === "project" ? cleanString(body.billingCatalogItemLabel) : "";
   const confirmImplementationStatus = mode === "project" && body.confirmImplementationStatus === true;
   const comment = cleanString(body.comment);
 
@@ -1226,174 +1162,51 @@ export async function POST(req: Request) {
     return sessionBoundActorResponse(stampUserResult);
   }
   const stampUser = stampUserResult.actor;
-  const existingSession = await getActiveSession(organization.id, userId);
-  const now = new Date();
-  const isHourlyRecurring = mode === "project" && (await isHourlyRecurringProject(organization.id, projectId));
-  const hourlyPlanningContext = isHourlyRecurring
-    ? await findHourlyPlanningStampContext(organization.id, userId, projectId, now)
-    : null;
-  const effectiveTrade = mode === "project" ? trade || hourlyPlanningContext?.planningTrade || "" : "";
-  const effectivePlanningEntryId = requestedPlanningEntryId || hourlyPlanningContext?.planningEntryId;
-  const effectivePlanningBillingGroupId =
-    requestedPlanningBillingGroupId || hourlyPlanningContext?.planningBillingGroupId;
-  const effectiveBillingCatalogItemId = requestedBillingCatalogItemId || hourlyPlanningContext?.billingCatalogItemId;
-  const effectiveBillingCatalogItemLabel =
-    requestedBillingCatalogItemLabel || hourlyPlanningContext?.billingCatalogItemLabel;
-
-  if (isHourlyRecurring && !effectiveTrade) {
-    return NextResponse.json(
-      { error: "Bitte für diese Stundenabrechnung ein Gewerk auswählen." },
-      { status: 400 }
-    );
-  }
-
-  if (isHourlyRecurring && (!effectiveBillingCatalogItemId || !effectiveBillingCatalogItemLabel)) {
-    return NextResponse.json(
-      { error: "Bitte fuer diese Stundenabrechnung eine Abrechnungsleistung auswaehlen." },
-      { status: 400 }
-    );
-  }
-
-  if (existingSession) {
+  try {
+    const sharedStart = await executeStampSessionStart({
+      organizationId: organization.id,
+      userId: stampUser.id,
+      actorName: getUserName(stampUser),
+      start: {
+        mode,
+        projectId,
+        unproductiveLabel:
+          mode === "unproductive" ? cleanString(body.projectLabel) : "",
+        comment,
+        trade,
+        planningEntryId: requestedPlanningEntryId,
+        planningBillingGroupId: requestedPlanningBillingGroupId,
+        billingCatalogItemId: requestedBillingCatalogItemId,
+        marketingContentItemId: cleanString(body.marketingContentItemId),
+        marketingContentTitle: cleanString(body.marketingContentTitle),
+        marketingContentType: cleanString(body.marketingContentType),
+        confirmImplementationStatus,
+      },
+      requestId: randomUUID(),
+      source: "ui",
+    });
     return NextResponse.json(
       {
-        error:
-          "Es läuft bereits eine Stempelung. Bitte zuerst über Wechsel oder Stop abschließen und Arbeit fertig/unterbrochen auswählen.",
+        ...sharedStart.session,
+        projectStatusTransition: sharedStart.evaluation.statusTransition
+          ? {
+              changed: true,
+              projectId: sharedStart.evaluation.project?.id ?? "",
+              previousStatus:
+                sharedStart.evaluation.statusTransition.fromStatus,
+              nextStatus: sharedStart.evaluation.statusTransition.toStatus,
+            }
+          : null,
       },
-      { status: 409 }
+      { status: 201 }
     );
+  } catch (error) {
+    if (error instanceof StampSessionServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
   }
 
-  const startResult = await prisma.$transaction(async (transaction) => {
-    const rows = await transaction.$queryRaw<ActiveStampSessionRow[]>`
-      INSERT INTO "ActiveStampSession" (
-      "id",
-      "organizationId",
-      "userId",
-      "employee",
-      "mode",
-      "projectId",
-      "projectLabel",
-      "trade",
-      "planningEntryId",
-      "planningBillingGroupId",
-      "billingCatalogItemId",
-      "billingCatalogItemLabel",
-      "marketingContentItemId",
-      "marketingContentTitle",
-      "marketingContentType",
-      "comment",
-      "startedAt",
-      "accumulatedMs",
-      "pauseStartedAt",
-      "pauseMs",
-      "createdAt",
-      "updatedAt"
-    )
-    VALUES (
-      ${randomUUID()},
-      ${organization.id},
-      ${userId},
-      ${getUserName(stampUser)},
-      ${mode},
-      ${projectId},
-      ${cleanString(body.projectLabel) || null},
-      ${effectiveTrade || null},
-      ${effectivePlanningEntryId || null},
-      ${effectivePlanningBillingGroupId || null},
-      ${effectiveBillingCatalogItemId || null},
-      ${effectiveBillingCatalogItemLabel || null},
-      ${cleanString(body.marketingContentItemId) || null},
-      ${cleanString(body.marketingContentTitle) || null},
-      ${cleanString(body.marketingContentType) || null},
-      ${comment},
-      ${now},
-      ${0},
-      ${null},
-      ${0},
-      ${now},
-      ${now}
-    )
-      RETURNING *
-    `;
-
-    let projectStatusTransition: {
-      changed: boolean;
-      projectId: string;
-      previousStatus: string;
-      nextStatus: string;
-      projectLabel: string;
-    } | null = null;
-
-    if (confirmImplementationStatus && mode === "project") {
-      const projectRows = await transaction.$queryRaw<
-        Array<{ id: string; projectNumber: string; title: string; status: string }>
-      >`
-        SELECT id, "projectNumber", title, status
-        FROM "WorkPilotProject"
-        WHERE "organizationId" = ${organization.id}
-          AND id = ${projectId}
-        LIMIT 1
-        FOR UPDATE
-      `;
-      const project = projectRows[0];
-
-      if (project && shouldOfferStampImplementationTransition(project.status)) {
-        await transaction.$executeRaw`
-          UPDATE "WorkPilotProject"
-          SET status = ${"Umsetzung"},
-              "updatedAt" = CURRENT_TIMESTAMP
-          WHERE "organizationId" = ${organization.id}
-            AND id = ${project.id}
-        `;
-        projectStatusTransition = {
-          changed: true,
-          projectId: project.id,
-          previousStatus: project.status,
-          nextStatus: "Umsetzung",
-          projectLabel: `${project.projectNumber || project.id} | ${project.title}`,
-        };
-      }
-    }
-
-    return {
-      session: rows[0],
-      projectStatusTransition,
-    };
-  });
-
-  if (startResult.projectStatusTransition?.changed) {
-    try {
-      await recordStatusTransition({
-        organizationId: organization.id,
-        entityType: "project",
-        entityId: startResult.projectStatusTransition.projectId,
-        entityLabel: startResult.projectStatusTransition.projectLabel,
-        fromStatus: startResult.projectStatusTransition.previousStatus,
-        toStatus: startResult.projectStatusTransition.nextStatus,
-        actorUserId: stampUser.id,
-        actorName: getUserName(stampUser),
-        note: "Projektstatus per bestätigtem Stempelstart geändert.",
-      });
-    } catch (error) {
-      console.error("Stamp project status timeline could not be updated", error);
-    }
-  }
-
-  return NextResponse.json(
-    {
-      ...formatSession(startResult.session),
-      projectStatusTransition: startResult.projectStatusTransition
-        ? {
-            changed: true,
-            projectId: startResult.projectStatusTransition.projectId,
-            previousStatus: startResult.projectStatusTransition.previousStatus,
-            nextStatus: startResult.projectStatusTransition.nextStatus,
-          }
-        : null,
-    },
-    { status: 201 }
-  );
 }
 
 export async function PATCH(req: Request) {

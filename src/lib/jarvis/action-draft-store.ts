@@ -144,6 +144,13 @@ import {
   type StampSessionTransition,
 } from "@/lib/time/stamp-session-service";
 import {
+  evaluateStampSessionStart,
+  executeStampSessionStart,
+  getStampSessionStartConfirmationText,
+  matchesStampSessionStartConfirmation,
+  type StampSessionStartInput,
+} from "@/lib/time/stamp-session-start-service";
+import {
   createConfirmedOfferDraft,
   evaluateOfferDraft,
   loadOfferDraftWorkspace,
@@ -548,9 +555,21 @@ const timeContextSchema = z
   })
   .strict();
 
-const stampSessionTransitionPayloadSchema = z
-  .object({ action: z.enum(["pause", "resume"]) })
-  .strict();
+const stampSessionTransitionPayloadSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.enum(["pause", "resume"]) }).strict(),
+  z.object({
+    action: z.literal("start"),
+    mode: z.enum(["project", "unproductive"]),
+    projectId: z.string().trim().min(1).max(120).optional(),
+    unproductiveLabel: z.string().trim().max(240).optional(),
+    comment: z.string().trim().min(1).max(2000),
+    trade: z.string().trim().max(240).optional(),
+    planningEntryId: z.string().trim().max(120).optional(),
+    planningBillingGroupId: z.string().trim().max(120).optional(),
+    billingCatalogItemId: z.string().trim().max(120).optional(),
+    confirmImplementationStatus: z.boolean().default(false),
+  }).strict(),
+]);
 
 const stampSessionSnapshotSchema = z
   .object({
@@ -592,6 +611,62 @@ const stampSessionTransitionContextSchema = z
     blockingIssues: z.array(z.string().max(1000)),
   })
   .strict();
+
+const stampSessionStartInputSchema = z.object({
+  mode: z.enum(["project", "unproductive"]),
+  projectId: z.string().max(120).optional(),
+  unproductiveLabel: z.string().max(240).optional(),
+  comment: z.string().max(2000),
+  trade: z.string().max(240).optional(),
+  planningEntryId: z.string().max(120).optional(),
+  planningBillingGroupId: z.string().max(120).optional(),
+  billingCatalogItemId: z.string().max(120).optional(),
+  marketingContentItemId: z.string().max(120).optional(),
+  marketingContentTitle: z.string().max(500).optional(),
+  marketingContentType: z.string().max(120).optional(),
+  confirmImplementationStatus: z.boolean().optional(),
+}).strict();
+
+const stampSessionStartContextSchema = z.object({
+  action: z.literal("start"),
+  requested: stampSessionStartInputSchema,
+  effective: z.object({
+    mode: z.enum(["project", "unproductive"]), projectId: z.string().max(120),
+    projectLabel: z.string().max(1000), comment: z.string().max(2000), trade: z.string().max(240),
+    planningEntryId: z.string().max(120), planningBillingGroupId: z.string().max(120),
+    billingCatalogItemId: z.string().max(120), billingCatalogItemLabel: z.string().max(1000),
+    marketingContentItemId: z.string().max(120).default(""), marketingContentTitle: z.string().max(500).default(""),
+    marketingContentType: z.string().max(120).default(""),
+    confirmImplementationStatus: z.boolean(),
+  }).strict(),
+  project: z.object({
+    id: z.string().max(120), projectNumber: z.string().max(120), title: z.string().max(1000),
+    customer: z.string().max(1000), status: z.string().max(240), projectKind: z.string().max(240),
+    recurringBillingMode: z.string().max(120), trade: z.string().max(240),
+    updatedAt: z.string().datetime({ offset: true }),
+  }).strict().nullable(),
+  billingCatalogItem: z.object({
+    id: z.string().max(120), number: z.string().max(240), name: z.string().max(1000),
+    trade: z.string().max(240), unit: z.string().max(120), salesPrice: z.number(),
+    updatedAt: z.string().datetime({ offset: true }),
+  }).strict().nullable(),
+  planningSource: z.object({
+    id: z.string().max(120), date: z.string().max(20), startTime: z.string().max(20),
+    endTime: z.string().max(20), updatedAt: z.string().datetime({ offset: true }),
+  }).strict().nullable(),
+  existingSession: stampSessionSnapshotSchema.nullable(),
+  isHourlyRecurring: z.boolean(),
+  statusTransition: z.object({
+    fromStatus: z.string().max(240), toStatus: z.literal("Umsetzung"), fingerprint: z.string().length(64),
+  }).strict().nullable(),
+  fingerprint: z.string().length(64), warnings: z.array(z.string().max(1000)),
+  blockingIssues: z.array(z.string().max(2000)),
+}).strict();
+
+const stampSessionContextSchema = z.union([
+  stampSessionTransitionContextSchema,
+  stampSessionStartContextSchema,
+]);
 
 const winterCalculationInputSchema = z
   .object({
@@ -1936,11 +2011,12 @@ function validateStampSessionTransitionBinding(
     );
   }
   const payload = stampSessionTransitionPayloadSchema.safeParse(draft.payload);
-  const context = stampSessionTransitionContextSchema.safeParse(draft.context);
+  const context = stampSessionContextSchema.safeParse(draft.context);
   if (
     draft.actionId !== "time.session.manage" ||
     !payload.success ||
     !context.success ||
+    payload.data.action !== context.data.action ||
     hashJson(payload.data) !== draft.payloadHash ||
     hashJson(context.data) !== draft.contextHash
   ) {
@@ -1977,8 +2053,8 @@ async function loadBoundStampSessionTransitionDraft(
   };
 }
 
-function stampTransitionStateLabel(state: string, operation: StampSessionTransition) {
-  if (state === "executed") return operation === "pause" ? "Pausiert" : "Fortgesetzt";
+function stampTransitionStateLabel(state: string, operation: "start" | StampSessionTransition) {
+  if (state === "executed") return operation === "start" ? "Gestartet" : operation === "pause" ? "Pausiert" : "Fortgesetzt";
   if (state === "executing") return "Wird geändert";
   if (state === "cancelled") return "Abgebrochen";
   if (state === "expired") return "Abgelaufen";
@@ -1991,6 +2067,54 @@ function toJarvisStampSessionTransitionDraftView(
 ): JarvisStampSessionTransitionDraftView {
   const { payload, context } = validateStampSessionTransitionBinding(draft, binding);
   const state = draft.state as JarvisStampSessionTransitionDraftView["state"];
+  if (payload.action === "start" && context.action === "start") {
+    const permitted = !binding.profile.isImpersonating &&
+      binding.profile.sessionActor.id === binding.profile.effectiveActor.id;
+    const ready = permitted && state === "awaiting_confirmation" && context.blockingIssues.length === 0;
+    const reason: JarvisStampSessionTransitionDraftView["confirmation"]["reason"] =
+      state === "expired" ? "expired" : state === "cancelled" ? "cancelled" :
+      state === "executed" ? "executed" : state === "executing" ? "executing" :
+      !permitted ? "not_permitted" : ready ? "ready" : "blocked";
+    const projectLabel = context.effective.projectLabel ||
+      (context.effective.mode === "unproductive" ? "Unproduktiv" : "Kein Projekt");
+    return {
+      version: 2,
+      previewId: draft.id,
+      actionId: "time.session.manage",
+      title: "Eigene Stempelung kontrolliert bedienen",
+      badge: stampTransitionStateLabel(state, "start") as JarvisStampSessionTransitionDraftView["badge"],
+      state,
+      revision: draft.revision,
+      expiresAt: draft.expiresAt.toISOString(),
+      operation: "start",
+      sessionId: state === "executed" ? draft.resultEntityId ?? "" : "",
+      currentState: state === "executed" ? "running" : context.existingSession ? (context.existingSession.pauseStartedAt ? "paused" : "running") : "missing",
+      targetState: "running",
+      fields: [
+        { label: "Aktion", value: "Persönliche Stempelung starten" },
+        { label: "Arbeitsbezug", value: projectLabel },
+        { label: "Tätigkeit", value: context.effective.comment || "-" },
+        ...(context.isHourlyRecurring ? [
+          { label: "Gewerk", value: context.effective.trade || "Fehlt" },
+          { label: "Abrechnungsleistung", value: context.effective.billingCatalogItemLabel || "Fehlt" },
+        ] : []),
+        { label: "Projektstatus", value: context.statusTransition ? `${context.statusTransition.fromStatus} → Umsetzung` : context.project?.status || "Bleibt unverändert" },
+      ],
+      checks: [
+        { key: "personal-session", label: "Persönliche Sitzung", status: permitted ? "ok" : "blocked", detail: permitted ? "Die Stempelung wird ausschließlich für dich selbst gestartet." : "Vertretung und Fremdstempelung sind ausgeschlossen." },
+        { key: "active-session", label: state === "executed" ? "Geprüfter Ausgangszustand" : "Laufende Stempelung", status: context.existingSession ? "blocked" : "ok", detail: context.existingSession ? "Es lief bereits eine persönliche Stempelung." : state === "executed" ? "Vor der Ausführung lief keine persönliche Stempelung; die neue Stempelung ist jetzt aktiv." : "Es läuft noch keine persönliche Stempelung." },
+        { key: "billing-context", label: "Abrechnungskontext", status: context.isHourlyRecurring && !context.billingCatalogItem ? "blocked" : "ok", detail: context.isHourlyRecurring ? (context.billingCatalogItem ? "Gewerk und aktive Stunden-Abrechnungsleistung sind eindeutig gebunden." : "Gewerk oder aktive Stunden-Abrechnungsleistung fehlen.") : "Für diesen Arbeitsbezug ist keine Stunden-Abrechnungsleistung erforderlich." },
+      ],
+      warnings: context.warnings,
+      blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Persönliche Live-Stempelungen können nicht in Vertretung ausgeführt werden."] : [])],
+      confirmation: { enabled: ready, reason, requiredText: getStampSessionStartConfirmationText(context) },
+      cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
+      ...(state === "executed" && draft.resultEntityId ? { result: { entityType: "activeStampSession" as const, entityId: draft.resultEntityId, label: "Laufende Stempelung" } } : {}),
+    };
+  }
+  if (payload.action === "start" || context.action === "start") {
+    throw new JarvisActionDraftError("integrity_failed", "Startaktion und Stempelkontext passen nicht zusammen.", 409);
+  }
   const displayedState = state === "executed" ? context.targetState : context.currentState;
   const permitted =
     !binding.profile.isImpersonating &&
@@ -2020,7 +2144,7 @@ function toJarvisStampSessionTransitionDraftView(
     version: 2,
     previewId: draft.id,
     actionId: "time.session.manage",
-    title: "Eigene laufende Stempelung kontrolliert bedienen",
+    title: "Eigene Stempelung kontrolliert bedienen",
     badge: stampTransitionStateLabel(state, payload.action) as JarvisStampSessionTransitionDraftView["badge"],
     state,
     revision: draft.revision,
@@ -2130,14 +2254,29 @@ export async function createPersistedJarvisStampSessionTransitionDraft(input: {
       409
     );
   }
-  const context = stampSessionTransitionContextSchema.parse(
-    await evaluateStampSessionTransition({
-      organizationId: input.organizationId,
-      userId: actor.id,
-      action: payload.action,
-      now: input.now,
-    })
-  );
+  const context = payload.action === "start"
+    ? stampSessionStartContextSchema.parse(await evaluateStampSessionStart({
+        organizationId: input.organizationId,
+        userId: actor.id,
+        start: {
+          mode: payload.mode,
+          projectId: payload.projectId,
+          unproductiveLabel: payload.unproductiveLabel,
+          comment: payload.comment,
+          trade: payload.trade,
+          planningEntryId: payload.planningEntryId,
+          planningBillingGroupId: payload.planningBillingGroupId,
+          billingCatalogItemId: payload.billingCatalogItemId,
+          confirmImplementationStatus: payload.confirmImplementationStatus,
+        },
+        now: input.now,
+      }))
+    : stampSessionTransitionContextSchema.parse(await evaluateStampSessionTransition({
+        organizationId: input.organizationId,
+        userId: actor.id,
+        action: payload.action,
+        now: input.now,
+      }));
   const now = input.now ?? new Date();
   const state = context.blockingIssues.length
     ? "awaiting_input"
@@ -2277,15 +2416,20 @@ export async function confirmJarvisStampSessionTransitionDraft(
   if (loaded.draft.state === "executed") {
     return toJarvisStampSessionTransitionDraftView(loaded.draft, binding);
   }
-  if (
-    !matchesStampSessionTransitionConfirmation(
-      loaded.payload.action,
-      confirmationText
-    )
-  ) {
+  const validConfirmation = loaded.payload.action === "start" && loaded.context.action === "start"
+    ? matchesStampSessionStartConfirmation(loaded.context, confirmationText)
+    : loaded.payload.action !== "start" && loaded.context.action !== "start"
+      ? matchesStampSessionTransitionConfirmation(loaded.payload.action, confirmationText)
+      : false;
+  if (!validConfirmation) {
+    const requiredText = loaded.payload.action === "start" && loaded.context.action === "start"
+      ? getStampSessionStartConfirmationText(loaded.context)
+      : loaded.payload.action !== "start"
+        ? getStampSessionTransitionConfirmationText(loaded.payload.action)
+        : "STEMPELAKTION NEU PRÜFEN";
     throw new JarvisActionDraftError(
       "invalid_input",
-      `Gib zur Bestätigung exakt „${getStampSessionTransitionConfirmationText(loaded.payload.action)}“ ein.`,
+      `Gib zur Bestätigung exakt „${requiredText}“ ein.`,
       400
     );
   }
@@ -2346,14 +2490,34 @@ export async function confirmJarvisStampSessionTransitionDraft(
             409
           );
         }
-        const session = await executeStampSessionTransition({
-          db: tx,
-          organizationId: binding.organizationId,
-          userId: actor.id,
-          action: parsed.payload.action,
-          expectedFingerprint: parsed.context.fingerprint,
-          now,
-        });
+        const session = parsed.payload.action === "start" && parsed.context.action === "start"
+          ? (await executeStampSessionStart({
+              db: tx,
+              organizationId: binding.organizationId,
+              userId: actor.id,
+              actorName: [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email,
+              start: parsed.context.requested as StampSessionStartInput,
+              expectedFingerprint: parsed.context.fingerprint,
+              requestId: current.id,
+              source: "jarvis",
+              now,
+            })).session
+          : parsed.payload.action !== "start" && parsed.context.action !== "start"
+            ? await executeStampSessionTransition({
+                db: tx,
+                organizationId: binding.organizationId,
+                userId: actor.id,
+                action: parsed.payload.action,
+                expectedFingerprint: parsed.context.fingerprint,
+                now,
+              })
+            : (() => {
+                throw new JarvisActionDraftError(
+                  "integrity_failed",
+                  "Stempelaktion und Fachkontext passen nicht zusammen.",
+                  409
+                );
+              })();
         const executedData: DraftIntegrityData = {
           ...current,
           state: "executed",

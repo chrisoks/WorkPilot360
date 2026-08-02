@@ -202,11 +202,24 @@ const projectLifecyclePreviewPayloadSchema = z
   })
   .strict();
 
-const stampSessionTransitionPreviewPayloadSchema = z
-  .object({
-    action: z.enum(["pause", "resume"]),
-  })
-  .strict();
+const stampSessionTransitionPreviewPayloadSchema = z.discriminatedUnion(
+  "action",
+  [
+    z.object({ action: z.enum(["pause", "resume"]) }).strict(),
+    z.object({
+      action: z.literal("start"),
+      mode: z.enum(["project", "unproductive"]),
+      projectId: boundedId.optional(),
+      unproductiveLabel: optionalText(240),
+      comment: boundedText(2000),
+      trade: optionalText(240),
+      planningEntryId: boundedId.optional(),
+      planningBillingGroupId: boundedId.optional(),
+      billingCatalogItemId: boundedId.optional(),
+      confirmImplementationStatus: z.boolean().default(false),
+    }).strict(),
+  ]
+);
 
 const onlineRequestConversionPreviewPayloadSchema = z
   .object({
@@ -1423,8 +1436,8 @@ export type JarvisStampSessionTransitionDraftView = Omit<
   "actionId" | "title" | "targetStatus" | "projectId" | "result"
 > & {
   actionId: "time.session.manage";
-  title: "Eigene laufende Stempelung kontrolliert bedienen";
-  operation: "pause" | "resume";
+  title: "Eigene Stempelung kontrolliert bedienen";
+  operation: "start" | "pause" | "resume";
   sessionId: string;
   currentState: "running" | "paused" | "missing";
   targetState: "running" | "paused";
