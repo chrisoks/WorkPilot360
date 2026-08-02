@@ -207,6 +207,15 @@ const stampSessionTransitionPreviewPayloadSchema = z.discriminatedUnion(
   [
     z.object({ action: z.enum(["pause", "resume"]) }).strict(),
     z.object({
+      action: z.literal("stop"),
+      completionStatus: z.enum(["finished", "interrupted", ""]),
+      comment: optionalText(2000),
+      interruptionReason: optionalText(2000),
+      finalInspectionMode: z.enum(["", "self", "colleague"]).default(""),
+      allInspectionChecksDone: z.boolean().default(false),
+      upsellNotes: optionalText(2000),
+    }).strict(),
+    z.object({
       action: z.literal("start"),
       mode: z.enum(["project", "unproductive"]),
       projectId: boundedId.optional(),
@@ -1437,12 +1446,12 @@ export type JarvisStampSessionTransitionDraftView = Omit<
 > & {
   actionId: "time.session.manage";
   title: "Eigene Stempelung kontrolliert bedienen";
-  operation: "start" | "pause" | "resume";
+  operation: "start" | "pause" | "resume" | "stop";
   sessionId: string;
   currentState: "running" | "paused" | "missing";
-  targetState: "running" | "paused";
+  targetState: "running" | "paused" | "missing";
   result?: {
-    entityType: "activeStampSession";
+    entityType: "activeStampSession" | "projectTimeEntry";
     entityId: string;
     label: string;
   };

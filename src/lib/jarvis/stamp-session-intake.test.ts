@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractStampSessionStartRequest,
+  extractStampSessionStopRequest,
   extractStampSessionTransition,
   looksLikeStampSessionStartRequest,
   looksLikeStampSessionTransitionRequest,
@@ -57,5 +58,38 @@ describe("stamp-session-intake", () => {
     "Starte eine Stempelung auf HAS-1",
   ])("does not capture other stamp intents: %s", (question) => {
     expect(extractStampSessionTransition(question)).toBeNull();
+  });
+
+  it("extracts a finished stop with colleague inspection", () => {
+    expect(
+      extractStampSessionStopRequest(
+        "Beende meine Stempelung. Arbeit fertig. Endkontrolle: Kollege. Ergänzung: Treppenhaus abgeschlossen",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        completionStatus: "finished",
+        finalInspectionMode: "colleague",
+        comment: "Treppenhaus abgeschlossen",
+      }),
+    );
+  });
+
+  it("extracts an interrupted stop and its mandatory reason", () => {
+    expect(
+      extractStampSessionStopRequest(
+        "Stoppe meine Stempelung. Arbeit unterbrochen. Unterbrechungsgrund: Material fehlt",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        completionStatus: "interrupted",
+        interruptionReason: "Material fehlt",
+      }),
+    );
+  });
+
+  it("does not confuse pause, resume, or start with stop", () => {
+    expect(extractStampSessionStopRequest("Pausiere meine Stempelung")).toBeNull();
+    expect(extractStampSessionStopRequest("Setze meine Stempelung fort")).toBeNull();
+    expect(extractStampSessionStopRequest("Starte meine Stempelung")).toBeNull();
   });
 });

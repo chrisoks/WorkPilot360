@@ -7,13 +7,17 @@ import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-a
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { prisma } from "@/lib/db/client";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
-import { shouldApplyStampInterruptionTransition } from "@/lib/projects/stamp-status-automation";
-import { recordStatusTransition } from "@/lib/status-tracking";
 import {
   executeStampSessionTransition,
   StampSessionServiceError,
 } from "@/lib/time/stamp-session-service";
 import { executeStampSessionStart } from "@/lib/time/stamp-session-start-service";
+import {
+  executeStampSessionStop,
+  type StampSessionStopEntry,
+} from "@/lib/time/stamp-session-stop-service";
+import { ensureStampInterruptionFollowup } from "@/lib/time/stamp-session-interruption-service";
+import { attachStampEntryToHourlyInvoiceDraft as attachStampEntryToHourlyInvoiceDraftShared } from "@/lib/time/stamp-session-billing-service";
 
 type DemoUser = {
   id: string;
@@ -48,43 +52,6 @@ type ActiveStampSessionRow = {
   pauseMs: bigint | number;
   createdAt: Date;
   updatedAt: Date;
-};
-
-type ProjectTimeEntryRow = {
-  id: string;
-  organizationId: string;
-  mode: string | null;
-  projectId: string;
-  projectLabel: string | null;
-  trade: string | null;
-  planningEntryId: string | null;
-  planningBillingGroupId: string | null;
-  billingCatalogItemId: string | null;
-  billingCatalogItemLabel: string | null;
-  userId: string | null;
-  employee: string | null;
-  entrySource: string | null;
-  date: string;
-  startTime: string;
-  endTime: string;
-  durationMs: bigint | number;
-  pauseMs: bigint | number;
-  laborCostRateSnapshot: number;
-  laborCostSnapshot: number;
-  costSnapshotAt: Date | null;
-  comment: string | null;
-  invoiceId: string | null;
-  invoiceNumber: string | null;
-  invoicedAt: Date | null;
-  marketingContentItemId: string | null;
-  marketingContentType: string | null;
-  completionStatus: string | null;
-  overtimeApprovalStatus: string | null;
-  overtimeApprovedByUserId: string | null;
-  overtimeApprovedByName: string | null;
-  overtimeApprovedAt: Date | null;
-  editHistory: unknown;
-  createdAt: Date;
 };
 
 type ProjectRow = {
@@ -321,59 +288,6 @@ async function getProjectForHourlyInvoiceDraft(organizationId: string, projectId
   return getProjectForInterruptedStamp(organizationId, projectId);
 }
 
-async function applyInterruptedProjectStatus(input: {
-  organizationId: string;
-  projectId: string;
-  actor: DemoUser;
-}) {
-  const projectRows = await prisma.$queryRaw<
-    Array<{ id: string; projectNumber: string; title: string; status: string }>
-  >`
-    SELECT id, "projectNumber", title, status
-    FROM "WorkPilotProject"
-    WHERE "organizationId" = ${input.organizationId}
-      AND id = ${input.projectId}
-    LIMIT 1
-  `;
-  const project = projectRows[0];
-  if (!project || !shouldApplyStampInterruptionTransition(project.status)) return null;
-  if (cleanString(project.status).toLowerCase().includes("unterbrochen")) return null;
-
-  await prisma.$executeRaw`
-    UPDATE "WorkPilotProject"
-    SET status = ${"Arbeit unterbrochen"},
-        "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "organizationId" = ${input.organizationId}
-      AND id = ${project.id}
-  `;
-
-  const transition = {
-    changed: true,
-    projectId: project.id,
-    previousStatus: project.status,
-    nextStatus: "Arbeit unterbrochen",
-    projectLabel: `${project.projectNumber || project.id} | ${project.title}`,
-  };
-
-  try {
-    await recordStatusTransition({
-      organizationId: input.organizationId,
-      entityType: "project",
-      entityId: transition.projectId,
-      entityLabel: transition.projectLabel,
-      fromStatus: transition.previousStatus,
-      toStatus: transition.nextStatus,
-      actorUserId: input.actor.id,
-      actorName: getUserName(input.actor),
-      note: "Projektstatus per Arbeitsunterbrechung geändert.",
-    });
-  } catch (error) {
-    console.error("Interrupted stamp project status timeline could not be updated", error);
-  }
-
-  return transition;
-}
-
 function roundStampDurationToBillingFactor(durationMs: bigint | number, roundingFactorHours: number) {
   const hours = Number(durationMs || 0) / 3_600_000;
   if (hours <= 0) return 0;
@@ -584,7 +498,7 @@ async function recalculateHourlyInvoiceDraftTotals(organizationId: string, invoi
 async function attachStampEntryToHourlyInvoiceDraft(input: {
   organizationId: string;
   users: DemoUser[];
-  entry: ProjectTimeEntryRow;
+  entry: StampSessionStopEntry;
 }) {
   if (input.entry.mode !== "project") return null;
   if (!input.entry.projectId || !input.entry.billingCatalogItemId || !input.entry.billingCatalogItemLabel) return null;
@@ -724,7 +638,7 @@ function findInterruptedWorkOwner(users: DemoUser[], project: ProjectRow | null)
   return findInterruptedWorkResponsibleUser(users, project) ?? findInterruptedWorkFallbackOwner(users);
 }
 
-function findInterruptedWorkParticipants(users: DemoUser[], owner: DemoUser, entry: ProjectTimeEntryRow) {
+function findInterruptedWorkParticipants(users: DemoUser[], owner: DemoUser, entry: StampSessionStopEntry) {
   const excludedUserIds = new Set([owner.id, entry.userId].filter(Boolean));
   const leadershipParticipants = users.filter(
     (user) => user.isActive && user.role === Role.FUEHRUNGSKRAFT && !excludedUserIds.has(user.id)
@@ -777,7 +691,7 @@ async function ensureInterruptedWorkTask(input: {
   organizationId: string;
   users: DemoUser[];
   project: ProjectRow | null;
-  entry: ProjectTimeEntryRow;
+  entry: StampSessionStopEntry;
   comment: string;
 }) {
   const owner = findInterruptedWorkOwner(input.users, input.project);
@@ -907,32 +821,6 @@ async function isHourlyRecurringProject(organizationId: string, projectId: strin
   );
 }
 
-async function getEmployeeHourlyCostRateSnapshot(organizationId: string, userId: string) {
-  if (!userId) return 0;
-  const rows = await prisma.$queryRaw<Array<{
-    monthlySalary: number;
-    fullCostFactor: number;
-    annualHours: number;
-    vacationDays: number;
-    trainingDays: number;
-    sickDays: number;
-    hoursPerDay: number;
-  }>>`
-    SELECT "monthlySalary", "fullCostFactor", "annualHours", "vacationDays", "trainingDays", "sickDays", "hoursPerDay"
-    FROM "EmployeeCostCalculation"
-    WHERE "organizationId" = ${organizationId} AND "userId" = ${userId}
-    LIMIT 1
-  `;
-  const cost = rows[0];
-  if (!cost) return 0;
-  const deductionHours =
-    (Number(cost.vacationDays || 0) + Number(cost.trainingDays || 0) + Number(cost.sickDays || 0)) *
-    Number(cost.hoursPerDay || 0);
-  const sellableAnnualHours = Math.max(0, Number(cost.annualHours || 0) - deductionHours);
-  if (sellableAnnualHours <= 0) return 0;
-  return roundMoney((Number(cost.monthlySalary || 0) * 12 * Number(cost.fullCostFactor || 0)) / sellableAnnualHours);
-}
-
 function formatDateKey(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     day: "2-digit",
@@ -1028,50 +916,6 @@ function formatSession(row: ActiveStampSessionRow | null) {
     pauseMs: toMillis(row.pauseMs),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function formatEntry(entry: ProjectTimeEntryRow) {
-  return {
-    id: entry.id,
-    mode: entry.mode === "unproductive" ? "unproductive" : "project",
-    projectId: entry.projectId,
-    projectLabel: entry.projectLabel ?? "",
-    trade: entry.trade ?? "",
-    planningEntryId: entry.planningEntryId ?? "",
-    planningBillingGroupId: entry.planningBillingGroupId ?? "",
-    billingCatalogItemId: entry.billingCatalogItemId ?? "",
-    billingCatalogItemLabel: entry.billingCatalogItemLabel ?? "",
-    userId: entry.userId ?? "",
-    employee: entry.employee ?? "",
-    entrySource: entry.entrySource === "manual" ? "manual" : "stamped",
-    date: entry.date,
-    startTime: entry.startTime,
-    endTime: entry.endTime,
-    durationMs: toMillis(entry.durationMs),
-    pauseMs: toMillis(entry.pauseMs),
-    laborCostRateSnapshot: Number(entry.laborCostRateSnapshot ?? 0),
-    laborCostSnapshot: Number(entry.laborCostSnapshot ?? 0),
-    costSnapshotAt: entry.costSnapshotAt?.toISOString() ?? "",
-    comment: entry.comment ?? "",
-    invoiceId: entry.invoiceId ?? "",
-    invoiceNumber: entry.invoiceNumber ?? "",
-    invoicedAt: entry.invoicedAt?.toISOString() ?? "",
-    marketingContentItemId: entry.marketingContentItemId ?? "",
-    marketingContentType: entry.marketingContentType ?? "",
-    completionStatus:
-      entry.completionStatus === "finished" || entry.completionStatus === "interrupted"
-        ? entry.completionStatus
-        : "",
-    overtimeApprovalStatus:
-      entry.overtimeApprovalStatus === "pending" || entry.overtimeApprovalStatus === "approved"
-        ? entry.overtimeApprovalStatus
-        : "not_required",
-    overtimeApprovedByUserId: entry.overtimeApprovedByUserId ?? "",
-    overtimeApprovedByName: entry.overtimeApprovedByName ?? "",
-    overtimeApprovedAt: entry.overtimeApprovedAt?.toISOString() ?? "",
-    editHistory: Array.isArray(entry.editHistory) ? entry.editHistory : [],
-    createdAt: entry.createdAt.toISOString(),
   };
 }
 
@@ -1272,21 +1116,13 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
     return NextResponse.json({ error: "Keine aktive Stempelung gefunden." }, { status: 404 });
   }
 
-  const now = new Date();
-  const isPaused = Boolean(session.pauseStartedAt);
-  const sessionStartedAt = normalizeStoredStampDate(session.startedAt, now.getTime()) ?? session.startedAt;
-  const pauseStartedAt = normalizeStoredStampDate(session.pauseStartedAt, now.getTime());
-  const durationMs =
-    toMillis(session.accumulatedMs) + (isPaused ? 0 : Math.max(0, now.getTime() - sessionStartedAt.getTime()));
-  const pauseMs =
-    toMillis(session.pauseMs) + (pauseStartedAt ? Math.max(0, now.getTime() - pauseStartedAt.getTime()) : 0);
-  const finalComment = cleanString(body.comment) || cleanString(session.comment) || "";
   const interruptionReason = cleanString(body.interruptionReason);
   const requestedCompletionStatus = cleanString(body.completionStatus);
   const completionStatus =
     session.mode === "project" && ["finished", "interrupted"].includes(requestedCompletionStatus)
       ? requestedCompletionStatus
       : "";
+  const finalComment = cleanString(body.comment) || cleanString(session.comment) || "";
 
   if (session.mode === "project" && !completionStatus) {
     return NextResponse.json(
@@ -1305,80 +1141,30 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
     );
   }
 
-  if (durationMs <= 0) {
-    return NextResponse.json({ error: "Die Laufzeit muss größer als 0 sein." }, { status: 400 });
+  let stopped;
+  try {
+    stopped = await executeStampSessionStop({
+      organizationId: organization.id,
+      userId: stampUser.id,
+      actorName: getUserName(stampUser),
+      stop: {
+        completionStatus:
+          completionStatus === "finished" || completionStatus === "interrupted"
+            ? completionStatus
+            : "",
+        comment: finalComment,
+        interruptionReason,
+      },
+      requestId: randomUUID(),
+      source: "ui",
+    });
+  } catch (error) {
+    if (error instanceof StampSessionServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
   }
-
-  const laborCostRateSnapshot = await getEmployeeHourlyCostRateSnapshot(organization.id, session.userId);
-  const laborCostSnapshot = roundMoney((durationMs / 3_600_000) * laborCostRateSnapshot);
-
-  const rows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
-    INSERT INTO "ProjectTimeEntry" (
-      "id",
-      "organizationId",
-      "mode",
-      "projectId",
-      "projectLabel",
-      "trade",
-      "planningEntryId",
-      "planningBillingGroupId",
-      "billingCatalogItemId",
-      "billingCatalogItemLabel",
-      "userId",
-      "employee",
-      "entrySource",
-      "date",
-      "startTime",
-      "endTime",
-      "durationMs",
-      "pauseMs",
-      "laborCostRateSnapshot",
-      "laborCostSnapshot",
-      "costSnapshotAt",
-      "comment",
-      "marketingContentItemId",
-      "marketingContentType",
-      "completionStatus",
-      "overtimeApprovalStatus",
-      "editHistory"
-    )
-    VALUES (
-      ${randomUUID()},
-      ${organization.id},
-      ${session.mode === "unproductive" ? "unproductive" : "project"},
-      ${session.mode === "unproductive" ? "__unproductive__" : session.projectId},
-      ${session.projectLabel || (session.mode === "unproductive" ? "Unproduktiv" : null)},
-      ${session.trade || null},
-      ${session.planningEntryId || null},
-      ${session.planningBillingGroupId || null},
-      ${session.billingCatalogItemId || null},
-      ${session.billingCatalogItemLabel || null},
-      ${session.userId},
-      ${session.employee || null},
-      ${"stamped"},
-      ${formatDateKey(sessionStartedAt)},
-      ${formatTime(sessionStartedAt)},
-      ${formatTime(now)},
-      ${durationMs},
-      ${pauseMs},
-      ${laborCostRateSnapshot},
-      ${laborCostSnapshot},
-      CURRENT_TIMESTAMP,
-      ${finalComment || null},
-      ${session.marketingContentItemId || null},
-      ${session.marketingContentType || null},
-      ${completionStatus || null},
-      ${"not_required"},
-      CAST(${"[]"} AS jsonb)
-    )
-    RETURNING *
-  `;
-
-  await prisma.$executeRaw`
-    DELETE FROM "ActiveStampSession"
-    WHERE "organizationId" = ${organization.id}
-      AND "userId" = ${userId}
-  `;
+  const entry = stopped.entry;
 
   let billingAutomation:
     | { status: "attached"; invoiceId: string; invoiceNumber: string }
@@ -1386,17 +1172,15 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
     | null = null;
 
   if (
-    rows[0] &&
     shouldAttemptHourlyDraftAttachment({
-      mode: rows[0].mode,
-      completionStatus: rows[0].completionStatus,
+      mode: entry.mode,
+      completionStatus: entry.completionStatus,
     })
   ) {
     try {
-      const attachedDraft = await attachStampEntryToHourlyInvoiceDraft({
+      const attachedDraft = await attachStampEntryToHourlyInvoiceDraftShared({
         organizationId: organization.id,
-        users,
-        entry: rows[0],
+        entry,
       });
       if (attachedDraft) {
         billingAutomation = {
@@ -1415,40 +1199,21 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
     }
   }
 
-  let projectStatusTransition: {
-    changed: boolean;
-    projectId: string;
-    previousStatus: string;
-    nextStatus: string;
-  } | null = null;
+  const projectStatusTransition = stopped.projectStatusTransition
+    ? { changed: true, ...stopped.projectStatusTransition }
+    : null;
 
-  if (completionStatus === "interrupted" && rows[0]) {
-    const project = await getProjectForInterruptedStamp(organization.id, rows[0].projectId);
-    await ensureInterruptedWorkTask({
+  if (completionStatus === "interrupted") {
+    await ensureStampInterruptionFollowup({
       organizationId: organization.id,
-      users,
-      project,
-      entry: rows[0],
-      comment: interruptionReason,
+      entry,
+      interruptionReason,
     });
-    const interruptedTransition = await applyInterruptedProjectStatus({
-      organizationId: organization.id,
-      projectId: rows[0].projectId,
-      actor: stampUser,
-    });
-    if (interruptedTransition) {
-      projectStatusTransition = {
-        changed: true,
-        projectId: interruptedTransition.projectId,
-        previousStatus: interruptedTransition.previousStatus,
-        nextStatus: interruptedTransition.nextStatus,
-      };
-    }
   }
 
   return NextResponse.json(
     {
-      ...formatEntry(rows[0]),
+      ...entry,
       billingAutomation,
       projectStatusTransition,
     },

@@ -3807,6 +3807,28 @@ describe("POST /api/jarvis/chat", () => {
     }));
   });
 
+  it("prepares finishing the own live stamp session without stopping it immediately", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisStampSessionTransitionDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "time.session.manage", title: "Eigene Stempelung kontrolliert bedienen",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T12:00:00.000Z",
+      operation: "stop", sessionId: "stamp-1", currentState: "running", targetState: "missing",
+      fields: [], checks: [], warnings: [], blockingIssues: [],
+      confirmation: { enabled: true, reason: "ready", requiredText: "STEMPELUNG BEENDEN FERTIG HAS-1" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Beende meine Stempelung. Arbeit fertig. Ergänzung: Objekt geprüft." }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.stamp-session-stop", actionDraft: { actionId: "time.session.manage", operation: "stop", confirmation: { enabled: true } } });
+    expect(mocks.createPersistedJarvisStampSessionTransitionDraft).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "organization-1", sessionId: "session-1",
+      preview: expect.objectContaining({ actionId: "time.session.manage", payload: expect.objectContaining({ action: "stop", completionStatus: "finished", comment: "Objekt geprüft" }) }),
+    }));
+  });
+
   it("prepares starting the own live project stamp without writing immediately", async () => {
     const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
     mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });

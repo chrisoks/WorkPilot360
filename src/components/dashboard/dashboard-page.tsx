@@ -3082,10 +3082,10 @@ function parseJarvisStampSessionTransitionDraft(
     typeof candidate.state !== "string" ||
     typeof candidate.revision !== "number" ||
     typeof candidate.expiresAt !== "string" ||
-    !["start", "pause", "resume"].includes(String(candidate.operation)) ||
+    !["start", "pause", "resume", "stop"].includes(String(candidate.operation)) ||
     typeof candidate.sessionId !== "string" ||
     !["running", "paused", "missing"].includes(String(candidate.currentState)) ||
-    !["running", "paused"].includes(String(candidate.targetState)) ||
+    !["running", "paused", "missing"].includes(String(candidate.targetState)) ||
     !Array.isArray(candidate.fields) ||
     !Array.isArray(candidate.checks) ||
     !Array.isArray(candidate.warnings) ||
@@ -4340,6 +4340,8 @@ function JarvisOfferFinalizationCard({
     const footer = draft.state === "executed"
       ? draft.operation === "start"
         ? "Die persönliche Stempelung wurde genau einmal gestartet. Der angezeigte Arbeits- und Abrechnungskontext ist jetzt aktiv."
+        : draft.operation === "stop"
+          ? "Die persönliche Stempelung wurde genau einmal beendet und als Zeitbuchung gespeichert. Die angezeigten Fachfolgen wurden kontrolliert verarbeitet."
         : `Die persönliche Stempelung wurde genau einmal ${draft.operation === "pause" ? "pausiert" : "fortgesetzt"}. Projekt, Zeiten und Abrechnung blieben unverändert.`
       : draft.state === "cancelled"
         ? "Die Stempelaktion wurde beendet. Die persönliche Stempelung blieb unverändert."
@@ -4356,7 +4358,7 @@ function JarvisOfferFinalizationCard({
         {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur bewussten Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
         {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
         <div className={styles.jarvisActionDraftActions}>
-          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.operation === "start" ? "Stempelung jetzt starten" : draft.operation === "pause" ? "Stempelung jetzt pausieren" : "Stempelung jetzt fortsetzen"}</button> : null}
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.operation === "start" ? "Stempelung jetzt starten" : draft.operation === "pause" ? "Stempelung jetzt pausieren" : draft.operation === "resume" ? "Stempelung jetzt fortsetzen" : "Stempelung jetzt beenden"}</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Stempelaktion abbrechen</button> : null}
         </div>
         <footer>{footer}</footer>
@@ -30984,6 +30986,7 @@ await addProjectLogbookEntry(
       },
       body: JSON.stringify({
         actorId: activeUserId,
+        requestId: entry.id,
         projectId: entry.projectId,
         projectLabel: entry.projectLabel || getStampProjectLabel(entry.projectId),
         employee: entry.employee || activeUser?.name || "",
@@ -30997,15 +31000,22 @@ await addProjectLogbookEntry(
       }),
     });
 
+    const data = await res.json().catch(() => null) as null | {
+      error?: string;
+      projectStatusTransition?: { changed?: boolean; nextStatus?: string } | null;
+    };
     if (!res.ok) {
-      const data = await res.json().catch(() => null);
       throw new Error(data?.error ?? "Endkontrolle konnte nicht gespeichert werden.");
     }
 
     await loadProjectLogbookEntries();
     const project = heroProjects.find((item) => item.id === entry.projectId);
     const projectMonth = normalizeDateKeyValue(entry.date).slice(0, 7) || getCurrentMonthKey();
-    const savedProject = await confirmFinalInspectionStatus(project, projectMonth, { assumeFinalInspection: true });
+    const nextStatus = data?.projectStatusTransition?.nextStatus;
+    const savedProject = project && nextStatus ? { ...project, status: nextStatus } : project;
+    if (project && nextStatus) {
+      setHeroProjects((currentProjects) => currentProjects.map((item) => item.id === project.id ? { ...item, status: nextStatus } : item));
+    }
     await notifyProjectBillingReady(savedProject || project, projectMonth, { assumeFinalInspection: true });
     if (finalInspectionHasUpsell) {
       if (project) {

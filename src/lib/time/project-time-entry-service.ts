@@ -238,7 +238,7 @@ export async function ensureProjectTimeEntryTable(
   `;
 }
 
-async function getEmployeeHourlyCostRateSnapshot(
+export async function getEmployeeHourlyCostRateSnapshot(
   db: DatabaseClient,
   organizationId: string,
   userId: string

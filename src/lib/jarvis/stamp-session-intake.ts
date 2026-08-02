@@ -139,3 +139,75 @@ export function extractStampSessionStartRequest(
 export function looksLikeStampSessionStartRequest(question: string) {
   return extractStampSessionStartRequest(question) !== null;
 }
+
+export type StampSessionStopRequest = {
+  completionStatus: "finished" | "interrupted" | "";
+  comment: string;
+  interruptionReason: string;
+  finalInspectionMode: "" | "self" | "colleague";
+  allInspectionChecksDone: boolean;
+  upsellNotes: string;
+};
+
+export function extractStampSessionStopRequest(
+  question: string,
+): StampSessionStopRequest | null {
+  const value = normalize(question);
+  if (
+    !value ||
+    !/\b(stempel\w*|timer|arbeitszeit)\b/.test(value) ||
+    !/\b(stopp\w*|beend\w*|abschliess\w*|abschließ\w*)\b/.test(value) ||
+    /\b(pause|fortsetz\w*|wieder\w*|start\w*|beginn\w*)\b/.test(value)
+  ) {
+    return null;
+  }
+
+  const completionStatus = /\b(arbeit\s+)?unterbrochen\b|\bunterbrech\w*\b/.test(
+    value,
+  )
+    ? "interrupted"
+    : /\b(arbeit\s+)?fertig\b|\berledigt\b|\babgeschlossen\b/.test(value)
+      ? "finished"
+      : "";
+  const interruptionReason = extractTaggedValue(question, [
+    "unterbrechungsgrund",
+    "grund",
+    "warum unterbrochen",
+  ]);
+  const comment = extractTaggedValue(question, [
+    "ergänzung",
+    "ergaenzung",
+    "kommentar",
+    "notiz",
+  ]);
+  const finalInspectionMode = /endkontrolle[^.;,]*(kollege|kollegin)|durch\s+(einen\s+)?kollegen/.test(
+    value,
+  )
+    ? "colleague"
+    : /endkontrolle[^.;,]*(selbst|durchgeführt|durchgefuehrt)|endkontrolle\s*:\s*fertig/.test(
+        value,
+      )
+      ? "self"
+      : "";
+  const upsellNotes = extractTaggedValue(question, [
+    "zusatzverkauf",
+    "zusatzverkaufsmöglichkeit",
+    "zusatzverkaufsmoeglichkeit",
+  ]);
+
+  return {
+    completionStatus,
+    comment,
+    interruptionReason,
+    finalInspectionMode,
+    allInspectionChecksDone:
+      /\b(alle|sämtliche|saemtliche)\b[^.;,]*\b(prüfpunkte|pruefpunkte|checks)\b[^.;,]*\b(erledigt|bestätigt|bestaetigt|ok)\b/.test(
+        value,
+      ),
+    upsellNotes,
+  };
+}
+
+export function looksLikeStampSessionStopRequest(question: string) {
+  return extractStampSessionStopRequest(question) !== null;
+}

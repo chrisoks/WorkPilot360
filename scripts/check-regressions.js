@@ -66,6 +66,7 @@ const files = {
   schema: read("prisma/schema.prisma"),
   activityReportsRoute: read("src/app/api/activity-reports/route.ts"),
   finalInspectionsRoute: read("src/app/api/final-inspections/route.ts"),
+  finalInspectionService: read("src/lib/projects/final-inspection-service.ts"),
   invoicesRoute: read("src/app/api/invoices/route.ts"),
   invoiceCancellationService: read("src/lib/invoices/invoice-cancellation-service.ts"),
   invoiceCreditService: read("src/lib/invoices/invoice-credit-service.ts"),
@@ -403,9 +404,15 @@ const required = [
   },
   {
     label: "Endkontrolle bleibt als eigener Dokument-/Statusbereich vorhanden",
-    file: "finalInspectionsRoute",
+    file: "finalInspectionService",
     needle: "Dokumente: Endkontrolle",
     min: 1,
+  },
+  {
+    label: "Endkontrollroute nutzt den gemeinsamen Fachservice",
+    file: "finalInspectionsRoute",
+    needle: "createFinalInspection",
+    min: 2,
   },
   {
     label: "Projektakte zaehlt Endkontrolle fuer Fortschritt",

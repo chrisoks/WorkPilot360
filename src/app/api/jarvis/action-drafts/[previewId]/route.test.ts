@@ -1523,6 +1523,24 @@ describe("JARVIS action-draft API", () => {
     expect(mocks.confirmJarvisProjectLifecycleDraft).not.toHaveBeenCalled();
   });
 
+  it("describes an executed personal stamp stop as ended", async () => {
+    mocks.confirmJarvisStampSessionTransitionDraft.mockResolvedValueOnce({
+      ...draft,
+      actionId: "time.session.manage",
+      state: "executed",
+      operation: "stop",
+      result: { entityType: "projectTimeEntry", entityId: "time-1", label: "Zeitbuchung gespeichert" },
+    });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "time.session.manage", command: "confirm", revision: 5,
+      confirmationText: "STEMPELUNG STOPPEN",
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.message).toContain("genau einmal beendet");
+    expect(body.message).not.toContain("fortgesetzt");
+  });
+
   it("rejects unknown commands without touching draft state", async () => {
     const response = (await POST(
       request(

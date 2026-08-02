@@ -1062,7 +1062,13 @@ export async function POST(
             : isStampSessionTransition
             ? actionDraft.actionId === "time.session.manage" && actionDraft.operation === "start"
               ? "Deine persönliche Stempelung wurde nach deiner exakten Bestätigung genau einmal gestartet."
-              : `Die persönliche laufende Stempelung wurde nach deiner exakten Bestätigung genau einmal ${actionDraft.actionId === "time.session.manage" && actionDraft.operation === "pause" ? "pausiert" : "fortgesetzt"}. Projekt, Zeiteinträge und Abrechnung blieben unverändert.`
+              : `Die persönliche laufende Stempelung wurde nach deiner exakten Bestätigung genau einmal ${
+                  actionDraft.actionId === "time.session.manage" && actionDraft.operation === "pause"
+                    ? "pausiert"
+                    : actionDraft.actionId === "time.session.manage" && actionDraft.operation === "stop"
+                      ? "beendet"
+                      : "fortgesetzt"
+                }. Projekt, Zeiteinträge und Abrechnung blieben unverändert.`
             : isTaskLifecycle
             ? "Die Aufgabe wurde nach deiner exakten Bestätigung genau einmal archiviert oder wiederhergestellt. Kommentare, Beteiligte, Links, Zeiten, Folgeaufgaben und Nachweise blieben erhalten."
             : isProjectMasterData

@@ -236,6 +236,22 @@ const fake = vi.hoisted(() => {
     stampSessionStarts.push(input);
     return { session: { ...stampSession, id: "stamp-started", mode: "unproductive", projectId: "__unproductive__", projectLabel: "Büroorganisation", comment: "Ablage bearbeiten" }, evaluation: startEvaluation };
   });
+  const stampSessionStops: Array<Record<string, any>> = [];
+  const stopEvaluation = {
+    action: "stop" as const,
+    requested: { completionStatus: "finished" as const, comment: "Kampagne abgeschlossen", interruptionReason: "" },
+    effective: { completionStatus: "finished" as const, comment: "Kampagne abgeschlossen", interruptionReason: "", date: "2026-07-29", startTime: "21:00", endTime: "22:00", durationMs: 3_600_000, pauseMs: 0 },
+    session: stampSession,
+    project: { id: "project-1", projectNumber: "MKG-209", title: "Marketing", customer: "Musterkunde", status: "Umsetzung", projectKind: "Einmalprojekt", recurringBillingMode: "", branch: "OK solutions", projectType: "Projekt OK solutions", responsibleName: "Jarvis Tester", updatedAt: "2026-07-29T18:00:00.000Z" },
+    isHourlyRecurring: false, requiresFinalInspection: false, willAttachHourlyInvoiceDraft: false,
+    willCreateInterruptionTask: false, willTransitionProjectToInterrupted: false,
+    fingerprint: "8".repeat(64), warnings: [], blockingIssues: [],
+  };
+  const evaluateStampSessionStop = vi.fn(async () => stopEvaluation);
+  const executeStampSessionStop = vi.fn(async (input: Record<string, any>) => {
+    stampSessionStops.push(input);
+    return { entry: { id: input.requestId, organizationId: "org-1", mode: "project", projectId: "project-1", projectLabel: "MKG-209 - Marketing", trade: "", planningEntryId: "", planningBillingGroupId: "", billingCatalogItemId: "", billingCatalogItemLabel: "", userId: "user-1", employee: "Jarvis Tester", entrySource: "stamped", date: "2026-07-29", startTime: "21:00", endTime: "22:00", durationMs: 3_600_000, pauseMs: 0, laborCostRateSnapshot: 0, laborCostSnapshot: 0, costSnapshotAt: baseNow.toISOString(), comment: "Kampagne abgeschlossen", marketingContentItemId: "", marketingContentType: "", completionStatus: "finished", invoiceId: "", invoiceNumber: "", invoicedAt: "", overtimeApprovalStatus: "not_required", overtimeApprovedByUserId: "", overtimeApprovedByName: "", overtimeApprovedAt: "", editHistory: [], createdAt: baseNow.toISOString() }, evaluation: stopEvaluation, replayed: false, projectStatusTransition: null };
+  });
   const evaluateInvoicePayment = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate?: string }) => ({
     invoice: {
       id: invoiceId,
@@ -838,10 +854,13 @@ const fake = vi.hoisted(() => {
       executeProjectLifecycle.mockClear();
       stampSessionTransitions.length = 0;
       stampSessionStarts.length = 0;
+      stampSessionStops.length = 0;
       evaluateStampSessionTransition.mockClear();
       executeStampSessionTransition.mockClear();
       evaluateStampSessionStart.mockClear();
       executeStampSessionStart.mockClear();
+      evaluateStampSessionStop.mockClear();
+      executeStampSessionStop.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -912,6 +931,9 @@ const fake = vi.hoisted(() => {
     stampSessionStarts,
     evaluateStampSessionStart,
     executeStampSessionStart,
+    stampSessionStops,
+    evaluateStampSessionStop,
+    executeStampSessionStop,
   };
 });
 
@@ -1018,6 +1040,19 @@ vi.mock("@/lib/time/stamp-session-start-service", () => ({
   getStampSessionStartConfirmationText: () => "STEMPELUNG STARTEN UNPRODUKTIV",
   matchesStampSessionStartConfirmation: (_evaluation: unknown, value: string) => value.trim() === "STEMPELUNG STARTEN UNPRODUKTIV",
 }));
+vi.mock("@/lib/time/stamp-session-stop-service", () => ({
+  evaluateStampSessionStop: fake.evaluateStampSessionStop,
+  executeStampSessionStop: fake.executeStampSessionStop,
+  getStampSessionStopConfirmationText: () => "STEMPELUNG BEENDEN FERTIG MKG-209",
+  matchesStampSessionStopConfirmation: (_evaluation: unknown, value: string) => value.trim() === "STEMPELUNG BEENDEN FERTIG MKG-209",
+}));
+vi.mock("@/lib/projects/final-inspection-service", () => ({
+  createFinalInspection: vi.fn(),
+  applyFinalInspectionBillingStatus: vi.fn(),
+  FinalInspectionServiceError: class FinalInspectionServiceError extends Error { code = "conflict"; status = 409; },
+}));
+vi.mock("@/lib/time/stamp-session-interruption-service", () => ({ ensureStampInterruptionFollowup: vi.fn() }));
+vi.mock("@/lib/time/stamp-session-billing-service", () => ({ attachStampEntryToHourlyInvoiceDraft: vi.fn() }));
 vi.mock("@/lib/invoices/invoice-draft-service", () => ({
   evaluateInvoiceDraft: fake.evaluateInvoiceDraft,
   loadInvoiceDraftWorkspace: vi.fn(async () => ({
@@ -3534,6 +3569,24 @@ describe("persistent JARVIS personal stamp-session drafts", () => {
     expect(replay.result?.entityId).toBe("stamp-started");
     expect(fake.stampSessionStarts).toHaveLength(1);
     expect(fake.executeStampSessionStart).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", expectedFingerprint: "7".repeat(64), requestId: "stamp-start-1", source: "jarvis" }));
+  });
+
+  it("stops the own session exactly once and stores the time entry", async () => {
+    const stopPreview = {
+      version: 1 as const, previewId: "stamp-stop-1", actionId: "time.session.manage" as const,
+      actionTitle: "Eigene Stempelung kontrolliert beenden", state: "awaiting_confirmation" as const,
+      organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+      payload: { action: "stop" as const, completionStatus: "finished" as const, comment: "Kampagne abgeschlossen", finalInspectionMode: "" as const, allInspectionChecksDone: false },
+      execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+    };
+    const created = await createPersistedJarvisStampSessionTransitionDraft({ ...binding(), now: baseNow, preview: stopPreview });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", operation: "stop", targetState: "missing", confirmation: { requiredText: "STEMPELUNG BEENDEN FERTIG MKG-209" } });
+    const first = await confirmJarvisStampSessionTransitionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisStampSessionTransitionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first).toMatchObject({ state: "executed", operation: "stop", result: { entityType: "projectTimeEntry", entityId: "stamp-stop-1" } });
+    expect(replay.result?.entityId).toBe("stamp-stop-1");
+    expect(fake.stampSessionStops).toHaveLength(1);
+    expect(fake.executeStampSessionStop).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", expectedFingerprint: "8".repeat(64), requestId: "stamp-stop-1", source: "jarvis" }));
   });
 
   it("rejects inexact confirmation, cancellation, and represented sessions without writing", async () => {

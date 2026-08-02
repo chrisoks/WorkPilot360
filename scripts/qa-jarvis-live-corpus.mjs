@@ -439,6 +439,7 @@ async function main() {
   let onlineRequestConversionDraftPrepared = false;
   let stampSessionDraftPrepared = false;
   let stampSessionStartDraftPrepared = false;
+  let stampSessionStopDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -470,6 +471,7 @@ async function main() {
         const isOnlineRequestConversionCase = item.question.includes("QA-OKI-100");
         const isStampSessionCase = item.question === "Pausiere meine laufende Stempelung.";
         const isStampSessionStartCase = item.question.startsWith("Starte meine Stempelung unproduktiv.");
+        const isStampSessionStopCase = item.question === "Beende meine laufende Stempelung.";
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -767,6 +769,22 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Startfrage hat die bereits laufende persönliche Stempelung nicht fail-closed erkannt." });
           } else {
             stampSessionStartDraftPrepared = true;
+          }
+        }
+        if (isStampSessionStopCase) {
+          if (payload.actionDraft?.actionId !== "time.session.manage" || payload.actionDraft.operation !== "stop") {
+            failures.push({ id: item.id, status: response.status, error: "Die Stoppfrage hat keine kontrollierte time.session.manage-Stoppvorschau erzeugt." });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.confirmation?.requiredText !== "STEMPELUNG STOPPEN" ||
+            payload.actionDraft.sessionId !== corpusStampSession.id ||
+            payload.actionDraft.targetState !== "missing" ||
+            payload.actionDraft.blockingIssues?.length
+          ) {
+            failures.push({ id: item.id, status: response.status, error: "Die Stoppfrage hat keine vollständige, unblockierte und sitzungsgebundene Stoppvorschau erzeugt." });
+          } else {
+            stampSessionStopDraftPrepared = true;
           }
         }
         if (isReminderCase && reminderInvoice) {
@@ -1306,6 +1324,7 @@ async function main() {
     onlineRequestConversionDraftPrepared,
     stampSessionDraftPrepared,
     stampSessionStartDraftPrepared,
+    stampSessionStopDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
       ? await prisma.offer.count({ where: { id: qaFinalizableOfferId } })
       : 0,

@@ -213,6 +213,7 @@ import {
 import { extractProjectStatusAutomationRequest } from "@/lib/jarvis/automation-management-intake";
 import {
   extractStampSessionStartRequest,
+  extractStampSessionStopRequest,
   extractStampSessionTransition,
 } from "@/lib/jarvis/stamp-session-intake";
 import { resolveJarvisProjectStatusAutomationStatus } from "@/lib/jarvis/automation-status-analysis";
@@ -1267,6 +1268,53 @@ async function buildJarvisStampSessionTransitionDraft(input: {
           : "Die persönliche Stempelaktion konnte nicht sicher vorbereitet werden."
       } Es wurde nichts verändert.`,
     };
+  }
+}
+
+async function buildJarvisStampSessionStopDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  const details = extractStampSessionStopRequest(input.question);
+  if (!details) return null;
+  if (!input.sessionId) {
+    return { type: "refusal" as const, topicId: "action.stamp-session-stop.session-required", message: "Für das Beenden deiner persönlichen Stempelung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert." };
+  }
+  if (details.completionStatus === "interrupted" && !details.interruptionReason) {
+    return { type: "clarification" as const, topicId: "action.stamp-session-stop.reason-required", message: "Warum wurde die Arbeit unterbrochen? Ergänze bitte einen konkreten Unterbrechungsgrund. Es wurde noch nichts verändert." };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "time.session.manage",
+    payload: {
+      action: "stop",
+      completionStatus: details.completionStatus,
+      ...(details.comment ? { comment: details.comment } : {}),
+      ...(details.interruptionReason ? { interruptionReason: details.interruptionReason } : {}),
+      finalInspectionMode: details.finalInspectionMode,
+      allInspectionChecksDone: details.allInspectionChecksDone,
+      ...(details.upsellNotes ? { upsellNotes: details.upsellNotes } : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return { type: "refusal" as const, topicId: "action.stamp-session-stop.refused", message: `${preview.message} Es wurde nichts verändert.` };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisStampSessionTransitionDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    if (actionDraft.blockingIssues.some((issue) => issue.includes("fertig oder unterbrochen"))) {
+      return { type: "clarification" as const, topicId: "action.stamp-session-stop.completion-required", message: "Ist die Projektarbeit fertig oder unterbrochen? Bitte ergänze eine der beiden Angaben. Der Entwurf ist blockiert; es wurde noch nichts verändert.", actionDraft };
+    }
+    if (actionDraft.blockingIssues.some((issue) => issue.includes("Endkontrolle"))) {
+      return { type: "clarification" as const, topicId: "action.stamp-session-stop.inspection-required", message: "Für den fertigen Abschluss dieses OK-immocare-Projekts muss eine Endkontrolle dokumentiert werden. Teile mir bitte mit, ob du alle Prüfpunkte selbst bestätigt hast oder ob ein Kollege die Endkontrolle übernimmt. Der Entwurf ist blockiert; es wurde noch nichts verändert.", actionDraft };
+    }
+    return { type: "answer" as const, topicId: "action.stamp-session-stop", message: "Ich habe das Beenden deiner persönlichen Stempelung vollständig vorbereitet. Kontrolliere Abschlussart, Zeit, Pause und die angekündigten Projekt- und Abrechnungsfolgen. Erst die exakte Bestätigungsphrase speichert die Zeit genau einmal und beendet die aktive Stempelung.", actionDraft };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.stamp-session-stop.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Das Beenden der persönlichen Stempelung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.` };
   }
 }
 
@@ -3361,6 +3409,16 @@ export async function POST(req: Request) {
   const stampSessionStart = extractStampSessionStartRequest(message);
   if (stampSessionStart) {
     const response = await buildJarvisStampSessionStartDraft({
+      question: message,
+      organizationId: organization.id,
+      sessionId: actorResult.sessionId,
+      accessProfile,
+    });
+    if (response) return respond(response, "system");
+  }
+  const stampSessionStop = extractStampSessionStopRequest(message);
+  if (stampSessionStop) {
+    const response = await buildJarvisStampSessionStopDraft({
       question: message,
       organizationId: organization.id,
       sessionId: actorResult.sessionId,
