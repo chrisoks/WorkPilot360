@@ -767,3 +767,40 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   176/176 Testdateien, 1.760/1.760 Tests, 90-Seiten-Build, echte Klicktests,
   isolierte lokale und produktive Exactly-once-QA, 110/110 Fragen und null
   Rückstände. WorkPilot PID `755744`, KlinikNavigator PID `398228`.
+
+## Persönliche Stempelung kontrolliert starten
+
+- Aktions-ID `time.session.manage` mit Operation `start`; ausschließlich für
+  den angemeldeten internen Benutzer und niemals in Vertretung oder für einen
+  anderen Mitarbeiter.
+- Natürliche Befehle unterstützen eindeutige Projektnummer, Tätigkeit,
+  optional Gewerk/Abrechnungsleistung und einen ausdrücklich beauftragten
+  Statuswechsel auf `Umsetzung`; unproduktive Starts verlangen eine konkrete
+  Tätigkeitskategorie und Beschreibung.
+- Gemeinsamer Fachservice `src/lib/time/stamp-session-start-service.ts` für
+  normale Route `/api/stamp-session` und JARVIS. Er prüft Organisation,
+  Projektzustand, laufende persönliche Sitzung, Stunden-Dauerläufer-Kontext,
+  bestätigte Tagesplanung und Katalogposition und arbeitet serialisierbar unter
+  organisations-/benutzerbezogenem PostgreSQL-Advisory-Lock.
+- Stunden-Dauerläufer benötigen ein bestätigtes Gewerk sowie eine aktive
+  Katalogleistung vom Typ Leistung, Einheit Stunden, positivem Verkaufspreis
+  und passendem Gewerk. Projektstatusänderung, Timeline, Logbuch und Audit
+  verwenden atomar den bestehenden Projektstatus-Fachservice.
+- Kritische Phrasen: `STEMPELUNG STARTEN <PROJEKTNUMMER>` beziehungsweise
+  `STEMPELUNG STARTEN UNPRODUKTIV`. Organisation, Sitzung, Session-/
+  Effektividentität, Rollen, Impersonation, Payload, Fachkontext, Fingerprint,
+  Revision, Ablaufzeit und HMAC sind gebunden; veralteter Kontext sperrt
+  fail-closed.
+- Bestehende optionale Marketing-/Kampagnenfelder der normalen Stempelmaske
+  werden durch den gemeinsamen Service unverändert übernommen. JARVIS erzeugt
+  keine Fremdstempelung, keinen Wechsel und keinen Stop über diesen Startpfad.
+- Permanente isolierte QA: `scripts/qa-jarvis-stamp-start.mjs`; der feste
+  Korpus bleibt exakt 110 Fragen und bereitet den Start nur vor, ohne ihn
+  auszuführen.
+- Produktivabnahme: Runtime
+  `76bd2e8e830c1e78467ff68cb0c6477fde5d55cb`, Backup
+  `/var/backups/workpilot360/20260802T105835Z-before-jarvis-stamp-start`,
+  177/177 Testdateien, 1.768/1.768 Tests, 90-Seiten-Build, echter Klicktest,
+  isolierte lokale und produktive Exactly-once-QA, 110/110 Fragen und null
+  Rückstände. Live-Prisma-Diff leer; WorkPilot PID `760146`, KlinikNavigator
+  unverändert PID `398228`.

@@ -3475,3 +3475,56 @@ QA-Entwürfe, Sitzungen und Stempelungen wurden entfernt; Live-Prisma-Diff
 leer. WorkPilot PID `755744`, KlinikNavigator unverändert PID `398228`. Keine
 Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
 Online-Anfragen-Invarianten blieben unverändert.
+
+## 40. Eigene Stempelung kontrolliert starten
+
+JARVIS kann die persönliche Stempelung des angemeldeten internen Benutzers nun
+kontrolliert starten. Projektstarts verlangen eine eindeutige Projektnummer und
+eine konkrete Tätigkeitsbeschreibung; unproduktive Starts zusätzlich eine
+eindeutig benannte unproduktive Tätigkeit. Vertretung, Impersonation und die
+Bedienung eines anderen Mitarbeiters sind ausgeschlossen. Die Vorschau zeigt
+Arbeitsbezug, Tätigkeit, gegebenenfalls Gewerk und Abrechnungsleistung sowie
+die ausdrücklich gewählte Projektstatuswirkung.
+
+Normale Oberfläche und JARVIS verwenden denselben Fachservice
+`src/lib/time/stamp-session-start-service.ts`. Bei Stunden-Dauerläufern müssen
+Gewerk und eine aktive Katalogleistung vom Typ Leistung, Einheit Stunden,
+positivem Verkaufspreis und passendem Gewerk feststehen. Eine bestätigte
+Tagesplanung darf diesen Kontext liefern. Ein Projektstatus wird nur nach
+ausdrücklichem Auftrag auf `Umsetzung` geändert; Status, Timeline, Logbuch und
+Audit entstehen dann über den bestehenden Projektstatus-Fachservice atomar mit
+der neuen Stempelung. Bereits laufende Stempelungen, abgeschlossene oder
+archivierte Projekte, unvollständige Abrechnung und zwischenzeitlich geänderte
+Kontexte sperren fail-closed.
+
+Die Ausführung läuft serialisierbar unter einem organisations- und
+benutzerbezogenen PostgreSQL-Advisory-Lock. Der persistente JARVIS-Entwurf ist
+an Organisation, Sitzung, Session- und Effektividentität, Rollen,
+Impersonationszustand, Payload-/Kontexthashes, Fachfingerprint, Revision,
+Ablaufzeit und HMAC gebunden. Nur `STEMPELUNG STARTEN <PROJEKTNUMMER>` oder
+`STEMPELUNG STARTEN UNPRODUKTIV` führen aus. Wiederholte Bestätigungen liefern
+dieselbe aktive Sitzung und erzeugen keinen zweiten Start. Die optionalen
+Marketing-/Kampagnenfelder der bestehenden Normalmaske bleiben im gemeinsamen
+Service erhalten.
+
+Lokal bestanden 177 Testdateien mit 1.768 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, synchroner Datenbankstand und
+der 90-Seiten-Build. Die isolierte QA prüfte Vertretungsgrenze,
+Sitzungsbindung, Abbruch, falsche Phrase, konkurrierenden Start,
+`stale_context`, exactly-once, genau ein Ausführungs-Audit und vollständige
+Bereinigung. Der echte Klicktest startete eine markierte unproduktive
+Stempelung, zeigte Arbeitsbezug/Tätigkeit, exakte Phrase und anschließend den
+aktiven Dashboardzustand; danach wurden Stempelung und Entwurf gezielt
+entfernt und die Oberfläche zeigte wieder `Nicht eingestempelt`. Der feste
+Korpus blieb exakt 110 Fälle groß.
+
+Produktiv abgenommen auf Runtime-Commit
+`76bd2e8e830c1e78467ff68cb0c6477fde5d55cb`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T105835Z-before-jarvis-stamp-start`.
+Produktiv bestanden die isolierte Start-QA und 110/110 permanente Fragen mit
+31 ausschließlich vorbereiteten, null ausgeführten Aktionen und null
+Rückständen. Live-Prisma-Diff leer, Dashboard und Formular HTTP 200; WorkPilot
+PID `760146`, KlinikNavigator unverändert PID `398228`. Keine
+Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
+Online-Anfragen-Invarianten blieben unverändert.

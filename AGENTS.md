@@ -1,5 +1,28 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS persönlicher Stempelstart 2026-08-02: `time.session.manage` kann die
+  eigene Stempelung des angemeldeten internen Benutzers jetzt auf ein
+  eindeutiges Projekt oder eine konkret benannte unproduktive Tätigkeit
+  starten. Vertretung, Impersonation und Fremdstempelung sind ausgeschlossen.
+  Bei Stunden-Dauerläufern sind Gewerk und eine aktive Stunden-
+  Abrechnungsleistung mit positivem Verkaufspreis Pflicht; bestätigte
+  Tagesplanung darf den Kontext liefern. Ein Projektstatuswechsel auf
+  `Umsetzung` erfolgt nur nach ausdrücklichem Auftrag. Normale Stempelroute und
+  JARVIS verwenden denselben serialisierbaren Fachservice
+  `src/lib/time/stamp-session-start-service.ts`; bestehender Marketing-/
+  Kampagnenkontext der Normalmaske bleibt erhalten. JARVIS bindet Entwurf,
+  HMAC, Fingerprint, Revision, Organisation, Sitzung, Identitäten und Rollen
+  und verlangt exakt `STEMPELUNG STARTEN <PROJEKTNUMMER>` oder
+  `STEMPELUNG STARTEN UNPRODUKTIV`. Runtime-Commit
+  `76bd2e8e830c1e78467ff68cb0c6477fde5d55cb`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T105835Z-before-jarvis-stamp-start`.
+  Lokal bestanden 177/177 Testdateien mit 1.768/1.768 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma, 90-Seiten-Build, isolierte QA und ein
+  echter JARVIS-Klicktest. Produktiv bestanden Rollen-, Sitzungs-, Phrasen-,
+  Stale-Context- und Exactly-once-QA sowie 110/110 feste Fragen; null
+  QA-Rückstände, Live-Prisma-Diff leer, Dashboard/Formular HTTP 200. WorkPilot
+  PID `760146`, KlinikNavigator unverändert PID `398228`.
+
 - JARVIS persönliche Stempelpause/-fortsetzung 2026-08-02: Die neue Aktion
   `time.session.manage` kann ausschließlich die eigene laufende Stempelung des
   angemeldeten internen Benutzers pausieren oder fortsetzen. Keine Vertretung,
