@@ -54,6 +54,19 @@ function source(
       },
       requests: [request],
       assigneeNames: { "sales-1": "Verena Vertrieb" },
+      assigneeDetails: {
+        "sales-1": {
+          name: "Verena Vertrieb",
+          isActive: true,
+          canConvert: true,
+        },
+      },
+      matchedContacts: {
+        "contact-1": {
+          customerNumber: "7000049",
+          name: "Muster GmbH",
+        },
+      },
       convertedProjects: {},
       ...overrides,
     }),
@@ -72,6 +85,7 @@ describe("JARVIS online request analysis", () => {
     ["Welche Online-Anfrage ist am ältesten?", "list"],
     ["Welche Online-Anfragen warten auf Rückmeldung?", "list"],
     ["Fasse OKI-20260730-A1B2C3 zusammen.", "detail"],
+    ["Ist OKI-20260730-A1B2C3 zur Übernahme bereit?", "detail"],
   ])("recognizes live request intent: %s", (question, presentation) => {
     expect(resolveJarvisOnlineRequestIntent(question)?.presentation).toBe(
       presentation
@@ -98,6 +112,18 @@ describe("JARVIS online request analysis", () => {
     ).toMatchObject({
       referenceNumber: "OKI-20260730-A1B2C3",
       presentation: "detail",
+    });
+  });
+
+  it("recognizes an explicit conversion-readiness check for one exact reference", () => {
+    expect(
+      resolveJarvisOnlineRequestIntent(
+        "Welche Voraussetzungen fehlen noch, um OKI-20260730-A1B2C3 zu übernehmen?"
+      )
+    ).toMatchObject({
+      referenceNumber: "OKI-20260730-A1B2C3",
+      presentation: "detail",
+      readinessRequested: true,
     });
   });
 
@@ -165,6 +191,73 @@ describe("JARVIS online request analysis", () => {
     expect(rendered).toContain("nicht als Projektnummer verwendet");
     expect(rendered).not.toContain("submissionIpHash");
     expect(rendered).not.toContain("securitySignals");
+  });
+
+  it("shows a complete ready-to-convert preview without writing", async () => {
+    const dataSource = source();
+    const response = await resolveJarvisOnlineRequestAnalysis({
+      question: "Ist OKI-20260730-A1B2C3 zur Übernahme bereit?",
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      source: dataSource,
+    });
+    const rendered = JSON.stringify(response);
+
+    expect(response?.message).toContain("für die kontrollierte Übernahme bereit");
+    expect(response?.structured?.title).toContain("Übernahmeprüfung");
+    expect(rendered).toContain("Übernahmebereit");
+    expect(rendered).toContain("7000049 · Muster GmbH");
+    expect(rendered).toContain("Verantwortlich: Verena Vertrieb");
+    expect(rendered).toContain("Wunschdatum prüfen");
+    expect(rendered).toContain("niemals ein Bestandsprojekt verwendet");
+    expect(dataSource.load).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists every blocking prerequisite instead of guessing the customer path", async () => {
+    const response = await resolveJarvisOnlineRequestAnalysis({
+      question: "Was blockiert die Übernahme von OKI-20260730-A1B2C3?",
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      source: source({
+        requests: [
+          {
+            ...request,
+            status: "closed",
+            customerDecision: "unresolved",
+            matchedContactId: null,
+            assignedUserId: null,
+          },
+        ],
+        assigneeNames: {},
+        assigneeDetails: {},
+        matchedContacts: {},
+      }),
+    });
+    const rendered = JSON.stringify(response);
+
+    expect(response?.message).toContain("2 Voraussetzungen fehlen");
+    expect(rendered).toContain("abgeschlossen und muss vor einer Übernahme");
+    expect(rendered).toContain("Kundenprüfung muss eindeutig");
+    expect(rendered).toContain("Kunde: noch nicht eindeutig festgelegt");
+  });
+
+  it("uses the executing authorized actor as the documented responsibility fallback", async () => {
+    const response = await resolveJarvisOnlineRequestAnalysis({
+      question: "Ist OKI-20260730-A1B2C3 zur Übernahme bereit?",
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      source: source({
+        requests: [{ ...request, assignedUserId: null }],
+        assigneeNames: {},
+        assigneeDetails: {},
+      }),
+    });
+    const rendered = JSON.stringify(response);
+
+    expect(response?.message).toContain("für die kontrollierte Übernahme bereit");
+    expect(rendered).toContain(
+      "Ausführende berechtigte Person (automatischer Fallback)"
+    );
   });
 
   it("shows the organization-bound standard project identity after conversion", async () => {

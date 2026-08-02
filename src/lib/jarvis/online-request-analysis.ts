@@ -3,6 +3,8 @@ import { getJarvisActionDecision } from "@/lib/jarvis/actions";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import type { JarvisReadResponse } from "@/lib/jarvis/read-model";
 import type { JarvisAccessProfile } from "@/lib/jarvis/security";
+import { canConvertOnlineRequests } from "@/lib/permissions";
+import { buildOnlineRequestConversionTasks } from "@/lib/online-requests/conversion";
 import {
   getOnlineRequestTimeWindowLabel,
   getOnlineRequestUrgencyLabel,
@@ -59,6 +61,14 @@ export type JarvisOnlineRequestSource = {
     statusCounts: Record<string, number>;
     requests: JarvisOnlineRequestRow[];
     assigneeNames: Record<string, string>;
+    assigneeDetails: Record<
+      string,
+      { name: string; isActive: boolean; canConvert: boolean }
+    >;
+    matchedContacts: Record<
+      string,
+      { customerNumber: string; name: string }
+    >;
     convertedProjects: Record<
       string,
       { projectNumber: string; title: string }
@@ -71,6 +81,7 @@ export type JarvisOnlineRequestIntent = {
   statuses: OnlineRequestStatus[] | null;
   presentation: "summary" | "list" | "detail";
   oldestFirst: boolean;
+  readinessRequested: boolean;
 };
 
 const liveSource: JarvisOnlineRequestSource = {
@@ -140,7 +151,14 @@ const liveSource: JarvisOnlineRequestSource = {
           .filter((id): id is string => Boolean(id))
       )
     );
-    const [assignees, convertedProjects] = await Promise.all([
+    const matchedContactIds = Array.from(
+      new Set(
+        requests
+          .map((request) => request.matchedContactId)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+    const [assignees, matchedContacts, convertedProjects] = await Promise.all([
       assigneeIds.length === 0
         ? []
         : prisma.user.findMany({
@@ -150,6 +168,21 @@ const liveSource: JarvisOnlineRequestSource = {
               firstName: true,
               lastName: true,
               email: true,
+              role: true,
+              isActive: true,
+              salesRoleEnabled: true,
+            },
+          }),
+      matchedContactIds.length === 0
+        ? []
+        : prisma.contact.findMany({
+            where: { organizationId, id: { in: matchedContactIds } },
+            select: {
+              id: true,
+              customerNumber: true,
+              companyName: true,
+              firstName: true,
+              lastName: true,
             },
           }),
       convertedProjectIds.length === 0
@@ -182,6 +215,34 @@ const liveSource: JarvisOnlineRequestSource = {
           [user.firstName, user.lastName].filter(Boolean).join(" ") ||
             user.email ||
             "Zugewiesene Person",
+        ])
+      ),
+      assigneeDetails: Object.fromEntries(
+        assignees.map((user) => {
+          const name =
+            [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+            user.email ||
+            "Zugewiesene Person";
+          return [
+            user.id,
+            {
+              name,
+              isActive: user.isActive,
+              canConvert: canConvertOnlineRequests(user),
+            },
+          ];
+        })
+      ),
+      matchedContacts: Object.fromEntries(
+        matchedContacts.map((contact) => [
+          contact.id,
+          {
+            customerNumber: contact.customerNumber,
+            name:
+              contact.companyName?.trim() ||
+              [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
+              contact.customerNumber,
+          },
         ])
       ),
       convertedProjects: Object.fromEntries(
@@ -256,6 +317,11 @@ export function resolveJarvisOnlineRequestIntent(
   }
 
   const oldestFirst = /\baltest\w*\b/.test(value);
+  const readinessRequested =
+    Boolean(referenceNumber) &&
+    /\b(?:bereit|ubernehm|umwandel|konvertier|freigab|blockier|fehlt|voraussetzung)\w*\b/.test(
+      value
+    );
   const presentation = referenceNumber
     ? "detail"
     : /\b(?:wie viele|anzahl|bestand|uberblick|ubersicht)\b/.test(value)
@@ -267,6 +333,7 @@ export function resolveJarvisOnlineRequestIntent(
     statuses,
     presentation,
     oldestFirst,
+    readinessRequested,
   };
 }
 
@@ -348,10 +415,19 @@ function listLabel(
 function detailResponse(
   request: JarvisOnlineRequestRow,
   assigneeNames: Record<string, string>,
+  assigneeDetails: Record<
+    string,
+    { name: string; isActive: boolean; canConvert: boolean }
+  >,
+  matchedContacts: Record<
+    string,
+    { customerNumber: string; name: string }
+  >,
   convertedProjects: Record<
     string,
     { projectNumber: string; title: string }
-  >
+  >,
+  readinessRequested: boolean
 ): JarvisReadResponse {
   const assignee = request.assignedUserId
     ? assigneeNames[request.assignedUserId] || "Zugewiesene Person"
@@ -364,6 +440,81 @@ function detailResponse(
   const convertedProject = request.convertedProjectId
     ? convertedProjects[request.convertedProjectId]
     : undefined;
+  const assigneeDetail = request.assignedUserId
+    ? assigneeDetails[request.assignedUserId]
+    : undefined;
+  const matchedContact = request.matchedContactId
+    ? matchedContacts[request.matchedContactId]
+    : undefined;
+  const conversionTasks = buildOnlineRequestConversionTasks({
+    referenceNumber: request.referenceNumber,
+    requestType: request.requestType,
+    tradeName: request.tradeName,
+    recommendationNames: recommendations,
+    desiredDate: request.desiredDate,
+    desiredTimeWindow: request.desiredTimeWindow,
+    callbackTimeWindow: request.callbackTimeWindow,
+    urgency: request.urgency,
+    street: request.street,
+    postalCode: request.postalCode,
+    city: request.city,
+    objectHint: request.objectHint,
+    description: request.description,
+    company: request.company,
+    firstName: request.firstName,
+    lastName: request.lastName,
+    email: request.email,
+    phone: request.phone,
+    preferredContact: request.preferredContact,
+  });
+  const responsibilityPreview = assigneeDetail?.isActive && assigneeDetail.canConvert
+    ? assigneeDetail.name
+    : "Ausführende berechtigte Person (automatischer Fallback)";
+  const conversionTaskPreview = conversionTasks.length
+    ? conversionTasks.map((task) => task.title).join(" · ")
+    : "Keine verknüpfte Folgeaufgabe aus den vorliegenden Termin- und Rückrufangaben";
+  const readinessBlockers: string[] = [];
+  if (!request.convertedProjectId) {
+    if (request.status === "closed") {
+      readinessBlockers.push(
+        "Die Anfrage ist abgeschlossen und muss vor einer Übernahme bewusst wieder geöffnet werden."
+      );
+    }
+    if (
+      request.customerDecision !== "new" &&
+      request.customerDecision !== "existing"
+    ) {
+      readinessBlockers.push(
+        "Die Kundenprüfung muss eindeutig zwischen vorhandenem und neuem Kunden entscheiden."
+      );
+    } else if (request.customerDecision === "existing") {
+      if (!request.matchedContactId) {
+        readinessBlockers.push(
+          "Für den vorhandenen Kunden ist noch kein Kontakt ausgewählt."
+        );
+      } else if (!matchedContact) {
+        readinessBlockers.push(
+          "Der ausgewählte Bestandskontakt ist in dieser Organisation nicht mehr gültig."
+        );
+      }
+    }
+    if (!request.tradeName.trim()) {
+      readinessBlockers.push("Das Gewerk der Anfrage fehlt.");
+    }
+  } else if (!convertedProject) {
+    readinessBlockers.push(
+      "Der Umwandlungsnachweis verweist auf kein auflösbares Projekt."
+    );
+  }
+  const conversionReady =
+    !request.convertedProjectId && readinessBlockers.length === 0;
+  const readinessLabel = request.convertedProjectId
+    ? convertedProject
+      ? "Bereits umgewandelt"
+      : "Datenprüfung nötig"
+    : conversionReady
+      ? "Bereit"
+      : "Nicht bereit";
   const contact = [
     request.email,
     request.phone,
@@ -381,19 +532,56 @@ function detailResponse(
   return {
     type: "answer",
     topicId: "online-requests.detail",
-    message: `${request.referenceNumber} ist ${
-      STATUS_LABELS[request.status] || request.status
-    }. Die Anfrage betrifft ${request.tradeName} und stammt von ${customerName(
-      request
-    )}.`,
+    message: readinessRequested
+      ? conversionReady
+        ? `${request.referenceNumber} ist für die kontrollierte Übernahme bereit. Kundenentscheidung, Bestandskontakt beziehungsweise Neuanlage, Verantwortung und Gewerk sind eindeutig.`
+        : request.convertedProjectId && convertedProject
+          ? `${request.referenceNumber} wurde bereits kontrolliert in ${convertedProject.projectNumber} umgewandelt.`
+          : `${request.referenceNumber} ist noch nicht übernahmebereit. ${readinessBlockers.length} ${readinessBlockers.length === 1 ? "Voraussetzung fehlt" : "Voraussetzungen fehlen"}.`
+      : `${request.referenceNumber} ist ${
+          STATUS_LABELS[request.status] || request.status
+        }. Die Anfrage betrifft ${request.tradeName} und stammt von ${customerName(
+          request
+        )}.`,
     navigation: {
       label: "Online-Anfragen öffnen",
       tab: "onlineRequests",
     },
     structured: {
-      title: `Online-Anfrage · ${request.referenceNumber}`,
+      title: readinessRequested
+        ? `Online-Anfrage · Übernahmeprüfung ${request.referenceNumber}`
+        : `Online-Anfrage · ${request.referenceNumber}`,
       subtitle: `${customerName(request)} · ${request.tradeName}`,
-      facts: [
+      facts: readinessRequested
+        ? [
+            {
+              label: "Übernahme",
+              value: readinessLabel,
+              tone: conversionReady
+                ? ("positive" as const)
+                : request.convertedProjectId && convertedProject
+                  ? ("neutral" as const)
+                  : ("warning" as const),
+            },
+            {
+              label: "Kundenweg",
+              value:
+                request.customerDecision === "new"
+                  ? "Neuen Kontakt anlegen"
+                  : matchedContact
+                    ? `${matchedContact.customerNumber} · ${matchedContact.name}`
+                    : CUSTOMER_DECISION_LABELS[request.customerDecision] ||
+                      request.customerDecision,
+            },
+            { label: "Verantwortung", value: responsibilityPreview },
+            { label: "Folgeaufgaben", value: String(conversionTasks.length) },
+            { label: "Fotos", value: String(request.photoCount) },
+            {
+              label: "Status",
+              value: STATUS_LABELS[request.status] || request.status,
+            },
+          ]
+        : [
         {
           label: "Status",
           value: STATUS_LABELS[request.status] || request.status,
@@ -417,8 +605,53 @@ function detailResponse(
         },
         { label: "Eingang", value: formatDateTime(request.createdAt) },
         { label: "Fotos", value: String(request.photoCount) },
-      ],
+          ],
       sections: [
+        ...(readinessRequested
+          ? [
+              {
+                title: conversionReady
+                  ? "Übernahmebereit"
+                  : request.convertedProjectId && convertedProject
+                    ? "Bereits abgeschlossen"
+                    : `Fehlende Voraussetzungen (${readinessBlockers.length})`,
+                items: conversionReady
+                  ? [
+                      request.customerDecision === "new"
+                        ? "Die geprüfte Entscheidung legt einen neuen Kontakt aus den Formulardaten an."
+                        : `Der geprüfte Bestandskontakt ${matchedContact?.customerNumber} · ${matchedContact?.name} wird verwendet.`,
+                      `Verantwortlich: ${responsibilityPreview}.`,
+                      "Es wird immer ein neues Projekt unter OK immocare → Lead / Klärung angelegt; niemals ein Bestandsprojekt verwendet.",
+                    ]
+                  : request.convertedProjectId && convertedProject
+                    ? [
+                        `Zielprojekt: ${convertedProject.projectNumber} · ${convertedProject.title}.`,
+                        "Eine erneute Umwandlung würde kein zweites Projekt erzeugen.",
+                      ]
+                    : readinessBlockers,
+                tone: conversionReady
+                  ? ("positive" as const)
+                  : request.convertedProjectId && convertedProject
+                    ? ("neutral" as const)
+                    : ("warning" as const),
+              },
+              {
+                title: "Folgen einer bewussten Umwandlung",
+                items: [
+                  `Projekt: neues OK-immocare-Projekt unter Lead / Klärung mit Gewerk „${request.tradeName}“ und globaler Projektnummer; die OKI-Referenz bleibt Quellenreferenz.`,
+                  request.customerDecision === "new"
+                    ? "Kunde: neuer Kontakt aus den geprüften Formulardaten."
+                    : matchedContact
+                      ? `Kunde: vorhandener Kontakt ${matchedContact.customerNumber} · ${matchedContact.name}.`
+                      : "Kunde: noch nicht eindeutig festgelegt.",
+                  `Logbuch: Originalanfrage und ${request.photoCount} ${request.photoCount === 1 ? "Anfragebild" : "Anfragebilder"} in der geschützten Bildgruppe „Anfragebilder“.`,
+                  `Aufgaben: ${conversionTaskPreview}. Ein Wunschdatum bleibt unverbindlich und wird nicht als bestätigter Termin gespeichert.`,
+                  "Audit, Timeline und Benachrichtigungen werden innerhalb des bestehenden kontrollierten Umwandlungsablaufs erzeugt.",
+                ],
+                tone: "neutral" as const,
+              },
+            ]
+          : []),
         {
           title: "Anfrage",
           items: [
@@ -536,7 +769,10 @@ export async function resolveJarvisOnlineRequestAnalysis(input: {
     return detailResponse(
       request,
       data.assigneeNames,
-      data.convertedProjects
+      data.assigneeDetails,
+      data.matchedContacts,
+      data.convertedProjects,
+      intent.readinessRequested
     );
   }
 
