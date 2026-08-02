@@ -427,3 +427,8 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   Audit. Alle übrigen Projekt- und Fachdaten bleiben unverändert.
 - Permanente Abnahme bleibt exakt 110 Fragen; isolierte Ausführungs-QA:
   `scripts/qa-jarvis-project-master-data.mjs`.
+- Produktiver Runtime-Stand:
+  `e7d635d2a38bf840a8b3de996641bf8b24411538`; verifizierte Sicherung:
+  `/var/backups/workpilot360/20260802T011132Z-before-jarvis-project-master-data`.
+  Produktive isolierte QA und 110/110-Korpus bestanden ohne Rückstände;
+  Live-Prisma-Diff leer, WorkPilot PID `706450`, KlinikNavigator PID `398228`.

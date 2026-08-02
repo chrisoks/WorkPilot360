@@ -2821,4 +2821,14 @@ Korpus blieb exakt 110 Fälle groß und bestand 110/110 einschließlich einer
 unverändert bleibenden `project.manage`-Vorschau. Der echte UI-Klicktest zeigte
 Alt-/Neuwertvergleich, deaktivierte Ausführung bei falscher Phrase, erfolgreiche
 Ausführung bei exakter Phrase, korrekte Erfolgsmeldung und das geänderte Projekt
-ohne Browserfehler. Release-, Backup- und Produktionsabnahme folgen seriell.
+ohne Browserfehler.
+
+Produktiv abgenommen auf Runtime-Commit
+`e7d635d2a38bf840a8b3de996641bf8b24411538` mit der verifizierten Code-,
+Konfigurations- und Datenbanksicherung
+`/var/backups/workpilot360/20260802T011132Z-before-jarvis-project-master-data`.
+Die produktive isolierte QA bestand alle Rollen-, Sicherheits-, Replay- und
+Datenintegritätsfälle mit null Rückständen. Der produktive permanente Korpus
+bestand 110/110 mit 20 vorbereiteten, null ausgeführten Aktionen und null
+Rückständen. Live-Prisma-Diff leer, Dashboard und öffentliches Formular HTTP
+200; WorkPilot PID `706450`, KlinikNavigator unverändert PID `398228`.

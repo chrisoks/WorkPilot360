@@ -14,8 +14,13 @@
   `src/lib/projects/project-master-data-service.ts`; isolierte QA:
   `scripts/qa-jarvis-project-master-data.mjs`. Lokal 155 Testdateien/1.604
   Tests, 110/110 Korpusfragen, 90-Seiten-Build und echter UI-Klicktest grün;
-  null QA-Rückstände. Releaseangaben werden nach dem seriellen Deployment
-  ergänzt.
+  null QA-Rückstände. Produktiv auf Runtime-Commit
+  `e7d635d2a38bf840a8b3de996641bf8b24411538` abgenommen; Sicherung
+  `/var/backups/workpilot360/20260802T011132Z-before-jarvis-project-master-data`.
+  Die produktive isolierte QA und der permanente Korpus bestanden ebenfalls
+  vollständig (110/110, 20 vorbereitete und null ausgeführte Korpusaktionen,
+  null Rückstände). Live-Prisma-Diff leer, Dashboard und Formular HTTP 200;
+  WorkPilot PID `706450`, KlinikNavigator unverändert PID `398228`.
 
 - JARVIS Projektarchivierung 2026-08-02: Der reversible kritische
   `project.archive`-Vertikalschnitt ist produktiv auf Commit
