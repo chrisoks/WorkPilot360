@@ -29,6 +29,26 @@ function source(overrides: Partial<Awaited<ReturnType<ProjectStatusAutomationSta
       missingResponsible: 1,
       openDeliveryEvents: 4,
       latestDeliveryEventAt: "2026-08-02T06:15:00.000Z",
+      configurationChangeCount: 1,
+      deliveryEventCount: 1,
+      configurationChanges: [{
+        id: "audit-1",
+        actorName: "Christian Eid",
+        operation: "rule",
+        target: "Regel Umsetzung",
+        before: "aktiv · verantwortlich 14 T. · Geschäftsführung 28 T.",
+        after: "aktiv · verantwortlich 10 T. · Geschäftsführung 20 T.",
+        createdAt: "2026-08-02T06:00:00.000Z",
+      }],
+      deliveryEvents: [{
+        id: "event-1",
+        projectLabel: "GLR-449 · Glasreinigung",
+        status: "Umsetzung",
+        stage: "management",
+        recipientName: "Christian Eid",
+        resolved: false,
+        createdAt: "2026-08-02T06:15:00.000Z",
+      }],
       ...overrides,
     }),
   };
@@ -42,6 +62,7 @@ describe("JARVIS project-status automation status", () => {
     "Wie ist der Status der Projektstatus-Frühwarnung?",
     "Warum kommen aus der Projektstatus-Automation keine Meldungen?",
     "Wann lief der Projektstatus-Scheduler zuletzt?",
+    "Zeig mir das Ausführungsprotokoll der Projektstatus-Automation.",
   ])("recognizes a read-only diagnostic: %s", (question) => {
     expect(looksLikeProjectStatusAutomationStatusQuestion(question)).toBe(true);
   });
@@ -93,6 +114,24 @@ describe("JARVIS project-status automation status", () => {
     expect(response?.message).toContain("nicht vollständig betriebsbereit");
     expect(response?.message).toContain("12 überwachte Projekte");
     expect(JSON.stringify(response)).toContain("Kill-Switch aus");
+  });
+
+  it("separates configuration changes from actual delivery events in history", async () => {
+    const response = await resolveJarvisProjectStatusAutomationStatus({
+      question: "Zeig mir das Ausführungsprotokoll der Projektstatus-Automation.",
+      organizationId: "org-1",
+      users,
+      accessProfile: managementProfile,
+      source: source(),
+    });
+    expect(response?.structured?.title).toBe("Projektstatus-Automation · Ausführungsprotokoll");
+    expect(response?.message).toContain("1 Konfigurationsänderung");
+    expect(response?.message).toContain("1 tatsächlich erzeugtes Zustellereignis");
+    const rendered = JSON.stringify(response);
+    expect(rendered).toContain("Christian Eid · Regel Umsetzung");
+    expect(rendered).toContain("GLR-449 · Glasreinigung");
+    expect(rendered).toContain("Tatsächliche Zustellereignisse (1)");
+    expect(rendered).toContain("Geschäftsführung");
   });
 
   it("refuses leadership before loading organization-wide automation data", async () => {
