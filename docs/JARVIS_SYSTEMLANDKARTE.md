@@ -614,3 +614,28 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   Produktionsfragen, 28 nur vorbereitete Aktionen, null Ausführungen/
   Rückstände und leerer Live-Prisma-Diff. WorkPilot PID `739270`,
   KlinikNavigator PID `398228`.
+
+## Projektstatus-Automation: Empfänger und Zustellhindernisse diagnostizieren
+
+- Rein lesende Erweiterung von `automation.read` in
+  `src/lib/jarvis/automation-status-analysis.ts`; keine eigene Schreibroute.
+- Empfängerplan je fälliger Schwelle: Projekt, Status, Verantwortlichen- oder
+  Managementstufe, neue Empfänger, durch offene `project-status-v1`-Ereignisse
+  abgedeckte Empfänger und Zuordnungshinweise.
+- Managementstufe adressiert alle aktiven Admins/Geschäftsführer zusätzlich
+  zur aufgelösten Projektverantwortung; Set-Semantik verhindert Dopplungen.
+- Hindernisse werden getrennt ausgewiesen: Organisationsschalter, Scheduler/
+  Prozesslauf, Zustell-Kill-Switch, Systemmailkonfiguration, fehlende oder
+  mehrdeutige Verantwortlichen-Zuordnung und völlig empfängerlose Schwellen.
+- Systemmail ist Best-Effort. `StatusEscalationEvent` weist die persistente
+  In-App-Zustellung nach; ein erfolgreiches E-Mail-Ergebnis ist davon getrennt.
+- Zugriff nur Administration/Geschäftsführung auf Sitzungs- und Effektivebene;
+  kein Schedulerlauf, Entwurf, Audit, Ereignis, Hinweis, E-Mail oder Statuswert
+  wird durch die Diagnose erzeugt oder verändert.
+- Produktivabnahme: Runtime
+  `ed1d56578c58cd93958395b02ccf623818ae26db`, Backup
+  `/var/backups/workpilot360/20260802T073000Z-before-jarvis-automation-delivery-diagnosis`,
+  171/171 Testdateien, 1.719/1.719 Tests, echter UI-Klicktest, 110/110
+  Produktionsfragen, 28 nur vorbereitete Aktionen, null Ausführungen/
+  Rückstände und leerer Live-Prisma-Diff. WorkPilot PID `741649`,
+  KlinikNavigator PID `398228`.

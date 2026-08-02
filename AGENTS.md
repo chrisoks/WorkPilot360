@@ -1,5 +1,27 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projektstatus-Zustellbarkeitsdiagnose 2026-08-02: `automation.read`
+  erklärt nun rein lesend, wer bei jeder aktuell fälligen Projektstatus-Schwelle
+  einen neuen In-App-Hinweis erhalten würde, welcher Empfänger bereits durch
+  ein offenes Exactly-once-Ereignis abgedeckt ist und welche Zuordnungs- oder
+  Betriebsbarriere eine Zustellung verhindert. Sichtbar getrennt werden
+  Organisationsschalter, Scheduler, Zustell-Kill-Switch und optionaler
+  Systemmailkanal. JARVIS zeigt aktive Administration/Geschäftsführung,
+  fehlende Verantwortliche, völlig empfängerlose Schwellen sowie mehrdeutige
+  Namenszuordnungen. Systemmail wird korrekt als zusätzlicher Best-Effort-Kanal
+  beschrieben; ein persistentes Zustellereignis belegt zunächst den erzeugten
+  In-App-Hinweis. Die Diagnose versendet und schreibt nichts. Runtime-Commit
+  `ed1d56578c58cd93958395b02ccf623818ae26db`; verifiziertes Backup:
+  `/var/backups/workpilot360/20260802T073000Z-before-jarvis-automation-delivery-diagnosis`.
+  Lokal bestanden 171/171 Testdateien mit 1.719/1.719 Tests, TypeScript,
+  Mojibake-/Regressionschecks, Prisma und 90-Seiten-Build. Echter Klicktest:
+  131 überwachte Projekte, 104 fällige Management-Schwellen, 208 neue
+  Empfänger-Hinweise, zwei aktive Managementempfänger und 94 fehlende
+  Verantwortlichen-Zuordnungen; null Datenänderungen. Lokaler und produktiver
+  110er-Korpus grün, produktiv 28 nur vorbereitete Aktionen, null Ausführungen
+  und Rückstände. Dashboard/Formular HTTP 200, Live-Prisma-Diff leer.
+  WorkPilot PID `741649`, KlinikNavigator unverändert PID `398228`.
+
 - JARVIS Projektstatus-Ausführungsprotokoll 2026-08-02: Die rein lesende
   Aktion `automation.read` trennt nun dauerhaft Konfigurationsänderungen von
   tatsächlich erzeugten Projektstatus-Zustellereignissen. Natürliche Fragen

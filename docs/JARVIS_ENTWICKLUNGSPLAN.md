@@ -3251,3 +3251,47 @@ Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
 WorkPilot PID `739270`, KlinikNavigator unverändert PID `398228`. Prisma,
 `StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
 unverändert.
+
+## 35. Zustellbarkeit und Empfängerkreis vorab erklären
+
+Die rein lesende `automation.read`-Diagnose bildet jetzt dieselbe
+Empfängerlogik ab wie die Projektstatus-Synchronisation. Für jede fällige
+Schwelle zeigt JARVIS Projekt, Status und Eskalationsstufe, neue Empfänger,
+bereits durch ein offenes Ereignis abgedeckte Empfänger sowie konkrete
+Zuordnungsprobleme. Auf Verantwortlichen-Stufe ist die aktive, per Namen
+aufgelöste Projektverantwortung maßgeblich; auf Geschäftsführungs-Stufe kommen
+alle aktiven Benutzer mit Rolle Administration oder Geschäftsführung hinzu.
+Die bestehende Set-Logik verhindert doppelte Empfänger innerhalb eines
+Hinweises. Offene `project-status-v1`-Ereignisse verhindern erneut denselben
+Hinweis für Projekt, Status, Stufe und Empfänger.
+
+JARVIS trennt nun vier Zustellebenen: fachlicher Organisationsschalter,
+laufender Serverscheduler, Zustell-Kill-Switch und Systemmailkonfiguration.
+Systemmail ist ein zusätzlicher Best-Effort-Kanal; das persistente
+`StatusEscalationEvent` belegt zunächst die erzeugte In-App-Notification und
+nicht zwingend eine erfolgreich versandte E-Mail. Zusätzlich werden fehlende
+Verantwortliche, vollständig empfängerlose Schwellen, der aktive
+Management-Empfängerkreis und mehrfach passende Verantwortlichennamen
+ausgewiesen. Die Abfrage bleibt organisationsgebunden, auf Administration/
+Geschäftsführung beschränkt und vollständig nebenwirkungsfrei.
+
+Lokal bestanden 171 Testdateien mit 1.719 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, synchroner Datenbankstand und
+90-Seiten-Build. Der echte Klicktest zeigte auf aktuellen Daten 131 überwachte
+Projekte, 104 fällige Management-Schwellen, 208 neue Empfänger-Hinweise, keine
+bereits offenen Hinweise, zwei aktive Managementempfänger und 94 fehlende
+Verantwortlichen-Zuordnungen. Trotz dieser 94 Lücken war keine der aktuellen
+Management-Schwellen völlig empfängerlos. Navigation und API waren sauber;
+Entwürfe, Automations-Audits, Notifications, Zustellereignisse und
+Organisationseinstellung blieben unverändert. Der feste Korpus blieb exakt
+110 Fälle und bestand lokal sowie produktiv 110/110; produktiv 28
+Schreibentwürfe nur vorbereitet, null ausgeführt und null Rückstände.
+
+Produktiv abgenommen auf Runtime-Commit
+`ed1d56578c58cd93958395b02ccf623818ae26db`. Das verifizierte Datenbank-, Git-,
+Konfigurations- und Runtime-Backup liegt unter
+`/var/backups/workpilot360/20260802T073000Z-before-jarvis-automation-delivery-diagnosis`.
+Live-Prisma-Diff leer, Dashboard und öffentliches Anfrageformular HTTP 200;
+WorkPilot PID `741649`, KlinikNavigator unverändert PID `398228`. Prisma,
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+unverändert.
