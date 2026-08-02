@@ -117,6 +117,15 @@ describe("JARVIS Action Center 1.0 foundation", () => {
     expect(result).toMatchObject({ ok: true, value: { actionId: "payroll.manage", payload: { userId: "employee-2", values: { monthlySalary: 3200 } }, execution: { enabled: false } } });
   });
 
+  it("creates a bounded non-executing bulk-update dry-run preview", () => {
+    const result = createJarvisActionPreview({
+      previewId: "preview-bulk-update", actionId: "bulk.update",
+      payload: { mode: "apply", customerNumbers: ["7001", "7002"], targetCategory: "Archiv" },
+      organizationId: "org-1", profile: leadershipProfile, createdAt: "2026-08-02T05:00:00.000Z",
+    });
+    expect(result).toMatchObject({ ok: true, value: { actionId: "bulk.update", payload: { mode: "apply", customerNumbers: ["7001", "7002"], targetCategory: "Archiv" }, execution: { enabled: false, reason: "preview_only" } } });
+  });
+
   it("creates a non-executing, strictly typed task lifecycle preview", () => {
     const result = createJarvisActionPreview({
       previewId: "preview-task-lifecycle",

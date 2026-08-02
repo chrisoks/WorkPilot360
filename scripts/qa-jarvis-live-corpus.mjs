@@ -297,6 +297,15 @@ async function main() {
     },
     select: { id: true, monthlySalary: true, fullCostFactor: true, annualHours: true, vacationDays: true, trainingDays: true, sickDays: true, hoursPerDay: true, updatedAt: true },
   });
+  const bulkContacts = await Promise.all(["A", "B"].map((suffix, index) => prisma.contact.create({
+    data: {
+      id: randomUUID(), organizationId: actor.organizationId,
+      customerNumber: `89${Date.now().toString().slice(-7)}${index}`,
+      type: "company", category: index === 0 ? "Kunde" : "Partner",
+      companyName: `QA JARVIS Massenänderung ${suffix} ${Date.now()}`,
+    },
+    select: { id: true, customerNumber: true, category: true, updatedAt: true },
+  })));
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -329,6 +338,7 @@ async function main() {
   let catalogManagementDraftPrepared = false;
   let personnelManagementDraftPrepared = false;
   let employeeCostManagementDraftPrepared = false;
+  let bulkUpdateDraftPrepared = false;
   let projectStatusDraftPrepared = false;
   let projectLifecycleDraftPrepared = false;
 
@@ -355,6 +365,7 @@ async function main() {
         const isCatalogManagementCase = item.question.includes("QAK-600");
         const isPersonnelManagementCase = item.question.includes("QAP-700");
         const isEmployeeCostManagementCase = item.question.includes("QAL-800");
+        const isBulkUpdateCase = item.question.includes("QAB-900");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -395,6 +406,8 @@ async function main() {
               ? `Ändere Mitarbeiter ${personnelTarget.email}: Vorname: QA-Geprüft; Mobil: +49 171 1234567.`
             : isEmployeeCostManagementCase
               ? `Ändere Lohnkosten für ${personnelTarget.email}: Monatsgehalt: 3.200; Vollkostenfaktor: 1,4.`
+            : isBulkUpdateCase
+              ? `Archiviere die Kontakte ${bulkContacts.map((contact) => contact.customerNumber).join(", ")} als Gruppenaktion.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -523,6 +536,15 @@ async function main() {
             failures.push({ id: item.id, status: response.status, error: "Die Lohnkostenfrage hat keine vollständig berechnete, eindeutige und unblockierte Änderungsvorschau erzeugt." });
           } else {
             employeeCostManagementDraftPrepared = true;
+          }
+        }
+        if (isBulkUpdateCase) {
+          if (payload.actionDraft?.actionId !== "bulk.update") {
+            failures.push({ id: item.id, status: response.status, error: "Die Massenänderungsfrage hat keine kontrollierte bulk.update-Vorschau erzeugt." });
+          } else if (payload.actionDraft.state !== "awaiting_confirmation" || payload.actionDraft.confirmation?.enabled !== true || payload.actionDraft.blockingIssues?.length || payload.actionDraft.items?.length !== 2 || payload.actionDraft.excluded?.length !== 0) {
+            failures.push({ id: item.id, status: response.status, error: "Die Massenänderungsfrage hat keinen vollständigen, unblockierten Dry-Run mit zwei Kontakten erzeugt." });
+          } else {
+            bulkUpdateDraftPrepared = true;
           }
         }
         if (isProjectLifecycleCase) {
@@ -966,6 +988,11 @@ async function main() {
     if (!currentEmployeeCost || currentEmployeeCost.monthlySalary !== employeeCostTarget.monthlySalary || currentEmployeeCost.fullCostFactor !== employeeCostTarget.fullCostFactor || currentEmployeeCost.updatedAt.toISOString() !== employeeCostTarget.updatedAt.toISOString() || employeeCostAuditWrites !== 0) {
       failures.push({ id: "side-effect-employee-cost-management", status: 0, error: "Die 110-Fragen-Prüfung hat unerwartet Lohnkosten oder Kosten-Audit verändert." });
     }
+    const currentBulkContacts = await prisma.contact.findMany({ where: { id: { in: bulkContacts.map((contact) => contact.id) }, organizationId: actor.organizationId }, select: { id: true, category: true, updatedAt: true } });
+    const bulkAuditWrites = await prisma.auditLog.count({ where: { organizationId: actor.organizationId, entityType: "contact-bulk", createdAt: { gte: now } } });
+    if (currentBulkContacts.length !== bulkContacts.length || bulkContacts.some((contact) => { const current = currentBulkContacts.find((candidate) => candidate.id === contact.id); return !current || current.category !== contact.category || current.updatedAt.toISOString() !== contact.updatedAt.toISOString(); }) || bulkAuditWrites !== 0) {
+      failures.push({ id: "side-effect-bulk-update", status: 0, error: "Die 110-Fragen-Prüfung hat unerwartet Kontaktkategorien oder Massenänderungs-Audit verändert." });
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -1000,6 +1027,9 @@ async function main() {
     await prisma.contactIntegrationEvent.deleteMany({ where: { contactId: contactDeletionContact.id } });
     await prisma.auditLog.deleteMany({ where: { entityType: "contact", entityId: contactDeletionContact.id } });
     await prisma.contact.deleteMany({ where: { id: contactDeletionContact.id, organizationId: actor.organizationId } });
+    await prisma.contactIntegrationEvent.deleteMany({ where: { contactId: { in: bulkContacts.map((contact) => contact.id) } } });
+    await prisma.auditLog.deleteMany({ where: { organizationId: actor.organizationId, entityType: "contact-bulk" } });
+    await prisma.contact.deleteMany({ where: { id: { in: bulkContacts.map((contact) => contact.id) }, organizationId: actor.organizationId } });
     await prisma.auditLog.deleteMany({ where: { entityType: "user", entityId: personnelTarget.id } });
     await prisma.auditLog.deleteMany({ where: { entityType: "employeeCostCalculation", entityId: employeeCostTarget.id } });
     await prisma.employeeCostCalculation.deleteMany({ where: { id: employeeCostTarget.id, organizationId: actor.organizationId } });
@@ -1032,6 +1062,7 @@ async function main() {
     catalogManagementDraftPrepared,
     personnelManagementDraftPrepared,
     employeeCostManagementDraftPrepared,
+    bulkUpdateDraftPrepared,
     projectStatusDraftPrepared,
     projectLifecycleDraftPrepared,
     qaFinalizableOfferRemaining: qaFinalizableOfferId
@@ -1051,6 +1082,7 @@ async function main() {
     qaContactDeletionContactRemaining: await prisma.contact.count({ where: { id: contactDeletionContact.id } }),
     qaPersonnelTargetRemaining: await prisma.user.count({ where: { id: personnelTarget.id } }),
     qaEmployeeCostTargetRemaining: await prisma.employeeCostCalculation.count({ where: { id: employeeCostTarget.id } }),
+    qaBulkContactRemaining: await prisma.contact.count({ where: { id: { in: bulkContacts.map((contact) => contact.id) } } }),
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

@@ -17,6 +17,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "catalog.manage",
   "personnel.manage",
   "payroll.manage",
+  "bulk.update",
   "planning.prepare",
   "time.prepare",
   "project-logbook.prepare",
@@ -279,6 +280,18 @@ const employeeCostManagementPreviewPayloadSchema = z.object({
   if (Object.keys(payload.values).length === 0) context.addIssue({ code: "custom", path: ["values"], message: "Mindestens ein Mitarbeiterkostenfeld ist erforderlich." });
 });
 
+const bulkUpdatePreviewPayloadSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("apply"),
+    customerNumbers: z.array(z.string().trim().min(1).max(40)).min(2).max(25),
+    targetCategory: z.enum(["Kunde", "Privatkunde", "Lieferant", "Partner", "Ansprechpartner", "Archiv"]),
+  }).strict(),
+  z.object({
+    mode: z.literal("rollback"),
+    sourceRequestId: z.string().trim().min(8).max(120),
+  }).strict(),
+]);
+
 const offerPreviewLineSchema = z
   .object({
     catalogItemId: boundedId.optional(),
@@ -431,6 +444,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "catalog.manage": catalogManagementPreviewPayloadSchema,
   "personnel.manage": personnelManagementPreviewPayloadSchema,
   "payroll.manage": employeeCostManagementPreviewPayloadSchema,
+  "bulk.update": bulkUpdatePreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
   "time.prepare": timePreviewPayloadSchema,
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
@@ -461,6 +475,7 @@ export type JarvisActionPreviewPayloadMap = {
   "catalog.manage": z.infer<typeof catalogManagementPreviewPayloadSchema>;
   "personnel.manage": z.infer<typeof personnelManagementPreviewPayloadSchema>;
   "payroll.manage": z.infer<typeof employeeCostManagementPreviewPayloadSchema>;
+  "bulk.update": z.infer<typeof bulkUpdatePreviewPayloadSchema>;
   "planning.prepare": z.infer<typeof planningPreviewPayloadSchema>;
   "time.prepare": z.infer<typeof timePreviewPayloadSchema>;
   "project-logbook.prepare": z.infer<
@@ -1311,6 +1326,20 @@ export type JarvisEmployeeCostManagementDraftView = Omit<
   metrics: { annualFullCost: number; monthlyFullCost: number; deductionDays: number; deductionHours: number; sellableAnnualHours: number; sellableMonthlyHours: number; hourlyCost: number };
   impacts: Array<{ key: string; label: string; count: number }>;
   result?: { entityType: "user"; entityId: string; label: string };
+};
+
+export type JarvisBulkUpdateDraftView = Omit<
+  JarvisProjectStatusDraftView,
+  "actionId" | "title" | "targetStatus" | "projectId" | "result"
+> & {
+  actionId: "bulk.update";
+  title: "Kontaktkategorien kontrolliert massenhaft ändern";
+  mode: "apply" | "rollback";
+  sourceRequestId?: string;
+  targetCategory: string;
+  items: Array<{ id: string; customerNumber: string; label: string; before: string; after: string; updatedAt: string }>;
+  excluded: Array<{ customerNumber: string; reason: string }>;
+  result?: { entityType: "contact"; entityId: string; label: string };
 };
 
 export type JarvisProjectLifecycleDraftView = Omit<JarvisProjectStatusDraftView, "actionId" | "title" | "targetStatus"> & {

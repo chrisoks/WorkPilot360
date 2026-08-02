@@ -565,8 +565,8 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["internal"],
-    implementation: "planned",
-    canUse: canManageUsers,
+    implementation: "available",
+    canUse: (actor) => canManageUsers(actor) && canManageContacts(actor),
   },
   {
     id: "automation.manage",

@@ -145,6 +145,15 @@ const fake = vi.hoisted(() => {
     warnings: ["Historische Kostensnapshots bleiben unverändert."], blockingIssues: [], fingerprint: "5".repeat(64),
   }));
   const executeEmployeeCostChange = vi.fn(async (input: Record<string, any>) => { employeeCostChanges.push(input); return { id: "cost-2", userId: input.userId }; });
+  const bulkUpdates: Array<Record<string, any>> = [];
+  const evaluateContactBulkCategory = vi.fn(async ({ request }: { request: Record<string, any> }) => ({
+    mode: request.mode, sourceRequestId: request.sourceRequestId,
+    targetCategory: request.mode === "rollback" ? "ursprüngliche Kategorien" : request.targetCategory,
+    items: [{ id: "contact-1", customerNumber: "7001", label: "A GmbH", before: "Kunde", after: request.mode === "rollback" ? "Kunde" : request.targetCategory, updatedAt: "2026-08-02T05:00:00.000Z" }, { id: "contact-2", customerNumber: "7002", label: "B GmbH", before: "Partner", after: request.mode === "rollback" ? "Partner" : request.targetCategory, updatedAt: "2026-08-02T05:00:00.000Z" }],
+    excluded: [], checks: [{ key: "scope", label: "Zielmenge", status: "ok", detail: "2 Kontakte" }],
+    warnings: ["Nur Kategorien ändern sich."], blockingIssues: [], fingerprint: "4".repeat(64),
+  }));
+  const executeContactBulkCategory = vi.fn(async (input: Record<string, any>) => { bulkUpdates.push(input); return { requestId: input.requestId, sourceRequestId: input.request.mode === "rollback" ? input.request.sourceRequestId : input.requestId, count: 2 }; });
   const projectLifecycleChanges: Array<Record<string, any>> = [];
   const evaluateProjectStatusChange = vi.fn(async ({ projectId, targetStatus, reason }: { projectId: string; targetStatus: string; reason: string }) => ({
     reason,
@@ -743,6 +752,7 @@ const fake = vi.hoisted(() => {
       catalogChanges.length = 0;
       personnelChanges.length = 0;
       employeeCostChanges.length = 0;
+      bulkUpdates.length = 0;
       projectLifecycleChanges.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
@@ -771,6 +781,8 @@ const fake = vi.hoisted(() => {
       executePersonnelChange.mockClear();
       evaluateEmployeeCostChange.mockClear();
       executeEmployeeCostChange.mockClear();
+      evaluateContactBulkCategory.mockClear();
+      executeContactBulkCategory.mockClear();
       evaluateProjectLifecycle.mockClear();
       executeProjectLifecycle.mockClear();
       createProjectLogbookEntry.mockClear();
@@ -826,6 +838,9 @@ const fake = vi.hoisted(() => {
     employeeCostChanges,
     evaluateEmployeeCostChange,
     executeEmployeeCostChange,
+    bulkUpdates,
+    evaluateContactBulkCategory,
+    executeContactBulkCategory,
     evaluateProjectStatusChange,
     executeProjectStatusChange,
     projectLifecycleChanges,
@@ -885,6 +900,14 @@ vi.mock("@/lib/employee-costs/employee-cost-management-service", () => ({
   executeEmployeeCostChange: fake.executeEmployeeCostChange,
   getEmployeeCostConfirmationText: (email: string) => `LOHNKOSTEN ÄNDERN ${email.toLowerCase()}`,
   EmployeeCostManagementServiceError: class EmployeeCostManagementServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
+vi.mock("@/lib/contacts/contact-bulk-category-service", () => ({
+  evaluateContactBulkCategory: fake.evaluateContactBulkCategory,
+  executeContactBulkCategory: fake.executeContactBulkCategory,
+  getContactBulkCategoryConfirmationText: (evaluation: { mode: string; items: unknown[]; sourceRequestId?: string }) => evaluation.mode === "rollback" ? `MASSENÄNDERUNG ZURÜCKROLLEN ${evaluation.sourceRequestId}` : `MASSENÄNDERUNG AUSFÜHREN ${evaluation.items.length} KONTAKTE`,
+  ContactBulkCategoryServiceError: class ContactBulkCategoryServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
 }));
@@ -1084,6 +1107,9 @@ import {
   cancelJarvisEmployeeCostManagementDraft,
   confirmJarvisEmployeeCostManagementDraft,
   createPersistedJarvisEmployeeCostManagementDraft,
+  cancelJarvisBulkUpdateDraft,
+  confirmJarvisBulkUpdateDraft,
+  createPersistedJarvisBulkUpdateDraft,
   cancelJarvisProjectStatusDraft,
   confirmJarvisProjectStatusDraft,
   createPersistedJarvisProjectStatusDraft,
@@ -3159,6 +3185,36 @@ describe("persistent JARVIS employee-cost-management drafts", () => {
     const cancellable = await createPersistedJarvisEmployeeCostManagementDraft({ ...binding(), now: baseNow, preview: preview("employee-cost-cancel") });
     expect((await cancelJarvisEmployeeCostManagementDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
     expect(fake.employeeCostChanges).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS bulk-update drafts", () => {
+  beforeEach(() => fake.reset());
+  const preview = (previewId: string) => ({
+    version: 1 as const, previewId, actionId: "bulk.update" as const,
+    actionTitle: "Massenänderung ausführen", state: "awaiting_confirmation" as const,
+    organizationId: "org-1", sessionActorId: "user-1", effectiveActorId: "user-1", impersonating: false,
+    payload: { mode: "apply" as const, customerNumbers: ["7001", "7002"], targetCategory: "Archiv" as const },
+    execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
+  });
+
+  it("executes the exact dry-run once and returns the same result on replay", async () => {
+    const created = await createPersistedJarvisBulkUpdateDraft({ ...binding(), now: baseNow, preview: preview("bulk-update-1") });
+    expect(created).toMatchObject({ state: "awaiting_confirmation", items: [{ customerNumber: "7001" }, { customerNumber: "7002" }], confirmation: { requiredText: "MASSENÄNDERUNG AUSFÜHREN 2 KONTAKTE" } });
+    const first = await confirmJarvisBulkUpdateDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisBulkUpdateDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("contact-1");
+    expect(fake.bulkUpdates).toHaveLength(1);
+    expect(fake.executeContactBulkCategory).toHaveBeenCalledWith(expect.objectContaining({ requestId: "bulk-update-1", expectedFingerprint: "4".repeat(64), request: { mode: "apply", customerNumbers: ["7001", "7002"], targetCategory: "Archiv" } }));
+  });
+
+  it("rejects an inexact phrase and cancels without changing contacts", async () => {
+    const wrong = await createPersistedJarvisBulkUpdateDraft({ ...binding(), now: baseNow, preview: preview("bulk-update-wrong") });
+    await expect(confirmJarvisBulkUpdateDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+    const cancellable = await createPersistedJarvisBulkUpdateDraft({ ...binding(), now: baseNow, preview: preview("bulk-update-cancel") });
+    expect((await cancelJarvisBulkUpdateDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
+    expect(fake.bulkUpdates).toHaveLength(0);
   });
 });
 

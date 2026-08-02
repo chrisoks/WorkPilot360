@@ -83,6 +83,7 @@ import type {
   JarvisCatalogManagementDraftView,
   JarvisPersonnelManagementDraftView,
   JarvisEmployeeCostManagementDraftView,
+  JarvisBulkUpdateDraftView,
   JarvisProjectStatusDraftView,
   JarvisProjectLifecycleDraftView,
   JarvisInvoiceDraftView,
@@ -775,6 +776,7 @@ type ManagementAiChatMessage = {
     | JarvisCatalogManagementDraftView
     | JarvisPersonnelManagementDraftView
     | JarvisEmployeeCostManagementDraftView
+    | JarvisBulkUpdateDraftView
     | JarvisProjectStatusDraftView
     | JarvisProjectLifecycleDraftView
     | JarvisInvoiceDraftView
@@ -2362,6 +2364,7 @@ function parseJarvisActionDraft(
   | JarvisCatalogManagementDraftView
   | JarvisPersonnelManagementDraftView
   | JarvisEmployeeCostManagementDraftView
+  | JarvisBulkUpdateDraftView
   | JarvisProjectStatusDraftView
   | JarvisProjectLifecycleDraftView
   | JarvisInvoiceDraftView
@@ -2392,6 +2395,7 @@ function parseJarvisActionDraft(
     parseJarvisCatalogManagementDraft(value) ??
     parseJarvisPersonnelManagementDraft(value) ??
     parseJarvisEmployeeCostManagementDraft(value) ??
+    parseJarvisBulkUpdateDraft(value) ??
     parseJarvisProjectStatusDraft(value) ??
     parseJarvisProjectLifecycleDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
@@ -2939,6 +2943,28 @@ function parseJarvisEmployeeCostManagementDraft(value: unknown): JarvisEmployeeC
   const cancellation = candidate.cancellation as Record<string, unknown>;
   if (["annualFullCost", "monthlyFullCost", "deductionDays", "deductionHours", "sellableAnnualHours", "sellableMonthlyHours", "hourlyCost"].some((key) => typeof metrics[key] !== "number") || typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
   return candidate as unknown as JarvisEmployeeCostManagementDraftView;
+}
+
+function parseJarvisBulkUpdateDraft(value: unknown): JarvisBulkUpdateDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 || candidate.actionId !== "bulk.update" ||
+    typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
+    (candidate.mode !== "apply" && candidate.mode !== "rollback") ||
+    typeof candidate.targetCategory !== "string" || !Array.isArray(candidate.items) ||
+    !Array.isArray(candidate.excluded) || !Array.isArray(candidate.fields) ||
+    !Array.isArray(candidate.checks) || !Array.isArray(candidate.warnings) ||
+    !Array.isArray(candidate.blockingIssues) || !candidate.confirmation ||
+    typeof candidate.confirmation !== "object" || !candidate.cancellation ||
+    typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
+  return candidate as unknown as JarvisBulkUpdateDraftView;
 }
 
 function parseJarvisProjectLifecycleDraft(value: unknown): JarvisProjectLifecycleDraftView | undefined {
@@ -3869,11 +3895,11 @@ function JarvisOfferFinalizationCard({
   onChange,
   onOpenOffer,
 }: {
-  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView;
+  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView;
   actorId: string;
   disabled: boolean;
-  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView, message?: string) => void;
-  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView) => void;
+  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView | JarvisOfferLifecycleDraftView | JarvisInvoiceLifecycleDraftView | JarvisTaskLifecycleDraftView | JarvisProjectMasterDataDraftView | JarvisContactManagementDraftView | JarvisContactDeletionDraftView | JarvisCatalogManagementDraftView | JarvisPersonnelManagementDraftView | JarvisEmployeeCostManagementDraftView | JarvisBulkUpdateDraftView | JarvisProjectStatusDraftView | JarvisProjectLifecycleDraftView) => void;
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -3917,6 +3943,8 @@ function JarvisOfferFinalizationCard({
           ? parseJarvisPersonnelManagementDraft(data?.actionDraft)
         : draft.actionId === "payroll.manage"
           ? parseJarvisEmployeeCostManagementDraft(data?.actionDraft)
+        : draft.actionId === "bulk.update"
+          ? parseJarvisBulkUpdateDraft(data?.actionDraft)
         : draft.actionId === "project.status.change"
           ? parseJarvisProjectStatusDraft(data?.actionDraft)
         : draft.actionId === "project.archive"
@@ -3927,16 +3955,47 @@ function JarvisOfferFinalizationCard({
             ? parseJarvisInvoiceLifecycleDraft(data?.actionDraft)
             : parseJarvisOfferFinalizationDraft(data?.actionDraft);
       if (!response.ok || !next) {
-        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.manage" ? "Die Projektdaten konnten nicht sicher geändert werden." : draft.actionId === "contact.manage" ? "Der Kontakt konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "contact.delete" ? "Der Kontakt konnte nicht sicher endgültig gelöscht werden." : draft.actionId === "catalog.manage" ? "Die Katalogposition konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "personnel.manage" ? "Die Personalstammdaten konnten nicht sicher geändert werden." : draft.actionId === "payroll.manage" ? "Die Lohn- und Mitarbeiterkosten konnten nicht sicher geändert werden." : draft.actionId === "project.archive" ? "Das Projekt konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
+        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : draft.actionId === "task.delete" ? "Die Aufgabe konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.manage" ? "Die Projektdaten konnten nicht sicher geändert werden." : draft.actionId === "contact.manage" ? "Der Kontakt konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "contact.delete" ? "Der Kontakt konnte nicht sicher endgültig gelöscht werden." : draft.actionId === "catalog.manage" ? "Die Katalogposition konnte nicht sicher angelegt oder geändert werden." : draft.actionId === "personnel.manage" ? "Die Personalstammdaten konnten nicht sicher geändert werden." : draft.actionId === "payroll.manage" ? "Die Lohn- und Mitarbeiterkosten konnten nicht sicher geändert werden." : draft.actionId === "bulk.update" ? "Die Kontakt-Massenänderung konnte nicht sicher ausgeführt werden." : draft.actionId === "project.archive" ? "Das Projekt konnte nicht sicher archiviert oder wiederhergestellt werden." : draft.actionId === "project.status.change" ? "Der Projektstatus konnte nicht sicher geändert werden." : draft.actionId === "offer.delete" ? "Das Angebot konnte nicht sicher gelöscht oder wiederhergestellt werden." : draft.actionId === "invoice.delete" ? "Der Rechnungsentwurf konnte nicht sicher gelöscht oder wiederhergestellt werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
         return;
       }
       onChange(next, typeof data?.message === "string" ? data.message : undefined);
     } catch {
-      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Projektdaten blieben unverändert." : draft.actionId === "contact.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde kein Kontakt angelegt oder geändert." : draft.actionId === "contact.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Kontakt blieb erhalten." : draft.actionId === "catalog.manage" ? "Das Action Center ist gerade nicht erreichbar. Der Katalog blieb unverändert." : draft.actionId === "personnel.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Personalstammdaten blieben unverändert." : draft.actionId === "payroll.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Lohn- und Mitarbeiterkosten blieben unverändert." : draft.actionId === "project.archive" ? "Das Action Center ist gerade nicht erreichbar. Das Projekt blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
+      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : draft.actionId === "task.delete" ? "Das Action Center ist gerade nicht erreichbar. Die Aufgabe blieb unverändert." : draft.actionId === "project.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Projektdaten blieben unverändert." : draft.actionId === "contact.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde kein Kontakt angelegt oder geändert." : draft.actionId === "contact.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Kontakt blieb erhalten." : draft.actionId === "catalog.manage" ? "Das Action Center ist gerade nicht erreichbar. Der Katalog blieb unverändert." : draft.actionId === "personnel.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Personalstammdaten blieben unverändert." : draft.actionId === "payroll.manage" ? "Das Action Center ist gerade nicht erreichbar. Die Lohn- und Mitarbeiterkosten blieben unverändert." : draft.actionId === "bulk.update" ? "Das Action Center ist gerade nicht erreichbar. Alle Kontakte blieben unverändert." : draft.actionId === "project.archive" ? "Das Action Center ist gerade nicht erreichbar. Das Projekt blieb unverändert." : draft.actionId === "project.status.change" ? "Das Action Center ist gerade nicht erreichbar. Der Projektstatus blieb unverändert." : draft.actionId === "offer.delete" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts gelöscht oder wiederhergestellt." : draft.actionId === "invoice.delete" ? "Das Action Center ist gerade nicht erreichbar. Der Rechnungsentwurf blieb unverändert." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
     } finally {
       setIsWorking(false);
     }
   };
+
+  if (draft.actionId === "bulk.update") {
+    const footer = draft.state === "executed"
+      ? draft.mode === "rollback"
+        ? "Die protokollierten Ausgangskategorien wurden vollständig und genau einmal wiederhergestellt."
+        : `Alle ${draft.items.length} Kontaktkategorien wurden genau einmal geändert. Die Massenänderungs-ID für eine kontrollierte Rückrollung lautet ${draft.previewId}.`
+      : draft.state === "cancelled"
+        ? "Die Massenänderung wurde beendet. Alle Kontakte blieben unverändert."
+        : draft.state === "expired"
+          ? "Der Dry-Run ist abgelaufen und muss mit aktuellen Kontaktdaten neu erstellt werden."
+          : `Der Dry-Run ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung und exakt diese Kontaktstände gebunden.`;
+    return (
+      <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
+        <header><div><span>Action Center · Kritische Massenänderung</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+        <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+        <div className={styles.jarvisPlanningChecks}><strong>Vollständige Trefferliste und Alt-/Neuwerte</strong>{draft.items.map((item) => <div key={item.id} data-status="ok"><span>→</span><p><b>{item.customerNumber} · {item.label}</b><small>{item.before} → {item.after}</small></p></div>)}</div>
+        {draft.excluded.length ? <div className={styles.jarvisPlanningChecks}><strong>Ausschluss- und Fehlerliste</strong>{draft.excluded.map((item) => <div key={`${item.customerNumber}-${item.reason}`} data-status="blocked"><span>!</span><p><b>{item.customerNumber}</b><small>{item.reason}</small></p></div>)}</div> : null}
+        <div className={styles.jarvisPlanningChecks}><strong>Dry-Run und Sicherheitsprüfung</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
+        {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
+        {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Massenänderung ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+        {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
+        {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
+        <div className={styles.jarvisActionDraftActions}>
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.mode === "rollback" ? "Ausgangskategorien wiederherstellen" : `${draft.items.length} Kontakte jetzt ändern`}</button> : null}
+          {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Massenänderung abbrechen</button> : null}
+          {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
+        </div>
+        <footer>{footer}</footer>
+      </section>
+    );
+  }
 
   if (draft.actionId === "contact.manage") {
     const footer = draft.state === "executed"
@@ -14935,6 +14994,15 @@ export function DashboardPage() {
   const [isContactBulkModalOpen, setIsContactBulkModalOpen] = useState(false);
   const [contactBulkAction, setContactBulkAction] = useState("Archivieren");
   const [contactBulkTargetIds, setContactBulkTargetIds] = useState<string[]>([]);
+  const [contactBulkPreview, setContactBulkPreview] = useState<{
+    fingerprint: string;
+    items: Array<{ id: string; customerNumber: string; label: string; before: string; after: string }>;
+    excluded: Array<{ customerNumber: string; reason: string }>;
+    blockingIssues: string[];
+    confirmationText: string;
+  } | null>(null);
+  const [contactBulkConfirmationText, setContactBulkConfirmationText] = useState("");
+  const [isContactBulkWorking, setIsContactBulkWorking] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [contactFormTab, setContactFormTab] = useState<ContactFormTab>("details");
@@ -21489,37 +21557,31 @@ export function DashboardPage() {
       return;
     }
 
-    const updatedContacts = await Promise.all(
-      targetContacts.map(async (contact) => {
-        const res = await fetch("/api/contacts", {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ ...contact, category: "Archiv", actorId: activeUserId }),
-        });
-
-        if (!res.ok) {
-          throw new Error("Kontakt konnte nicht archiviert werden.");
-        }
-
-        return (await res.json()) as ContactItem;
-      })
-    ).catch(() => null);
-
-    if (!updatedContacts) {
-      setErrorMessage("Gruppenaktion konnte nicht ausgeführt werden.");
-      return;
-    }
-
-    setContacts((currentContacts) =>
-      currentContacts.map((contact) =>
-        updatedContacts.find((updatedContact) => updatedContact.id === contact.id) ?? contact
-      )
-    );
-    setContactBulkTargetIds([]);
-    setIsContactBulkModalOpen(false);
+    setIsContactBulkWorking(true);
     setErrorMessage("");
+    try {
+      const request = { actorId: activeUserId, mode: "apply", customerNumbers: targetContacts.map((contact) => contact.customerNumber), targetCategory: "Archiv" };
+      if (!contactBulkPreview) {
+        const response = await fetch("/api/contacts/bulk-category", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data?.evaluation) { setErrorMessage(data?.error ?? "Dry-Run der Gruppenaktion konnte nicht erstellt werden."); return; }
+        setContactBulkPreview({ ...data.evaluation, confirmationText: data.confirmationText });
+        setContactBulkConfirmationText("");
+        return;
+      }
+      const response = await fetch("/api/contacts/bulk-category", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...request, expectedFingerprint: contactBulkPreview.fingerprint, confirmationText: contactBulkConfirmationText }) });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) { setErrorMessage(data?.error ?? "Gruppenaktion konnte nicht sicher ausgeführt werden."); return; }
+      await loadContacts();
+      setContactBulkTargetIds([]);
+      setContactBulkPreview(null);
+      setContactBulkConfirmationText("");
+      setIsContactBulkModalOpen(false);
+    } catch {
+      setErrorMessage("Gruppenaktion ist gerade nicht erreichbar. Alle Kontakte blieben unverändert.");
+    } finally {
+      setIsContactBulkWorking(false);
+    }
   }
 
   async function handleLogin() {
@@ -40156,6 +40218,7 @@ await addProjectLogbookEntry(
       | JarvisCatalogManagementDraftView
       | JarvisPersonnelManagementDraftView
       | JarvisEmployeeCostManagementDraftView
+      | JarvisBulkUpdateDraftView
       | JarvisProjectStatusDraftView
       | JarvisProjectLifecycleDraftView
       | JarvisOfferDeliveryDraftView
@@ -40208,6 +40271,8 @@ await addProjectLogbookEntry(
         void loadUsers();
       } else if (nextDraft.actionId === "payroll.manage") {
         void loadEmployeeCost(nextDraft.employeeId);
+      } else if (nextDraft.actionId === "bulk.update") {
+        void loadContacts();
       } else if (nextDraft.actionId === "project.status.change") {
         void loadHeroProjects();
         void loadProjectLogbookEntries();
@@ -70109,6 +70174,8 @@ await addProjectLogbookEntry(
               onOpenContactFile={openCustomerFile}
               onOpenBulkAction={(contactIds) => {
                 setContactBulkTargetIds(contactIds);
+                setContactBulkPreview(null);
+                setContactBulkConfirmationText("");
                 setIsContactBulkModalOpen(true);
               }}
             />
@@ -72840,7 +72907,7 @@ await addProjectLogbookEntry(
       )}
 
       {isContactBulkModalOpen && (
-        <div className={styles.overlay} onClick={() => setIsContactBulkModalOpen(false)}>
+        <div className={styles.overlay} onClick={() => { setIsContactBulkModalOpen(false); setContactBulkPreview(null); setContactBulkConfirmationText(""); }}>
           <div
             className={`${styles.standardModal} ${styles.contactBulkModal}`}
             onClick={(event) => event.stopPropagation()}
@@ -72853,7 +72920,7 @@ await addProjectLogbookEntry(
               <button
                 className={styles.iconButton}
                 type="button"
-                onClick={() => setIsContactBulkModalOpen(false)}
+                onClick={() => { setIsContactBulkModalOpen(false); setContactBulkPreview(null); setContactBulkConfirmationText(""); }}
                 aria-label="Gruppenaktion schließen"
               >
                 -
@@ -72881,9 +72948,15 @@ await addProjectLogbookEntry(
                 Zeilen bis zur angeklickten.
               </p>
               <p className={styles.contactBulkNotice}>
-                <strong>Hinweis:</strong> Diese Aktion wird im Hintergrund ausgeführt und kann
-                aufgrund der Datenmenge einige Minuten dauern.
+                <strong>Hinweis:</strong> Vor der Ausführung wird ein vollständiger Dry-Run mit
+                Trefferliste und Alt-/Neuwerten erstellt. Die Aktion läuft vollständig oder gar nicht.
               </p>
+              {contactBulkPreview ? <>
+                <div className={styles.jarvisPlanningChecks}><strong>Dry-Run: {contactBulkPreview.items.length} Treffer</strong>{contactBulkPreview.items.map((item) => <div key={item.id} data-status="ok"><span>→</span><p><b>{item.customerNumber} · {item.label}</b><small>{item.before} → {item.after}</small></p></div>)}</div>
+                {contactBulkPreview.excluded.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Ausschlüsse</strong><span>{contactBulkPreview.excluded.map((item) => `${item.customerNumber}: ${item.reason}`).join(" · ")}</span></div> : null}
+                {contactBulkPreview.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Gruppenaktion ist blockiert</strong><span>{contactBulkPreview.blockingIssues.join(" · ")}</span></div> : null}
+                {!contactBulkPreview.blockingIssues.length ? <label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{contactBulkPreview.confirmationText}</strong></span><input value={contactBulkConfirmationText} autoComplete="off" disabled={isContactBulkWorking} onChange={(event) => setContactBulkConfirmationText(event.target.value)} /></label> : null}
+              </> : null}
             </div>
 
             <div className={styles.standardModalFooter}>
@@ -72892,17 +72965,18 @@ await addProjectLogbookEntry(
                 <button
                   type="button"
                   className={styles.secondaryButton}
-                  onClick={() => setIsContactBulkModalOpen(false)}
+                  disabled={isContactBulkWorking}
+                  onClick={() => { setIsContactBulkModalOpen(false); setContactBulkPreview(null); setContactBulkConfirmationText(""); }}
                 >
                   Abbrechen
                 </button>
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  disabled={contactBulkCount === 0}
+                  disabled={contactBulkCount === 0 || isContactBulkWorking || Boolean(contactBulkPreview?.blockingIssues.length) || Boolean(contactBulkPreview && contactBulkConfirmationText !== contactBulkPreview.confirmationText)}
                   onClick={applyContactBulkAction}
                 >
-                  Auf {contactBulkCount} Kontakte anwenden
+                  {contactBulkPreview ? `Auf ${contactBulkCount} Kontakte anwenden` : `Dry-Run für ${contactBulkCount} Kontakte`}
                 </button>
               </div>
             </div>
@@ -76989,6 +77063,7 @@ await addProjectLogbookEntry(
                       message.actionDraft?.actionId === "catalog.manage" ||
                       message.actionDraft?.actionId === "personnel.manage" ||
                       message.actionDraft?.actionId === "payroll.manage" ||
+                      message.actionDraft?.actionId === "bulk.update" ||
                       message.actionDraft?.actionId === "project.status.change" ||
                       message.actionDraft?.actionId === "project.archive" ||
                       message.actionDraft?.actionId === "offer.delete" ||
@@ -77001,6 +77076,10 @@ await addProjectLogbookEntry(
                           updateJarvisActionDraftMessage(index, nextDraft, nextMessage)
                         }
                         onOpenOffer={(offerDraft) => {
+                          if (offerDraft.actionId === "bulk.update") {
+                            openMainView("contacts");
+                            return;
+                          }
                           if (offerDraft.actionId === "contact.manage") {
                             const contactId = offerDraft.result?.entityId || offerDraft.contactId;
                             const contact = contacts.find((candidate) => candidate.id === contactId);

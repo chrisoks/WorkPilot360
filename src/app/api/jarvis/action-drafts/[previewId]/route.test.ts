@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => ({
   confirmJarvisPersonnelManagementDraft: vi.fn(),
   cancelJarvisEmployeeCostManagementDraft: vi.fn(),
   confirmJarvisEmployeeCostManagementDraft: vi.fn(),
+  cancelJarvisBulkUpdateDraft: vi.fn(),
+  confirmJarvisBulkUpdateDraft: vi.fn(),
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
@@ -99,6 +101,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   confirmJarvisPersonnelManagementDraft: mocks.confirmJarvisPersonnelManagementDraft,
   cancelJarvisEmployeeCostManagementDraft: mocks.cancelJarvisEmployeeCostManagementDraft,
   confirmJarvisEmployeeCostManagementDraft: mocks.confirmJarvisEmployeeCostManagementDraft,
+  cancelJarvisBulkUpdateDraft: mocks.cancelJarvisBulkUpdateDraft,
+  confirmJarvisBulkUpdateDraft: mocks.confirmJarvisBulkUpdateDraft,
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
@@ -1358,6 +1362,24 @@ describe("JARVIS action-draft API", () => {
     const response = (await POST(request("POST", { actorId: "user-1", actionId: "payroll.manage", command: "cancel", revision: 6 }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
     expect(response.status).toBe(200);
     expect(mocks.cancelJarvisEmployeeCostManagementDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 6);
+  });
+
+  it("passes only the exact bulk confirmation phrase to the bound dry-run", async () => {
+    mocks.confirmJarvisBulkUpdateDraft.mockResolvedValueOnce({ actionId: "bulk.update", state: "executed", result: { entityType: "contact", entityId: "contact-1", label: "Kontakte öffnen" } });
+    const response = (await POST(request("POST", {
+      actorId: "user-1", actionId: "bulk.update", command: "confirm", revision: 4,
+      confirmationText: "MASSENÄNDERUNG AUSFÜHREN 2 KONTAKTE", customerNumbers: ["fremd"], targetCategory: "Kunde",
+    }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisBulkUpdateDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 4, "MASSENÄNDERUNG AUSFÜHREN 2 KONTAKTE");
+  });
+
+  it("cancels a bulk dry-run without executing it", async () => {
+    mocks.cancelJarvisBulkUpdateDraft.mockResolvedValueOnce({ actionId: "bulk.update", state: "cancelled" });
+    const response = (await POST(request("POST", { actorId: "user-1", actionId: "bulk.update", command: "cancel", revision: 3 }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
+    expect(response.status).toBe(200);
+    expect(mocks.cancelJarvisBulkUpdateDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 3);
+    expect(mocks.confirmJarvisBulkUpdateDraft).not.toHaveBeenCalled();
   });
 
   it("passes only the exact project-status phrase to the bound status draft", async () => {

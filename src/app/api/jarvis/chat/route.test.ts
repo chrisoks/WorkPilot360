@@ -65,6 +65,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisCatalogManagementDraft: vi.fn(),
   createPersistedJarvisPersonnelManagementDraft: vi.fn(),
   createPersistedJarvisEmployeeCostManagementDraft: vi.fn(),
+  createPersistedJarvisBulkUpdateDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -166,6 +167,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisPersonnelManagementDraft,
   createPersistedJarvisEmployeeCostManagementDraft:
     mocks.createPersistedJarvisEmployeeCostManagementDraft,
+  createPersistedJarvisBulkUpdateDraft:
+    mocks.createPersistedJarvisBulkUpdateDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -3490,6 +3493,23 @@ describe("POST /api/jarvis/chat", () => {
     expect(payload.message).not.toContain("9.999");
     expect(lookup).not.toHaveBeenCalled();
     lookup.mockRestore();
+  });
+
+  it("prepares an explicit bounded contact bulk dry-run without executing it", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.createPersistedJarvisBulkUpdateDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "bulk.update", title: "Kontaktkategorien kontrolliert massenhaft ändern",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-08-02T07:00:00.000Z",
+      mode: "apply", targetCategory: "Archiv", fields: [], items: [{ id: "c1", customerNumber: "7001", label: "A", before: "Kunde", after: "Archiv", updatedAt: "2026-08-02T05:00:00.000Z" }, { id: "c2", customerNumber: "7002", label: "B", before: "Partner", after: "Archiv", updatedAt: "2026-08-02T05:00:00.000Z" }],
+      excluded: [], checks: [], warnings: [], blockingIssues: [], confirmation: { enabled: true, reason: "ready", requiredText: "MASSENÄNDERUNG AUSFÜHREN 2 KONTAKTE" }, cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Archiviere die Kontakte 7001, 7002 als Gruppenaktion" }),
+    }));
+    expect(await response.json()).toMatchObject({ type: "answer", topicId: "action.bulk-update", actionDraft: { actionId: "bulk.update", items: [{ customerNumber: "7001" }, { customerNumber: "7002" }] } });
+    expect(mocks.createPersistedJarvisBulkUpdateDraft).toHaveBeenCalledWith(expect.objectContaining({ preview: expect.objectContaining({ actionId: "bulk.update", payload: { mode: "apply", customerNumbers: ["7001", "7002"], targetCategory: "Archiv" } }) }));
   });
 
   it("asks for a documented reason before preparing a project-status change", async () => {

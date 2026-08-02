@@ -109,6 +109,7 @@ import {
   createPersistedJarvisCatalogManagementDraft,
   createPersistedJarvisPersonnelManagementDraft,
   createPersistedJarvisEmployeeCostManagementDraft,
+  createPersistedJarvisBulkUpdateDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -197,6 +198,11 @@ import {
   extractEmployeeCostManagementRequest,
   looksLikeEmployeeCostManagementRequest,
 } from "@/lib/jarvis/employee-cost-management-intake";
+import {
+  extractContactBulkCategoryRequest,
+  looksLikeContactBulkCategoryRequest,
+  looksLikeContactBulkRollbackRequest,
+} from "@/lib/jarvis/bulk-update-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
@@ -1121,6 +1127,26 @@ async function buildJarvisEmployeeCostManagementDraft(input: {
     return { type: "answer" as const, topicId: "action.employee-cost-management", message: "Ich habe die Lohnkostenänderung serverseitig geprüft. Kontrolliere alte und neue Werte, Vollkosten, verkaufbare Stunden, internen Stundensatz und die Wirkung auf laufende sowie historische Zeiten. Historische Kostensnapshots werden niemals rückwirkend verändert. Erst die exakte Bestätigungsphrase ändert die Kostenwerte genau einmal.", actionDraft };
   } catch (error) {
     return { type: "refusal" as const, topicId: "action.employee-cost-management.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Lohnkostenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts geändert.` };
+  }
+}
+
+async function buildJarvisBulkUpdateDraft(input: {
+  question: string; organizationId: string; sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) return { type: "refusal" as const, topicId: "action.bulk-update.session-required", message: "Für eine Massenänderung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts geändert." };
+  let details;
+  try { details = extractContactBulkCategoryRequest(input.question); }
+  catch (error) { return { type: "clarification" as const, topicId: "action.bulk-update.target-required", message: `${error instanceof Error ? error.message : "Bitte nenne Zielkontakte und Zielkategorie."} Es wurde nichts geändert.` }; }
+  if (details.mode === "apply" && details.customerNumbers.length < 2) return { type: "clarification" as const, topicId: "action.bulk-update.targets-required", message: "Nenne mindestens zwei und höchstens 25 Kundennummern ausdrücklich. Offene oder dynamische Filter führe ich nicht als Massenänderung aus. Es wurde nichts geändert." };
+  if (details.mode === "rollback" && !details.sourceRequestId) return { type: "clarification" as const, topicId: "action.bulk-update.rollback-id-required", message: "Welche protokollierte Massenänderung soll zurückgerollt werden? Nenne bitte die vollständige Massenänderungs-ID. Es wurde nichts geändert." };
+  const preview = createJarvisActionPreview({ previewId: randomUUID(), actionId: "bulk.update", payload: details, organizationId: input.organizationId, profile: input.accessProfile, createdAt: new Date().toISOString() });
+  if (!preview.ok) return { type: "refusal" as const, topicId: "action.bulk-update.refused", message: `${preview.message} Es wurde nichts geändert.` };
+  try {
+    const actionDraft = await createPersistedJarvisBulkUpdateDraft({ preview: preview.value, organizationId: input.organizationId, sessionId: input.sessionId, profile: input.accessProfile });
+    return { type: "answer" as const, topicId: "action.bulk-update", message: details.mode === "rollback" ? "Ich habe die protokollierte Massenänderung und jeden aktuellen Kontaktstand geprüft. Die Rückrollung stellt nur dann alle Ausgangskategorien gemeinsam wieder her, wenn seitdem kein Zielkontakt verändert wurde. Erst die exakte Bestätigungsphrase führt sie genau einmal aus." : "Ich habe einen rein lesenden Dry-Run erstellt. Prüfe Trefferzahl, vollständige Kontaktliste, Alt-/Neuwerte und Ausschlüsse. Die Ausführung ist auf 25 ausdrücklich genannte Kundennummern begrenzt, läuft vollständig oder gar nicht und protokolliert einen exakten Wiederherstellungsstand. Erst die exakte Bestätigungsphrase ändert alle angezeigten Kategorien genau einmal.", actionDraft };
+  } catch (error) {
+    return { type: "refusal" as const, topicId: "action.bulk-update.unavailable", message: `${error instanceof JarvisActionDraftError ? error.message : "Die Massenänderung konnte nicht sicher vorbereitet werden."} Es wurde nichts geändert.` };
   }
 }
 
@@ -3122,6 +3148,12 @@ export async function POST(req: Request) {
         sessionId: actorResult.sessionId,
         accessProfile,
       }),
+      "management"
+    );
+  }
+  if (looksLikeContactBulkCategoryRequest(message) || looksLikeContactBulkRollbackRequest(message)) {
+    return respond(
+      await buildJarvisBulkUpdateDraft({ question: message, organizationId: organization.id, sessionId: actorResult.sessionId, accessProfile }),
       "management"
     );
   }
