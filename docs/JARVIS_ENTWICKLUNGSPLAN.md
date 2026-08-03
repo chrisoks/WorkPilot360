@@ -2,7 +2,47 @@
 
 Stand: 03.08.2026
 
-## Aktueller Release: strenger 110er-Qualitätsvertrag und Kundenumsatz
+## Aktueller Release: fachlich verbindliche 110 Fragen und gezielte Rückfragen
+
+Der permanente 110er-Korpus prüft jetzt für jede bekannte Frage nicht nur,
+dass JARVIS antwortet, sondern auch den erwarteten fachlichen Themenvertrag.
+Fehlende `topicId`, unbekannte oder generische Adapterlücken sowie die
+frühere Sammelantwort `system-help.clarification` lassen den Lauf scheitern.
+Damit wurden 23 zuvor formal erfolgreiche, aber fachlich zu allgemeine Fälle
+sichtbar und durch echte Analysen oder präzise Rückfragen ersetzt.
+
+Neu live angebunden sind die heutige bestätigte Planung, heutige
+Stempelzeiten, offene Überstundenfreigaben, Lücken in wiederkehrenden
+Projektmonaten, freie Kontingente von Monatspauschalen sowie belegbare
+Kundenrisiken aus überfälligen Rechnungen und alten offenen Angeboten. Die
+Auswertungen bleiben organisations- und rollenbegrenzt. Online-Anfragen
+können außerdem gezielt nach noch ungeklärter Kundenprüfung ausgewertet
+werden. Direkte Navigationsbefehle, Projektstatus, unberechnete Projektzeit
+und überfällige Forderungen besitzen eigene, eindeutige Routen.
+
+Fehlt für eine Frage der notwendige Bezug, fragt JARVIS nun vor einer
+Nichtausführung gezielt nach Projekt, Kunde, Aufgabe, Angebot,
+Planungskontext, Winterdienstvariante, Kraftstoffpreis oder Online-Anfrage.
+Die Rückfrage bietet passende Auswahlaktionen. Aktionen ohne Bestätigung und
+Bestätigungen gegen zwischenzeitlich geänderte Projektdaten werden mit einer
+fachlich verständlichen Sicherheitsantwort abgewiesen; im zweiten Fall ist
+eine neue Vorschau erforderlich.
+
+Lokal bestanden 191/191 Testdateien mit 1.923/1.923 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Der strenge Korpus bestand lokal und produktiv 110/110;
+produktiv wurden 33 Aktionen vorbereitet, keine ausgeführt und keine
+QA-Rückstände hinterlassen. Echte produktive Oberflächen-Klicktests
+bestätigten Monatskontingent, Angebots- und Kundenrückfrage sowie den Schutz
+vor veraltetem Projektstand. Produktiv abgenommen auf Runtime-Commits
+`103c966cac871b56fd76e212f800fe7c6b974a30` und
+`5507ad460225be5c5918ad63e2445293867ef016`, mit Backup
+`/var/backups/workpilot360/20260803T154000Z-before-jarvis-domain-contracts`.
+WorkPilot PID `906757`, KlinikNavigator unverändert PID `398228`. Keine
+Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und die
+Online-Anfragen-Invarianten blieben erhalten.
+
+## Vorheriger Release: strenger 110er-Qualitätsvertrag und Kundenumsatz
 
 Der permanente Korpus akzeptiert bei seinen 110 bekannten Fragen nicht mehr
 nur irgendeinen erfolgreichen Text. `unknown`, generische Fähigkeitslücken,

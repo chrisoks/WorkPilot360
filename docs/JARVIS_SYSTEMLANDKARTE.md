@@ -2,6 +2,39 @@
 
 Stand: 03.08.2026
 
+## Fachlich verbindlicher 110er-Korpus und kontextsichere Dialoge
+
+- Jede der exakt 110 bekannten Fragen besitzt jetzt einen fachlichen
+  Themenvertrag. Fehlende `topicId`, `unknown`, generische Adapterlücken und
+  `system-help.clarification` sind im Korpus verboten; 23 dadurch entdeckte
+  allgemeine Antworten wurden durch konkrete Fachpfade ersetzt.
+- `organization-operations-analysis.ts` beantwortet rollen- und
+  organisationsgebunden heutige bestätigte Planung, heutige Stempelzeiten,
+  offene Überstundenfreigaben, Lücken wiederkehrender Projektmonate, freie
+  Monatspauschalen-Kontingente und belegbare Kundenrisiken. Die bestehende
+  Fachdiagnose für wiederkehrende Monate wird wiederverwendet.
+- `domain-clarification.ts` verlangt bei fehlendem Kontext gezielt Projekt,
+  Kunde, Aufgabe, Angebot, Planungsbezug, Winterdienstvariante,
+  Kraftstoffpreis oder Anfragekontext und liefert passende Auswahlaktionen.
+  Eine pauschale Nichtfreigabe ersetzt diese notwendige Klärung nicht.
+- Sicherheitsfragen haben eigene Verträge: Ohne Bestätigung wird nicht
+  ausgeführt; ändert sich der gebundene Projektstand, verfällt die Vorschau
+  und muss neu erzeugt werden.
+- Online-Anfragen unterstützen die gezielte Sicht auf noch ungeklärte
+  Kundenprüfungen. Die Invariante bleibt: keine automatische Zuordnung zu
+  einem Bestandsprojekt; eine bewusste Konvertierung erzeugt ein neues
+  Lead-/Klärungsprojekt.
+- Produktivabnahme Runtime
+  `103c966cac871b56fd76e212f800fe7c6b974a30` plus Korrektur
+  `5507ad460225be5c5918ad63e2445293867ef016`, Backup
+  `/var/backups/workpilot360/20260803T154000Z-before-jarvis-domain-contracts`,
+  191/191 Testdateien mit 1.923/1.923 Tests, 90-Seiten-Build,
+  lokal/produktiv 110/110 Fragen, produktiv 33 vorbereitete und null
+  ausgeführte Aktionen sowie null Rückstände. Produktive UI-Klicktests für
+  Monatskontingent, Angebots-/Kundenrückfrage und veralteten Projektstand
+  bestanden. WorkPilot PID `906757`, KlinikNavigator unverändert PID
+  `398228`.
+
 ## Strenger Qualitätsvertrag und Kunden-Umsatzrangfolge
 
 - Der permanente 110er-Live-Korpus sperrt nun `unknown`, generische
