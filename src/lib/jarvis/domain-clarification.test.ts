@@ -5,6 +5,7 @@ describe("JARVIS domain-specific clarification", () => {
   it.each([
     ["Warum bewertest du dieses Projekt als kritisch?", "project.health.reference-required"],
     ["Warum ist diese Aufgabe eskaliert?", "task.escalation.reference-required"],
+    ["Welche Projekte gehören zu diesem Kunden?", "customer.projects.reference-required"],
     ["Warum ist diese Planung überbucht?", "planning.overbooking.reference-required"],
     ["Warum ist dieses Angebot wirtschaftlich auffällig?", "offer.health.reference-required"],
     ["Vergleiche Räumen und Streuen mit nur Streuen.", "calculator.winter.variant-comparison"],

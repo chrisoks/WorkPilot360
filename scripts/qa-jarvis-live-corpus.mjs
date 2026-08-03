@@ -422,6 +422,7 @@ async function main() {
     "projects-06": "project.health.reference-required",
     "projects-08": "management.operations.unbilled-projects",
     "customers-04": "management.operations.customer-risk",
+    "customers-07": "customer.projects.reference-required",
     "tasks-06": "task.escalation.reference-required",
     "planning-01": "planning.today",
     "planning-05": "management.operations.monthly-quota-available",
@@ -443,6 +444,7 @@ async function main() {
   const clarificationTopicsRequiringChoices = new Set([
     "project.health.reference-required",
     "task.escalation.reference-required",
+    "customer.projects.reference-required",
     "planning.overbooking.reference-required",
     "calculator.winter.variant-comparison",
     "calculator.vehicle-trip.fuel-context",

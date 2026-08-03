@@ -27,6 +27,16 @@ export function resolveJarvisDomainClarification(
     };
   }
 
+  if (/\bwelche projekte\b.*\b(?:diesem|dem) kunden\b/.test(value)) {
+    return {
+      type: "clarification",
+      topicId: "customer.projects.reference-required",
+      message:
+        "Welchen Kunden meinst du? Nenne bitte Firma, Name oder Kundennummer oder wähle den Kunden aus. Danach liste ich ausschließlich die zu diesem Kunden verknüpften Projekte auf.",
+      choices: [createJarvisDialogChoice("customer-search", "Kunden suchen", "Suche einen Kunden")],
+    };
+  }
+
   if (/\bwarum\b.*\b(?:diese|die) planung\b.*\buberbuch\w*\b/.test(value)) {
     return {
       type: "clarification",
