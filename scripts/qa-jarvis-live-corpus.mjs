@@ -563,6 +563,23 @@ async function main() {
             });
           }
         }
+        const genericGapFragments = [
+          "Dazu habe ich noch keine freigegebene WorkPilot-Anleitung",
+          "noch nicht sicher an JARVIS angebunden",
+          "noch nicht sicher angebunden",
+          "Bestätigen und Speichern sind noch nicht freigegeben",
+        ];
+        if (
+          payload.type === "unknown" ||
+          payload.topicId === "capability.analysis-adapter-missing" ||
+          genericGapFragments.some((fragment) => payload.message.includes(fragment))
+        ) {
+          failures.push({
+            id: item.id,
+            status: response.status,
+            error: `Bekannte Korpusfrage fiel in eine generische Fähigkeitslücke: ${payload.topicId || payload.type}.`,
+          });
+        }
         if (item.question === "Welche Aktionen kannst du derzeit wirklich ausführen?") {
           if (
             payload.topicId !== "jarvis.governance.current-actions" ||

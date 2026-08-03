@@ -81,6 +81,20 @@ describe("JARVIS system help", () => {
     });
   });
 
+  it("asks for the concrete trip calculation before claiming a margin", () => {
+    const result = resolveJarvisOperationalGuidance(
+      "Wie hoch ist die Marge dieser Fahrtenkalkulation?",
+      employeeAccess
+    );
+    expect(result).toMatchObject({
+      type: "clarification",
+      topicId: "calculator.vehicle-trip.margin-context",
+    });
+    expect(result?.message).toContain("Fahrzeug, Strecke und Kraftstoffpreis");
+    expect(result?.message).toContain("Personalkosten");
+    expect(result?.choices?.[0]?.label).toBe("Fahrt kalkulieren");
+  });
+
   it("explains the safe online-request conversion without attaching to an arbitrary project", () => {
     const result = resolveJarvisOperationalGuidance(
       "Wie mache ich aus einer Formularanfrage ein neues Lead-Projekt?"

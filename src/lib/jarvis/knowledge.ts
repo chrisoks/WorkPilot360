@@ -284,6 +284,21 @@ export function resolveJarvisOperationalGuidance(
         "Öffne links „Kalkulations-Rechner“. Dort erfasst du die Kalkulationsgrundlagen, vergleichst die berechneten Varianten und speicherst eine neue unveränderliche Version nur dann, wenn ein passendes Kundenprojekt zugeordnet ist.",
     };
   }
+  if (/\bmarge\b.*\bfahrten?kalkulation\b/.test(value)) {
+    return {
+      type: "clarification",
+      topicId: "calculator.vehicle-trip.margin-context",
+      message:
+        "Für die konkrete Marge brauche ich die gemeinte Fahrtenkalkulation mit Fahrzeug, Strecke und Kraftstoffpreis. Öffne den vorhandenen Entwurf oder starte eine Fahrtenkalkulation; dann zeige ich Selbstkosten, Verkaufspreis, Gewinn, Aufschlag und echte Marge aus der zentralen WorkPilot-Rechnung. Personalkosten sind in diesem Rechner bewusst nicht enthalten.",
+      choices: [
+        createJarvisDialogChoice(
+          "calculator-vehicle-trip",
+          "Fahrt kalkulieren",
+          "Starte eine Fahrtenkalkulation"
+        ),
+      ],
+    };
+  }
   if (/\bonline\s*anfrag\w*|\bformularanfrag\w*|\banfragenposteingang\b/.test(value)) {
     if (/\b(?:foto|bild|anfragebild)\w*\b/.test(value)) {
       return {

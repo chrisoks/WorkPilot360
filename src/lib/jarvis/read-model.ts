@@ -612,7 +612,7 @@ export async function resolveJarvisReadRequest(input: {
   if (records.length === 0) {
     const subjectLabel = await findEmptyResultSubjectLabel(input.organizationId, intent);
     return {
-      type: "unknown",
+      type: "answer",
       topicId: `records.${intent.kind}.empty`,
       message: formatJarvisEmptyReadMessage({ intent, subjectLabel }),
       deterministic: true,
