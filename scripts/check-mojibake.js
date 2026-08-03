@@ -6,7 +6,7 @@ const root = process.cwd();
 const baselinePath = path.join(root, "scripts", "mojibake-baseline.json");
 const includeExtensions = new Set([".ts", ".tsx", ".css", ".prisma"]);
 const skipDirectories = new Set([".git", ".next", ".codex-safety", "node_modules"]);
-const badCharacterCodes = new Set([0x00c3, 0x00c2, 0x00e2, 0xfffd]);
+const badCharacterCodes = new Set([0x00c3, 0x00c2, 0x00e2, 0x251c, 0xfffd]);
 const scanRoots = ["src", "prisma"].map((entry) => path.join(root, entry));
 const updateBaseline = process.argv.includes("--update-baseline");
 

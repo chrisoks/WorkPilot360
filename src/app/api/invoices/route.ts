@@ -58,6 +58,7 @@ import {
   executeInvoiceLifecycle,
   InvoiceLifecycleServiceError,
 } from "@/lib/invoices/invoice-lifecycle-service";
+import { runInvoiceCrudTransaction } from "@/lib/invoices/invoice-crud-transaction";
 import {
   externalizePdfPayload,
   resolveStorageBackedBytes,
@@ -96,6 +97,7 @@ type InvoiceLineLaborInput = {
 
 type InvoiceInput = {
   actorId?: string;
+  expectedUpdatedAt?: string;
   projectId?: string;
   projectNumber?: string;
   projectTitle?: string;
@@ -225,6 +227,7 @@ const A4_HEIGHT = 841.89;
 const INK = rgb(0.08, 0.1, 0.14);
 const MUTED = rgb(0.25, 0.29, 0.34);
 const LINE = rgb(0.38, 0.38, 0.38);
+class InvoiceCrudConflictError extends Error {}
 const DELETED_INVOICE_STATUS = "Gelöscht";
 const LEGACY_DELETED_INVOICE_STATUS = "Gel\u00c3\u00b6scht";
 
@@ -594,7 +597,7 @@ async function getStampedHoursForInvoiceCheck(input: {
   return Number(rows[0]?.hours ?? 0);
 }
 
-async function markStampedHoursAsInvoiced(input: {
+async function markStampedHoursAsInvoiced(db: Prisma.TransactionClient | typeof prisma, input: {
   organizationId: string;
   projectId: string;
   invoiceId: string;
@@ -602,8 +605,7 @@ async function markStampedHoursAsInvoiced(input: {
   stampEntryIds: string[];
 }) {
   if (input.stampEntryIds.length === 0) return;
-  await ensureInvoiceTimeEntryColumns();
-  await prisma.$executeRaw`
+  await db.$executeRaw`
     UPDATE "ProjectTimeEntry" entry
     SET "laborCostRateSnapshot" = COALESCE(cost."hourlyCostRate", 0),
         "laborCostSnapshot" = ROUND(((entry."durationMs"::double precision / 3600000) * COALESCE(cost."hourlyCostRate", 0))::numeric, 2)::double precision,
@@ -626,7 +628,7 @@ async function markStampedHoursAsInvoiced(input: {
       AND entry."userId" = cost."userId"
       AND COALESCE(entry."laborCostRateSnapshot", 0) = 0
   `;
-  await prisma.$executeRaw`
+  await db.$executeRaw`
     UPDATE "ProjectTimeEntry"
     SET "invoiceId" = ${input.invoiceId},
         "invoiceNumber" = ${input.invoiceNumber},
@@ -1140,9 +1142,13 @@ function drawTextBlock(
   return cursorY;
 }
 
-async function getNextinvoiceNumber(organizationId: string, prefix = "RE") {
+async function getNextinvoiceNumber(
+  db: Prisma.TransactionClient | typeof prisma,
+  organizationId: string,
+  prefix = "RE"
+) {
   const invoiceNumberPrefix = prefix.toUpperCase();
-  const rows = await prisma.$queryRaw<Array<{ invoiceNumber: string }>>`
+  const rows = await db.$queryRaw<Array<{ invoiceNumber: string }>>`
     SELECT "invoiceNumber"
     FROM "Invoice"
     WHERE "organizationId" = ${organizationId}
@@ -1601,7 +1607,64 @@ async function getInvoiceBuyerReference(organizationId: string, projectId: strin
   return cleanString(rows[0]?.leitwegId) || cleanString(fallbackReference);
 }
 
-async function addInvoiceHistory(input: {
+async function persistInvoiceLines(
+  tx: Prisma.TransactionClient,
+  input: {
+    organizationId: string;
+    invoiceId: string;
+    lines: Required<InvoiceLineInput>[];
+    replaceExisting?: boolean;
+  }
+) {
+  if (input.replaceExisting) {
+    await tx.$executeRaw`
+      DELETE FROM "InvoiceLine"
+      WHERE "organizationId" = ${input.organizationId}
+        AND "invoiceId" = ${input.invoiceId}
+    `;
+  }
+
+  const savedLines: InvoiceLineRow[] = [];
+  const savedLaborRows: InvoiceLineLaborRow[] = [];
+  for (const [index, line] of input.lines.entries()) {
+    const lineRows = await tx.$queryRaw<InvoiceLineRow[]>`
+      INSERT INTO "InvoiceLine" (
+        "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
+        "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
+        "materialUnitCostSnapshot", "materialCostSnapshot", "laborUnitCostSnapshot", "laborCostSnapshot",
+        "packageComponentsSnapshot", "catalogCostSnapshotVersion", "costSnapshotAt",
+        "vatRate", "totalNet", "updatedAt"
+      ) VALUES (
+        ${randomUUID()}, ${input.organizationId}, ${input.invoiceId}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
+        ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
+        ${line.unitPrice}, ${line.discountPercent},
+        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, ${line.laborUnitCostSnapshot}, ${line.laborCostSnapshot},
+        ${JSON.stringify(line.packageComponentsSnapshot)}::jsonb, ${line.catalogCostSnapshotVersion}, CURRENT_TIMESTAMP,
+        ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
+      )
+      RETURNING *
+    `;
+    savedLines.push(lineRows[0]);
+
+    for (const [laborIndex, labor] of line.laborItems.entries()) {
+      const laborRows = await tx.$queryRaw<InvoiceLineLaborRow[]>`
+        INSERT INTO "InvoiceLineLabor" (
+          "id", "organizationId", "invoiceId", "invoiceLineId", "userId", "employeeName",
+          "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
+        ) VALUES (
+          ${randomUUID()}, ${input.organizationId}, ${input.invoiceId}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
+          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
+        )
+        RETURNING *
+      `;
+      savedLaborRows.push(laborRows[0]);
+    }
+  }
+
+  return { savedLines, savedLaborRows };
+}
+
+async function addInvoiceHistory(db: Prisma.TransactionClient | typeof prisma, input: {
   organizationId: string;
   invoiceId: string;
   projectId: string;
@@ -1611,7 +1674,7 @@ async function addInvoiceHistory(input: {
   note: string;
   actorName: string;
 }) {
-  await prisma.$executeRaw`
+  await db.$executeRaw`
     INSERT INTO "InvoiceHistory" (
       "id", "organizationId", "invoiceId", "projectId", "invoiceNumber",
       "eventType", "title", "note", "actorName"
@@ -2213,7 +2276,6 @@ export async function POST(req: Request) {
     );
   }
 
-  const invoiceNumber = await getNextinvoiceNumber(organization.id);
   const id = randomUUID();
   const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
   const billingSource = cleanString(body.billingSource) === "batch" ? "batch" : "manual";
@@ -2221,100 +2283,75 @@ export async function POST(req: Request) {
   const paymentTermDays = cleanPaymentTermDays(body.paymentTermDays);
   const dueDate = getInvoiceDueDate(body, serviceDate, paymentTermDays);
   const plannedExecutionMonth = getInvoiceMonthFromInput(body);
-  const pdf =
-    lines.length > 0
-      ? await generateInvoicePdf(
-          {
-            ...body,
-            company,
-            invoiceNumber,
-            internalContactName,
-            documentTitle: saveAsDraft ? "Rechnungsentwurf" : "Rechnung",
-          },
-          lines
-        )
-      : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
-
-  const rows = await prisma.$queryRaw<InvoiceRow[]>`
-    INSERT INTO "Invoice" (
-      "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
-      "invoiceNumber", "status", "billingSource", "customerName", "customerStreet", "customerCity",
-      "contactName", "internalContactName", "internalPhone", "internalEmail",
-      "plannedExecutionMonth", "serviceDate", "sourceOfferId", "sourceOfferNumber",
-      "introText", "closingText", "discountPercent", "paymentTermDays", "dueDate",
-      "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
-    ) VALUES (
-      ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
-      ${cleanString(body.projectTitle)}, ${company}, ${invoiceNumber}, ${saveAsDraft ? "Entwurf" : "Fakturiert"}, ${billingSource},
-      ${cleanString(body.customerName)}, ${cleanString(body.customerStreet)}, ${cleanString(body.customerCity)},
-      ${cleanString(body.contactName)}, ${internalContactName}, ${cleanString(body.internalPhone)},
-      ${cleanString(body.internalEmail)}, ${plannedExecutionMonth}, ${serviceDate},
-      ${cleanString(body.sourceOfferId)}, ${cleanString(body.sourceOfferNumber)},
-      ${cleanString(body.introText)}, ${cleanString(body.closingText)},
-      ${cleanPercent(body.discountPercent)}, ${paymentTermDays}, ${dueDate},
-      ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
-    )
-    RETURNING *
-  `;
-
-  const savedLines: InvoiceLineRow[] = [];
-  const savedLaborRows: InvoiceLineLaborRow[] = [];
-  for (const [index, line] of lines.entries()) {
-    const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
-      INSERT INTO "InvoiceLine" (
-        "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
-        "materialUnitCostSnapshot", "materialCostSnapshot", "laborUnitCostSnapshot", "laborCostSnapshot",
-        "packageComponentsSnapshot", "catalogCostSnapshotVersion", "costSnapshotAt",
-        "vatRate", "totalNet", "updatedAt"
-      ) VALUES (
-        ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
-        ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.discountPercent},
-        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, ${line.laborUnitCostSnapshot}, ${line.laborCostSnapshot},
-        ${JSON.stringify(line.packageComponentsSnapshot)}::jsonb, ${line.catalogCostSnapshotVersion}, CURRENT_TIMESTAMP,
-        ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
-      )
-      RETURNING *
-    `;
-    savedLines.push(lineRows[0]);
-
-    for (const [laborIndex, labor] of line.laborItems.entries()) {
-      const laborRows = await prisma.$queryRaw<InvoiceLineLaborRow[]>`
-        INSERT INTO "InvoiceLineLabor" (
-          "id", "organizationId", "invoiceId", "invoiceLineId", "userId", "employeeName",
-          "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
+  if (!saveAsDraft && billedStampEntryIds.length) await ensureInvoiceTimeEntryColumns();
+  const core = await runInvoiceCrudTransaction({
+    prisma,
+    organizationId: organization.id,
+    lockKey: "number:RE",
+    operation: async (tx) => {
+      const invoiceNumber = await getNextinvoiceNumber(tx, organization.id);
+      const pdf =
+        lines.length > 0
+          ? await generateInvoicePdf(
+              {
+                ...body,
+                company,
+                invoiceNumber,
+                internalContactName,
+                documentTitle: saveAsDraft ? "Rechnungsentwurf" : "Rechnung",
+              },
+              lines
+            )
+          : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
+      const rows = await tx.$queryRaw<InvoiceRow[]>`
+        INSERT INTO "Invoice" (
+          "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
+          "invoiceNumber", "status", "billingSource", "customerName", "customerStreet", "customerCity",
+          "contactName", "internalContactName", "internalPhone", "internalEmail",
+          "plannedExecutionMonth", "serviceDate", "sourceOfferId", "sourceOfferNumber",
+          "introText", "closingText", "discountPercent", "paymentTermDays", "dueDate",
+          "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
         ) VALUES (
-          ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
+          ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
+          ${cleanString(body.projectTitle)}, ${company}, ${invoiceNumber}, ${saveAsDraft ? "Entwurf" : "Fakturiert"}, ${billingSource},
+          ${cleanString(body.customerName)}, ${cleanString(body.customerStreet)}, ${cleanString(body.customerCity)},
+          ${cleanString(body.contactName)}, ${internalContactName}, ${cleanString(body.internalPhone)},
+          ${cleanString(body.internalEmail)}, ${plannedExecutionMonth}, ${serviceDate},
+          ${cleanString(body.sourceOfferId)}, ${cleanString(body.sourceOfferNumber)},
+          ${cleanString(body.introText)}, ${cleanString(body.closingText)},
+          ${cleanPercent(body.discountPercent)}, ${paymentTermDays}, ${dueDate},
+          ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
         )
         RETURNING *
       `;
-      savedLaborRows.push(laborRows[0]);
-    }
-  }
-
-
-  await addInvoiceHistory({
-    organizationId: organization.id,
-    invoiceId: id,
-    projectId: cleanString(body.projectId),
-    invoiceNumber,
-    eventType: "created",
-    title: saveAsDraft ? "Rechnungsentwurf gespeichert" : "Rechnung angelegt",
-    note: `${invoiceNumber} wurde ${saveAsDraft ? "als Entwurf gespeichert" : "erstellt"}.`,
-    actorName,
+      const persisted = await persistInvoiceLines(tx, {
+        organizationId: organization.id,
+        invoiceId: id,
+        lines,
+      });
+      await addInvoiceHistory(tx, {
+        organizationId: organization.id,
+        invoiceId: id,
+        projectId: cleanString(body.projectId),
+        invoiceNumber,
+        eventType: "created",
+        title: saveAsDraft ? "Rechnungsentwurf gespeichert" : "Rechnung angelegt",
+        note: `${invoiceNumber} wurde ${saveAsDraft ? "als Entwurf gespeichert" : "erstellt"}.`,
+        actorName,
+      });
+      if (!saveAsDraft) {
+        await markStampedHoursAsInvoiced(tx, {
+          organizationId: organization.id,
+          projectId: cleanString(body.projectId),
+          invoiceId: id,
+          invoiceNumber,
+          stampEntryIds: billedStampEntryIds,
+        });
+      }
+      return { invoiceNumber, pdf, row: rows[0], ...persisted };
+    },
   });
-
-  if (!saveAsDraft) {
-    await markStampedHoursAsInvoiced({
-      organizationId: organization.id,
-      projectId: cleanString(body.projectId),
-      invoiceId: id,
-      invoiceNumber,
-      stampEntryIds: billedStampEntryIds,
-    });
-  }
+  const { invoiceNumber, pdf, row, savedLines, savedLaborRows } = core;
 
   if (!saveAsDraft && isUnderbilledStampedHours && !body.suppressUnderbillingNotification) {
     await notifyManagementAboutUnderbilling({
@@ -2348,7 +2385,7 @@ export async function POST(req: Request) {
     actorName,
   });
 
-  return NextResponse.json(serializeInvoice(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
+  return NextResponse.json(serializeInvoice(row, savedLines, savedLaborRows, { includeInternalCosts }));
 }
 
 export async function PUT(req: Request) {
@@ -2622,7 +2659,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Mahnung konnte nicht erfasst werden." }, { status: 404 });
     }
 
-    await addInvoiceHistory({
+    await addInvoiceHistory(prisma, {
       organizationId: organization.id,
       invoiceId: id,
       projectId: rows[0].projectId,
@@ -2701,7 +2738,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
     }
 
-    await addInvoiceHistory({
+    await addInvoiceHistory(prisma, {
       organizationId: organization.id,
       invoiceId: id,
       projectId: rows[0].projectId,
@@ -2745,9 +2782,9 @@ export async function PATCH(req: Request) {
   }
 
   const existingRows = await prisma.$queryRaw<
-    Array<{ invoiceNumber: string; status: string; billingSource: string; internalContactName: string }>
+    Array<{ invoiceNumber: string; status: string; billingSource: string; internalContactName: string; updatedAt: Date }>
   >`
-    SELECT "invoiceNumber", "status", "billingSource", "internalContactName"
+    SELECT "invoiceNumber", "status", "billingSource", "internalContactName", "updatedAt"
     FROM "Invoice"
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     LIMIT 1
@@ -2755,6 +2792,13 @@ export async function PATCH(req: Request) {
   const existingInvoice = existingRows[0];
   if (!existingInvoice) {
     return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
+  }
+  const expectedUpdatedAt = cleanString(body.expectedUpdatedAt);
+  if (!expectedUpdatedAt || new Date(expectedUpdatedAt).getTime() !== existingInvoice.updatedAt.getTime()) {
+    return NextResponse.json(
+      { error: "Die Rechnung wurde zwischenzeitlich geändert. Bitte neu laden und erneut bearbeiten." },
+      { status: 409 }
+    );
   }
   const finalizesDraft = !saveAsDraft && existingInvoice.status === "Entwurf";
 
@@ -2793,113 +2837,93 @@ export async function PATCH(req: Request) {
         )
       : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
 
-  const rows = await prisma.$queryRaw<InvoiceRow[]>`
-    UPDATE "Invoice"
-    SET
-      "projectId" = ${cleanString(body.projectId)},
-      "projectNumber" = ${cleanString(body.projectNumber)},
-      "projectTitle" = ${cleanString(body.projectTitle)},
-      "company" = ${company},
-      "billingSource" = ${billingSource},
-      "customerName" = ${cleanString(body.customerName)},
-      "customerStreet" = ${cleanString(body.customerStreet)},
-      "customerCity" = ${cleanString(body.customerCity)},
-      "contactName" = ${cleanString(body.contactName)},
-      "internalContactName" = ${internalContactName},
-      "internalPhone" = ${cleanString(body.internalPhone)},
-      "internalEmail" = ${cleanString(body.internalEmail)},
-      "plannedExecutionMonth" = ${plannedExecutionMonth},
-      "serviceDate" = ${serviceDate},
-      "sourceOfferId" = ${cleanString(body.sourceOfferId)},
-      "sourceOfferNumber" = ${cleanString(body.sourceOfferNumber)},
-      "introText" = ${cleanString(body.introText)},
-      "closingText" = ${cleanString(body.closingText)},
-      "discountPercent" = ${cleanPercent(body.discountPercent)},
-      "paymentTermDays" = ${paymentTermDays},
-      "dueDate" = ${dueDate},
-      "netTotal" = ${pdf.netTotal},
-      "vatRate" = ${pdf.vatRate},
-      "grossTotal" = ${pdf.grossTotal},
-      "pdfData" = ${pdf.pdfData},
-      "status" = CASE
-        WHEN ${saveAsDraft} THEN 'Entwurf'
-        WHEN "status" = 'Entwurf' THEN 'Fakturiert'
-        ELSE "status"
-      END,
-      "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "organizationId" = ${organization.id} AND "id" = ${id}
-    RETURNING *
-  `;
-
-  await prisma.$executeRaw`
-    DELETE FROM "InvoiceLine"
-    WHERE "organizationId" = ${organization.id} AND "invoiceId" = ${id}
-  `;
-
-  const savedLines: InvoiceLineRow[] = [];
-  const savedLaborRows: InvoiceLineLaborRow[] = [];
-  for (const [index, line] of lines.entries()) {
-    const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
-      INSERT INTO "InvoiceLine" (
-        "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
-        "materialUnitCostSnapshot", "materialCostSnapshot", "laborUnitCostSnapshot", "laborCostSnapshot",
-        "packageComponentsSnapshot", "catalogCostSnapshotVersion", "costSnapshotAt",
-        "vatRate", "totalNet", "updatedAt"
-      ) VALUES (
-        ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
-        ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.discountPercent},
-        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, ${line.laborUnitCostSnapshot}, ${line.laborCostSnapshot},
-        ${JSON.stringify(line.packageComponentsSnapshot)}::jsonb, ${line.catalogCostSnapshotVersion}, CURRENT_TIMESTAMP,
-        ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
-      )
-      RETURNING *
-    `;
-    savedLines.push(lineRows[0]);
-
-    for (const [laborIndex, labor] of line.laborItems.entries()) {
-      const laborRows = await prisma.$queryRaw<InvoiceLineLaborRow[]>`
-        INSERT INTO "InvoiceLineLabor" (
-          "id", "organizationId", "invoiceId", "invoiceLineId", "userId", "employeeName",
-          "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
-        ) VALUES (
-          ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
-        )
-        RETURNING *
-      `;
-      savedLaborRows.push(laborRows[0]);
-    }
-  }
-
-
-  await addInvoiceHistory({
-    organizationId: organization.id,
-    invoiceId: id,
-    projectId: cleanString(body.projectId),
-    invoiceNumber: existingInvoice.invoiceNumber,
-    eventType: "updated",
-    title: saveAsDraft
-      ? "Rechnungsentwurf gespeichert"
-      : finalizesDraft
-        ? "Rechnung fakturiert"
-        : "Rechnung bearbeitet",
-    note: `${existingInvoice.invoiceNumber} wurde ${
-      saveAsDraft ? "als Entwurf gespeichert" : finalizesDraft ? "fakturiert" : "aktualisiert"
-    }.`,
-    actorName,
-  });
-
-  if (!saveAsDraft) {
-    await markStampedHoursAsInvoiced({
+  if (!saveAsDraft && billedStampEntryIds.length) await ensureInvoiceTimeEntryColumns();
+  let core;
+  try {
+    core = await runInvoiceCrudTransaction({
+      prisma,
       organizationId: organization.id,
-      projectId: cleanString(body.projectId),
-      invoiceId: id,
-      invoiceNumber: existingInvoice.invoiceNumber,
-      stampEntryIds: billedStampEntryIds,
+      lockKey: `invoice:${id}`,
+      operation: async (tx) => {
+        const lockedRows = await tx.$queryRaw<Array<{ invoiceNumber: string; status: string; billingSource: string; internalContactName: string; updatedAt: Date }>>`
+          SELECT "invoiceNumber", "status", "billingSource", "internalContactName", "updatedAt"
+          FROM "Invoice"
+          WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+          FOR UPDATE
+        `;
+        const lockedInvoice = lockedRows[0];
+        if (!lockedInvoice) throw new InvoiceCrudConflictError("Rechnung wurde nicht gefunden.");
+        if (
+          lockedInvoice.invoiceNumber !== existingInvoice.invoiceNumber ||
+          lockedInvoice.status !== existingInvoice.status ||
+          lockedInvoice.billingSource !== existingInvoice.billingSource ||
+          lockedInvoice.internalContactName !== existingInvoice.internalContactName ||
+          lockedInvoice.updatedAt.getTime() !== existingInvoice.updatedAt.getTime()
+        ) {
+          throw new InvoiceCrudConflictError(
+            "Die Rechnung wurde zwischenzeitlich geändert. Bitte neu laden und erneut bearbeiten."
+          );
+        }
+        const rows = await tx.$queryRaw<InvoiceRow[]>`
+          UPDATE "Invoice"
+          SET
+            "projectId" = ${cleanString(body.projectId)}, "projectNumber" = ${cleanString(body.projectNumber)},
+            "projectTitle" = ${cleanString(body.projectTitle)}, "company" = ${company}, "billingSource" = ${billingSource},
+            "customerName" = ${cleanString(body.customerName)}, "customerStreet" = ${cleanString(body.customerStreet)},
+            "customerCity" = ${cleanString(body.customerCity)}, "contactName" = ${cleanString(body.contactName)},
+            "internalContactName" = ${internalContactName}, "internalPhone" = ${cleanString(body.internalPhone)},
+            "internalEmail" = ${cleanString(body.internalEmail)}, "plannedExecutionMonth" = ${plannedExecutionMonth},
+            "serviceDate" = ${serviceDate}, "sourceOfferId" = ${cleanString(body.sourceOfferId)},
+            "sourceOfferNumber" = ${cleanString(body.sourceOfferNumber)}, "introText" = ${cleanString(body.introText)},
+            "closingText" = ${cleanString(body.closingText)}, "discountPercent" = ${cleanPercent(body.discountPercent)},
+            "paymentTermDays" = ${paymentTermDays}, "dueDate" = ${dueDate}, "netTotal" = ${pdf.netTotal},
+            "vatRate" = ${pdf.vatRate}, "grossTotal" = ${pdf.grossTotal}, "pdfData" = ${pdf.pdfData},
+            "status" = CASE WHEN ${saveAsDraft} THEN 'Entwurf' WHEN "status" = 'Entwurf' THEN 'Fakturiert' ELSE "status" END,
+            "updatedAt" = CURRENT_TIMESTAMP
+          WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+          RETURNING *
+        `;
+        const persisted = await persistInvoiceLines(tx, {
+          organizationId: organization.id,
+          invoiceId: id,
+          lines,
+          replaceExisting: true,
+        });
+        await addInvoiceHistory(tx, {
+          organizationId: organization.id,
+          invoiceId: id,
+          projectId: cleanString(body.projectId),
+          invoiceNumber: existingInvoice.invoiceNumber,
+          eventType: "updated",
+          title: saveAsDraft
+            ? "Rechnungsentwurf gespeichert"
+            : finalizesDraft
+              ? "Rechnung fakturiert"
+              : "Rechnung bearbeitet",
+          note: `${existingInvoice.invoiceNumber} wurde ${
+            saveAsDraft ? "als Entwurf gespeichert" : finalizesDraft ? "fakturiert" : "aktualisiert"
+          }.`,
+          actorName,
+        });
+        if (!saveAsDraft) {
+          await markStampedHoursAsInvoiced(tx, {
+            organizationId: organization.id,
+            projectId: cleanString(body.projectId),
+            invoiceId: id,
+            invoiceNumber: existingInvoice.invoiceNumber,
+            stampEntryIds: billedStampEntryIds,
+          });
+        }
+        return { row: rows[0], ...persisted };
+      },
     });
+  } catch (error) {
+    if (error instanceof InvoiceCrudConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
   }
+  const { row, savedLines, savedLaborRows } = core;
 
   if (!saveAsDraft && isUnderbilledStampedHours && !body.suppressUnderbillingNotification) {
     await notifyManagementAboutUnderbilling({
@@ -2933,7 +2957,7 @@ export async function PATCH(req: Request) {
     actorName,
   });
 
-  return NextResponse.json(serializeInvoice(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
+  return NextResponse.json(serializeInvoice(row, savedLines, savedLaborRows, { includeInternalCosts }));
 }
 
 export async function DELETE(req: Request) {

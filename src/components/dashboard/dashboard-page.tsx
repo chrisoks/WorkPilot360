@@ -18612,6 +18612,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: editingOfferId,
         actorId: activeUserId,
+        expectedUpdatedAt: editingOfferBeforeSave?.updatedAt || "",
         ...offerPayload,
         saveAsDraft,
         projectId: selectedProjectFile.id,
@@ -20704,6 +20705,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: editingInvoiceId,
         actorId: activeUserId,
+        expectedUpdatedAt: editingInvoice?.updatedAt || "",
         ...draftToSave,
         saveAsDraft,
         billedStampEntryIds,
@@ -21923,6 +21925,7 @@ export function DashboardPage() {
             : catalogDraft.salesPrice,
         id: editingCatalogItemId,
         actorId: activeUserId,
+        expectedUpdatedAt: editingItem?.updatedAt || "",
         updatePackageSnapshots,
         scheduledSalesPriceUpdatePackages,
       }),
@@ -21968,6 +21971,8 @@ export function DashboardPage() {
         action: "set-review-status",
         id: editingCatalogItemId,
         actorId: activeUserId,
+        expectedUpdatedAt:
+          catalogItems.find((item) => item.id === editingCatalogItemId)?.updatedAt || "",
         reviewStatus,
         reviewNote: catalogDraft.reviewNote,
       }),
@@ -22142,6 +22147,9 @@ export function DashboardPage() {
       body: JSON.stringify({
         ...normalizedContactDraft,
         id: editingContactId,
+        expectedUpdatedAt: editingContactId
+          ? contacts.find((contact) => contact.id === editingContactId)?.updatedAt || ""
+          : "",
         actorId: activeUserId,
       }),
     });

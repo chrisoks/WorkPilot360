@@ -18,6 +18,11 @@ import {
   projectReviewStatuses,
   validateProjectReviewApprovalInput,
 } from "@/lib/projects/review-status";
+import {
+  assertCurrentProjectMasterdataVersion,
+  getProtectedProjectLifecycleState,
+  ProjectMasterdataConflictError,
+} from "@/lib/projects/project-masterdata-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -717,10 +722,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Projektname fehlt." }, { status: 400 });
   }
 
-  const status = normalizeProjectStatus(cleanString(body.status));
-  if (isArchivedProjectStatus(status) && !canArchiveProjects(actor)) {
-    return forbiddenProjectArchiveResponse();
-  }
   const contactReferenceError = await validateProjectContactReferences(organization.id, {
     contactId: cleanString(body.contactId),
     contactPersonId: cleanString(body.contactPersonId),
@@ -747,14 +748,24 @@ export async function POST(req: Request) {
     LIMIT 1
   `;
   const currentProject = currentRows[0] ?? null;
-  if (
-    (!currentProject && isArchivedProjectStatus(status)) ||
-    (currentProject && isArchivedProjectStatus(currentProject.status) !== isArchivedProjectStatus(status))
-  ) {
-    return NextResponse.json(
-      { error: "Archivieren und Wiederherstellen sind nur über die kontrollierte Projekt-Lebenszyklusprüfung zulässig.", code: "lifecycle_required" },
-      { status: 409 }
-    );
+  if (currentProject) {
+    try {
+      assertCurrentProjectMasterdataVersion({
+        currentUpdatedAt: currentProject.updatedAt,
+        expectedUpdatedAt: body.updatedAt,
+      });
+    } catch (error) {
+      if (error instanceof ProjectMasterdataConflictError) {
+        return NextResponse.json({ error: error.message, code: "project_version_conflict" }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+  const lifecycleState = getProtectedProjectLifecycleState(currentProject);
+  const status = lifecycleState.status;
+  const statusCode = lifecycleState.statusCode;
+  if (currentProject && isArchivedProjectStatus(status) && !canArchiveProjects(actor)) {
+    return forbiddenProjectArchiveResponse();
   }
   const projectKind = cleanString(body.projectKind);
   const incomingRecurringBillingMode = cleanRecurringBillingMode(body.recurringBillingMode);
@@ -822,7 +833,9 @@ export async function POST(req: Request) {
     ? null
     : currentProject?.reviewedProjectStatus ?? null;
 
-  const rows = await prisma.$queryRaw<LocalProjectRow[]>`
+  let rows: LocalProjectRow[];
+  try {
+    rows = await prisma.$queryRaw<LocalProjectRow[]>`
     INSERT INTO "WorkPilotProject" (
       "id",
       "organizationId",
@@ -881,7 +894,7 @@ export async function POST(req: Request) {
       ${title},
       ${cleanString(body.customer) || null},
       ${status || "Lead / Klärung"},
-      ${cleanString(body.statusCode) || null},
+      ${statusCode},
       ${cleanString(body.description) || null},
       ${cleanString(body.contactId) || null},
       ${cleanString(body.contactPersonId) || null},
@@ -929,8 +942,8 @@ export async function POST(req: Request) {
       "projectNumber" = EXCLUDED."projectNumber",
       "title" = EXCLUDED."title",
       "customer" = EXCLUDED."customer",
-      "status" = EXCLUDED."status",
-      "statusCode" = EXCLUDED."statusCode",
+      "status" = "WorkPilotProject"."status",
+      "statusCode" = "WorkPilotProject"."statusCode",
       "description" = EXCLUDED."description",
       "contactId" = EXCLUDED."contactId",
       "contactPersonId" = EXCLUDED."contactPersonId",
@@ -981,10 +994,36 @@ export async function POST(req: Request) {
       "reviewNote" = EXCLUDED."reviewNote",
       "reviewedProjectStatus" = EXCLUDED."reviewedProjectStatus",
       "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "WorkPilotProject"."organizationId" = EXCLUDED."organizationId"
+      AND (
+        ${currentProject === null}
+        OR "WorkPilotProject"."updatedAt" = ${currentProject?.updatedAt ?? new Date(0)}
+      )
     RETURNING *
-  `;
+    `;
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2002" || (error.code === "P2010" && error.meta?.code === "23505"))
+    ) {
+      return NextResponse.json(
+        { error: "Diese Projektnummer ist bereits vergeben.", code: "project_number_conflict" },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 
   const savedProject = rows[0];
+  if (!savedProject) {
+    return NextResponse.json(
+      {
+        error: "Das Projekt konnte wegen einer zwischenzeitlichen Änderung oder ID-Kollision nicht gespeichert werden. Bitte neu laden.",
+        code: "project_write_conflict",
+      },
+      { status: 409 }
+    );
+  }
   if (reviewWasInvalidated) {
     await prisma.$executeRaw`
       INSERT INTO "WorkPilotProjectReviewHistory" (

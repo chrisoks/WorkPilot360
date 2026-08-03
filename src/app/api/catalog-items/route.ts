@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
+import type { Prisma, User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
@@ -12,6 +12,13 @@ import {
   hasCatalogReviewRelevantChange,
   normalizeCatalogReviewStatus,
 } from "@/lib/catalog/review-status";
+import {
+  CatalogPackageValidationError,
+  type ValidatedCatalogPackageComponent,
+  validateCatalogPackageComponents,
+} from "@/lib/catalog/package-components";
+
+type CatalogDb = Prisma.TransactionClient | typeof prisma;
 
 type CatalogItemRow = {
   id: string;
@@ -406,12 +413,6 @@ function parseInteger(value: unknown, fallback = 0) {
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : fallback;
 }
 
-function parseNullableInteger(value: unknown) {
-  if (value === null || value === undefined || value === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : null;
-}
-
 function cleanType(value: unknown) {
   const valueAsString = cleanString(value);
   if (valueAsString === "service" || valueAsString === "package") return valueAsString;
@@ -591,49 +592,48 @@ async function findExistingWinterServicePackage(input: {
 async function replacePackageItems(input: {
   organizationId: string;
   packageId: string;
-  components: unknown;
+  components: ValidatedCatalogPackageComponent[];
+  db: CatalogDb;
 }) {
-  await prisma.$executeRaw`
+  await input.db.$executeRaw`
     DELETE FROM "CatalogPackageItem"
     WHERE "organizationId" = ${input.organizationId}
       AND "packageId" = ${input.packageId}
   `;
 
-  if (!Array.isArray(input.components)) return;
-
   for (const [index, component] of input.components.entries()) {
-    if (!component || typeof component !== "object") continue;
-    const componentRecord = component as Record<string, unknown>;
-    const componentItemId = cleanString(componentRecord.componentItemId);
-    if (!componentItemId) continue;
-    const quantity = parseNumber(componentRecord.quantity, 1);
-    const planningMinutesOverride = parseNullableInteger(componentRecord.planningMinutesOverride);
-
-    await prisma.$executeRaw`
+    const inserted = await input.db.$executeRaw`
       INSERT INTO "CatalogPackageItem" (
         "id", "organizationId", "packageId", "componentItemId", "quantity",
         "position", "descriptionOverride", "priceOverride", "purchasePriceSnapshot",
         "salesPriceSnapshot", "planningMinutesOverride", "createdAt", "updatedAt"
       )
       SELECT
-        ${randomUUID()}, ${input.organizationId}, ${input.packageId}, ${componentItemId},
-        ${quantity}, ${parseInteger(componentRecord.position, index)},
-        ${nullableString(componentRecord.descriptionOverride)}, ${parseNullableNumber(componentRecord.priceOverride)},
-        COALESCE(${parseNullableNumber(componentRecord.purchasePriceSnapshot)}, ci."purchasePrice"),
-        COALESCE(${parseNullableNumber(componentRecord.salesPriceSnapshot)}, ci."salesPrice"),
+        ${randomUUID()}, ${input.organizationId}, ${input.packageId}, ${component.componentItemId},
+        ${component.quantity}, ${component.position ?? index},
+        ${component.descriptionOverride}, ${component.priceOverride},
+        COALESCE(${component.purchasePriceSnapshot}, ci."purchasePrice"),
+        COALESCE(${component.salesPriceSnapshot}, ci."salesPrice"),
         COALESCE(
-          ${planningMinutesOverride},
+          ${component.planningMinutesOverride},
           CASE
             WHEN ci."type" = 'service'
-            THEN GREATEST(0, ROUND(ci."planningMinutesPerUnit" * ${quantity})::int)
+            THEN GREATEST(0, ROUND(ci."planningMinutesPerUnit" * ${component.quantity})::int)
             ELSE ci."planningMinutesPerUnit"
           END
         ),
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       FROM "CatalogItem" ci
-      WHERE ci."id" = ${componentItemId}
+      WHERE ci."id" = ${component.componentItemId}
         AND ci."organizationId" = ${input.organizationId}
+        AND ci."isActive" = true
+        AND ci."type" IN ('article', 'service')
     `;
+    if (inserted !== 1) {
+      throw new CatalogPackageValidationError(
+        `Paketbestandteil ${index + 1} wurde während des Speicherns geändert oder deaktiviert. Das Paket wurde nicht gespeichert.`
+      );
+    }
   }
 }
 
@@ -647,8 +647,10 @@ async function createHistory(input: {
   actorUserId?: string;
   actorName?: string;
   note?: string;
+  db?: CatalogDb;
 }) {
-  await prisma.$executeRaw`
+  const db = input.db ?? prisma;
+  await db.$executeRaw`
     INSERT INTO "CatalogItemHistory" (
       "id", "organizationId", "catalogItemId", "eventType", "fieldName",
       "oldValue", "newValue", "actorUserId", "actorName", "note", "createdAt"
@@ -672,7 +674,8 @@ async function writeChangeHistory(
   before: CatalogItemRow,
   after: CatalogItemRow,
   actorUserId: string,
-  actorName: string
+  actorName: string,
+  db: CatalogDb = prisma
 ) {
   const fields: Array<[keyof CatalogItemRow, string]> = [
     ["type", "Typ"],
@@ -707,6 +710,7 @@ async function writeChangeHistory(
       newValue: comparableValue(after[key]),
       actorUserId,
       actorName,
+      db,
     });
   }
 }
@@ -853,9 +857,15 @@ export async function POST(req: Request) {
     }
   }
 
-  let rows: CatalogItemRow[];
-  try {
-    rows = await prisma.$queryRaw<CatalogItemRow[]>`
+  const createCatalogItem = async (db: CatalogDb) => {
+    const validatedPackageItems = type === "package"
+      ? await validateCatalogPackageComponents({
+          organizationId: organization.id,
+          components: body.packageItems,
+          db,
+        })
+      : [];
+    const createdRows = await db.$queryRaw<CatalogItemRow[]>`
       INSERT INTO "CatalogItem" (
         "id", "organizationId", "type", "number", "name", "category", "trade", "unit",
         "description", "matchcode", "ean", "costCenter", "supplierName", "supplierNumber",
@@ -880,7 +890,35 @@ export async function POST(req: Request) {
       )
       RETURNING *
     `;
+    await createHistory({
+      organizationId: organization.id,
+      catalogItemId: id,
+      eventType: "created",
+      actorUserId: actor.id,
+      actorName,
+      note: "Stammdatensatz angelegt",
+      db,
+    });
+    if (type === "package") {
+      await replacePackageItems({
+        organizationId: organization.id,
+        packageId: id,
+        components: validatedPackageItems,
+        db,
+      });
+    }
+    return createdRows;
+  };
+
+  let rows: CatalogItemRow[];
+  try {
+    rows = type === "package"
+      ? await prisma.$transaction((tx) => createCatalogItem(tx))
+      : await createCatalogItem(prisma);
   } catch (error) {
+    if (error instanceof CatalogPackageValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (winterServiceDedupeKey && isUniqueConstraintError(error)) {
       const existingRows = await prisma.$queryRaw<CatalogItemRow[]>`
         SELECT *
@@ -904,22 +942,6 @@ export async function POST(req: Request) {
       { error: "Eine Position mit dieser Nummer ist bereits vorhanden." },
       { status: 409 }
     );
-  }
-
-  await createHistory({
-    organizationId: organization.id,
-    catalogItemId: id,
-    eventType: "created",
-    actorUserId: actor.id,
-    actorName,
-    note: "Stammdatensatz angelegt",
-  });
-  if (type === "package") {
-    await replacePackageItems({
-      organizationId: organization.id,
-      packageId: id,
-      components: body.packageItems,
-    });
   }
 
   return NextResponse.json(formatCatalogItem(rows[0]), { status: 201 });
@@ -955,6 +977,13 @@ export async function PATCH(req: Request) {
   if (!before) {
     return NextResponse.json({ error: "Artikel/Leistung wurde nicht gefunden." }, { status: 404 });
   }
+  const expectedUpdatedAt = cleanString(body.expectedUpdatedAt);
+  if (!expectedUpdatedAt || new Date(expectedUpdatedAt).getTime() !== before.updatedAt.getTime()) {
+    return NextResponse.json(
+      { error: "Der Stammdatensatz wurde zwischenzeitlich geändert. Bitte lade ihn neu und prüfe deine Eingaben erneut." },
+      { status: 409 }
+    );
+  }
 
   if (body.action === "set-review-status") {
     const reviewStatus = normalizeCatalogReviewStatus(body.reviewStatus);
@@ -962,36 +991,47 @@ export async function PATCH(req: Request) {
     const reviewedAt = reviewStatus === "approved" ? new Date() : null;
     const reviewedByUserId = reviewStatus === "approved" ? actor.id : null;
     const reviewedByName = reviewStatus === "approved" ? actorName : null;
-    const rows = await prisma.$queryRaw<CatalogItemRow[]>`
-      UPDATE "CatalogItem"
-      SET
-        "reviewStatus" = ${reviewStatus},
-        "reviewedAt" = ${reviewedAt},
-        "reviewedByUserId" = ${reviewedByUserId},
-        "reviewedByName" = ${reviewedByName},
-        "reviewNote" = ${reviewNote},
-        "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "id" = ${id}
-        AND "organizationId" = ${organization.id}
-      RETURNING *
-    `;
-    const updated = rows[0];
-    await createHistory({
-      organizationId: organization.id,
-      catalogItemId: id,
-      eventType: reviewStatus === "approved" ? "review_approved" : "review_status_changed",
-      fieldName: "Prüfstatus",
-      oldValue: normalizeCatalogReviewStatus(before.reviewStatus),
-      newValue: reviewStatus,
-      actorUserId: actor.id,
-      actorName,
-      note:
-        reviewStatus === "approved"
-          ? "Stammdatensatz fachlich freigegeben"
-          : reviewStatus === "needs_review"
-            ? "Stammdatensatz zur Prüfung markiert"
-            : "Stammdatensatz als ungeprüft markiert",
+    const updated = await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<CatalogItemRow[]>`
+        UPDATE "CatalogItem"
+        SET
+          "reviewStatus" = ${reviewStatus},
+          "reviewedAt" = ${reviewedAt},
+          "reviewedByUserId" = ${reviewedByUserId},
+          "reviewedByName" = ${reviewedByName},
+          "reviewNote" = ${reviewNote},
+          "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "id" = ${id}
+          AND "organizationId" = ${organization.id}
+          AND "updatedAt" = ${before.updatedAt}
+        RETURNING *
+      `;
+      if (!rows[0]) return null;
+      await createHistory({
+        organizationId: organization.id,
+        catalogItemId: id,
+        eventType: reviewStatus === "approved" ? "review_approved" : "review_status_changed",
+        fieldName: "Prüfstatus",
+        oldValue: normalizeCatalogReviewStatus(before.reviewStatus),
+        newValue: reviewStatus,
+        actorUserId: actor.id,
+        actorName,
+        note:
+          reviewStatus === "approved"
+            ? "Stammdatensatz fachlich freigegeben"
+            : reviewStatus === "needs_review"
+              ? "Stammdatensatz zur Prüfung markiert"
+              : "Stammdatensatz als ungeprüft markiert",
+        db: tx,
+      });
+      return rows[0];
     });
+    if (!updated) {
+      return NextResponse.json(
+        { error: "Der Stammdatensatz wurde zwischenzeitlich geändert. Bitte lade ihn neu und prüfe deine Eingaben erneut." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(formatCatalogItem(updated));
   }
 
@@ -1040,6 +1080,14 @@ export async function PATCH(req: Request) {
       existingPackageItems,
       body.packageItems
     );
+  if (before.type === "package" && type !== "package" && existingPackageItems.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Der Typ kann nicht geändert werden, solange das Paket Bestandteile enthält. Entferne die Bestandteile kontrolliert in der Paketmaske oder lege einen neuen Artikel beziehungsweise eine neue Leistung an.",
+      },
+      { status: 409 }
+    );
+  }
   const reviewCandidate: Record<string, unknown> = {
     ...before,
     type,
@@ -1089,9 +1137,15 @@ export async function PATCH(req: Request) {
     normalizeCatalogReviewStatus(before.reviewStatus) === "approved" &&
     reviewStatus === "needs_review";
 
-  let rows: CatalogItemRow[];
-  try {
-    rows = await prisma.$queryRaw<CatalogItemRow[]>`
+  const updateCatalogItem = async (db: CatalogDb) => {
+    const validatedPackageItems = type === "package"
+      ? await validateCatalogPackageComponents({
+          organizationId: organization.id,
+          components: body.packageItems,
+          db,
+        })
+      : [];
+    const updatedRows = await db.$queryRaw<CatalogItemRow[]>`
       UPDATE "CatalogItem"
       SET
         "type" = ${type},
@@ -1145,9 +1199,65 @@ export async function PATCH(req: Request) {
         "updatedAt" = CURRENT_TIMESTAMP
       WHERE "id" = ${id}
         AND "organizationId" = ${organization.id}
+        AND "updatedAt" = ${before.updatedAt}
       RETURNING *
     `;
+    const updated = updatedRows[0];
+    if (!updated) {
+      throw new CatalogPackageValidationError("Der Stammdatensatz wurde zwischenzeitlich geändert. Bitte lade ihn neu und prüfe deine Eingaben erneut.");
+    }
+
+    const shouldUpdatePackageSnapshots = type !== "package" && Boolean(body.updatePackageSnapshots);
+    if (shouldUpdatePackageSnapshots) {
+      await db.$executeRaw`
+        UPDATE "CatalogPackageItem"
+        SET
+          "purchasePriceSnapshot" = ${nextPurchasePrice},
+          "salesPriceSnapshot" = ${nextSalesPrice},
+          "planningMinutesOverride" = CASE
+            WHEN ${type} = 'service' THEN ${nextPlanningMinutes}
+            ELSE "planningMinutesOverride"
+          END,
+          "priceOverride" = NULL,
+          "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "organizationId" = ${organization.id}
+          AND "componentItemId" = ${id}
+      `;
+    }
+    if (type === "package") {
+      await replacePackageItems({
+        organizationId: organization.id,
+        packageId: updated.id,
+        components: validatedPackageItems,
+        db,
+      });
+    }
+    await writeChangeHistory(organization.id, before, updated, actor.id, actorName, db);
+    if (type === "package") {
+      await createHistory({
+        organizationId: organization.id,
+        catalogItemId: updated.id,
+        eventType: "package_items_updated",
+        fieldName: "Bestandteile",
+        actorUserId: actor.id,
+        actorName,
+        note: "Paketbestandteile aktualisiert",
+        db,
+      });
+    }
+    return updatedRows;
+  };
+
+  let rows: CatalogItemRow[];
+  try {
+    rows = before.type === "package" || type === "package"
+      ? await prisma.$transaction((tx) => updateCatalogItem(tx))
+      : await updateCatalogItem(prisma);
   } catch (error) {
+    if (error instanceof CatalogPackageValidationError) {
+      const status = error.message.includes("zwischenzeitlich geändert") ? 409 : 400;
+      return NextResponse.json({ error: error.message }, { status });
+    }
     if (!isUniqueConstraintError(error)) {
       throw error;
     }
@@ -1158,49 +1268,6 @@ export async function PATCH(req: Request) {
     );
   }
   const after = rows[0];
-  const shouldUpdatePackageSnapshots = type !== "package" && Boolean(body.updatePackageSnapshots);
-  if (shouldUpdatePackageSnapshots) {
-    await prisma.$executeRaw`
-      UPDATE "CatalogPackageItem"
-      SET
-        "purchasePriceSnapshot" = ${nextPurchasePrice},
-        "salesPriceSnapshot" = ${nextSalesPrice},
-        "planningMinutesOverride" = CASE
-          WHEN ${type} = 'service' THEN ${nextPlanningMinutes}
-          ELSE "planningMinutesOverride"
-        END,
-        "priceOverride" = NULL,
-        "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "organizationId" = ${organization.id}
-        AND "componentItemId" = ${id}
-    `;
-  }
-  if (type === "package") {
-    await replacePackageItems({
-      organizationId: organization.id,
-      packageId: after.id,
-      components: body.packageItems,
-    });
-  }
-  await writeChangeHistory(
-    organization.id,
-    before,
-    after,
-    actor.id,
-    actorName
-  );
-
-  if (type === "package") {
-    await createHistory({
-      organizationId: organization.id,
-      catalogItemId: after.id,
-      eventType: "package_items_updated",
-      fieldName: "Bestandteile",
-      actorUserId: actor.id,
-      actorName,
-      note: "Paketbestandteile aktualisiert",
-    });
-  }
 
   return NextResponse.json(formatCatalogItem(after));
 }

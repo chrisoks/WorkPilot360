@@ -3,7 +3,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
 import fontkit from "@pdf-lib/fontkit";
-import type { User } from "@prisma/client";
+import type { Prisma, User } from "@prisma/client";
 import {
   PDFDocument,
   StandardFonts,
@@ -30,6 +30,8 @@ import {
   executeOfferLifecycle,
   OfferLifecycleServiceError,
 } from "@/lib/offers/offer-lifecycle-service";
+import { runOfferCrudTransaction } from "@/lib/offers/offer-crud-transaction";
+import { allocateNextOfferNumber } from "@/lib/offers/offer-number-allocation";
 import {
   externalizePdfPayload,
   resolveStorageBackedBytes,
@@ -68,6 +70,7 @@ export type OfferInput = {
   action?: "markLost" | "markWon" | "restoreLost" | "markPrinted";
   actorId?: string;
   actorName?: string;
+  expectedUpdatedAt?: string;
   projectId?: string;
   projectNumber?: string;
   projectTitle?: string;
@@ -587,21 +590,6 @@ function drawTextBlock(
   return cursorY;
 }
 
-async function getNextOfferNumber(organizationId: string) {
-  const rows = await prisma.$queryRaw<Array<{ offerNumber: string }>>`
-    SELECT "offerNumber"
-    FROM "Offer"
-    WHERE "organizationId" = ${organizationId}
-  `;
-  const highest =
-    rows
-      .map((row) => Number((row.offerNumber.match(/\d+/g) ?? ["10099"]).join("")))
-      .filter((value) => Number.isFinite(value))
-      .sort((first, second) => second - first)[0] ?? 10099;
-
-  return `ANG-${highest + 1}`;
-}
-
 function getTemplatePath(company: OfferCompany) {
   return path.join(
     process.cwd(),
@@ -991,8 +979,8 @@ async function addOfferHistory(input: {
   title: string;
   note: string;
   actorName: string;
-}) {
-  await prisma.$executeRaw`
+}, db: Pick<Prisma.TransactionClient, "$executeRaw"> = prisma) {
+  await db.$executeRaw`
     INSERT INTO "OfferHistory" (
       "id", "organizationId", "offerId", "projectId", "offerNumber",
       "eventType", "title", "note", "actorName"
@@ -1179,91 +1167,100 @@ export async function POST(req: Request) {
   }
 
   try {
-    const offerNumber = await getNextOfferNumber(organization.id);
-    const id = randomUUID();
     const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
-    const pdf =
-      lines.length > 0
-        ? await generateOfferPdf({ ...body, company, offerNumber }, lines)
-        : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
+    const result = await runOfferCrudTransaction({
+      prisma,
+      organizationId: organization.id,
+      lockKey: "number",
+      operation: async (tx) => {
+      const offerNumber = await allocateNextOfferNumber(tx, organization.id);
+      const id = randomUUID();
+      const pdf =
+        lines.length > 0
+          ? await generateOfferPdf({ ...body, company, offerNumber }, lines)
+          : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
 
-    const rows = await prisma.$queryRaw<OfferRow[]>`
-      INSERT INTO "Offer" (
-        "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
-        "offerType", "addendumMode", "plannedExecutionEndMonth", "parentOfferId",
-        "offerNumber", "status", "customerName", "customerStreet", "customerCity",
-        "contactName", "internalContactName", "internalPhone", "internalEmail",
-        "plannedExecutionMonth", "introText", "closingText", "discountPercent", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
-      ) VALUES (
-        ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
-        ${cleanString(body.projectTitle)}, ${company}, ${offerType}, ${addendumMode}, ${plannedExecutionEndMonth},
-        ${cleanString(body.parentOfferId)}, ${offerNumber}, ${saveAsDraft ? "Entwurf" : "Erstellt"},
-        ${cleanString(body.customerName)}, ${cleanString(body.customerStreet)}, ${cleanString(body.customerCity)},
-        ${cleanString(body.contactName)}, ${cleanString(body.internalContactName)}, ${cleanString(body.internalPhone)},
-        ${cleanString(body.internalEmail)}, ${plannedExecutionMonth}, ${cleanString(body.introText)}, ${cleanString(body.closingText)},
-        ${cleanPercent(body.discountPercent)}, ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
-      )
-      RETURNING *
-    `;
-
-    const savedLines: OfferLineRow[] = [];
-    const savedLaborRows: OfferLineLaborRow[] = [];
-    for (const [index, line] of lines.entries()) {
-      const lineRows = await prisma.$queryRaw<OfferLineRow[]>`
-        INSERT INTO "OfferLine" (
-          "id", "organizationId", "offerId", "catalogItemId", "catalogType", "isLaborPosition", "position",
-          "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "laborCostRateKey", "laborCostRate", "vatRate", "totalNet", "updatedAt"
+      const rows = await tx.$queryRaw<OfferRow[]>`
+        INSERT INTO "Offer" (
+          "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
+          "offerType", "addendumMode", "plannedExecutionEndMonth", "parentOfferId",
+          "offerNumber", "status", "customerName", "customerStreet", "customerCity",
+          "contactName", "internalContactName", "internalPhone", "internalEmail",
+          "plannedExecutionMonth", "introText", "closingText", "discountPercent", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
         ) VALUES (
-          ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
-          ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-          ${line.unitPrice}, ${line.discountPercent}, ${line.laborCostRateKey}, ${line.laborCostRate}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
+          ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
+          ${cleanString(body.projectTitle)}, ${company}, ${offerType}, ${addendumMode}, ${plannedExecutionEndMonth},
+          ${cleanString(body.parentOfferId)}, ${offerNumber}, ${saveAsDraft ? "Entwurf" : "Erstellt"},
+          ${cleanString(body.customerName)}, ${cleanString(body.customerStreet)}, ${cleanString(body.customerCity)},
+          ${cleanString(body.contactName)}, ${cleanString(body.internalContactName)}, ${cleanString(body.internalPhone)},
+          ${cleanString(body.internalEmail)}, ${plannedExecutionMonth}, ${cleanString(body.introText)}, ${cleanString(body.closingText)},
+          ${cleanPercent(body.discountPercent)}, ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
         )
         RETURNING *
       `;
-      savedLines.push(lineRows[0]);
 
-      for (const [laborIndex, labor] of line.laborItems.entries()) {
-        const laborRows = await prisma.$queryRaw<OfferLineLaborRow[]>`
-          INSERT INTO "OfferLineLabor" (
-            "id", "organizationId", "offerId", "offerLineId", "userId", "employeeName",
-            "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
+      const savedLines: OfferLineRow[] = [];
+      const savedLaborRows: OfferLineLaborRow[] = [];
+      for (const [index, line] of lines.entries()) {
+        const lineRows = await tx.$queryRaw<OfferLineRow[]>`
+          INSERT INTO "OfferLine" (
+            "id", "organizationId", "offerId", "catalogItemId", "catalogType", "isLaborPosition", "position",
+            "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "laborCostRateKey", "laborCostRate", "vatRate", "totalNet", "updatedAt"
           ) VALUES (
-            ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-            ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
+            ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
+            ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
+            ${line.unitPrice}, ${line.discountPercent}, ${line.laborCostRateKey}, ${line.laborCostRate}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
           )
           RETURNING *
         `;
-        savedLaborRows.push(laborRows[0]);
-      }
-    }
+        savedLines.push(lineRows[0]);
 
-    await addOfferHistory({
-      organizationId: organization.id,
-      offerId: id,
-      projectId: cleanString(body.projectId),
-      offerNumber,
-      eventType: "created",
-      title: saveAsDraft ? "Angebotsentwurf gespeichert" : "Angebot angelegt",
-      note: `${offerType === "addendum" ? "Nachtragsangebot" : "Angebot"} ${offerNumber} wurde ${
-        saveAsDraft ? "als Entwurf gespeichert" : "erstellt"
-      }.`,
-      actorName,
+        for (const [laborIndex, labor] of line.laborItems.entries()) {
+          const laborRows = await tx.$queryRaw<OfferLineLaborRow[]>`
+            INSERT INTO "OfferLineLabor" (
+              "id", "organizationId", "offerId", "offerLineId", "userId", "employeeName",
+              "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
+            ) VALUES (
+              ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
+              ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
+            )
+            RETURNING *
+          `;
+          savedLaborRows.push(laborRows[0]);
+        }
+      }
+
+      await addOfferHistory({
+        organizationId: organization.id,
+        offerId: id,
+        projectId: cleanString(body.projectId),
+        offerNumber,
+        eventType: "created",
+        title: saveAsDraft ? "Angebotsentwurf gespeichert" : "Angebot angelegt",
+        note: `${offerType === "addendum" ? "Nachtragsangebot" : "Angebot"} ${offerNumber} wurde ${
+          saveAsDraft ? "als Entwurf gespeichert" : "erstellt"
+        }.`,
+        actorName,
+      }, tx);
+
+        return { id, offerNumber, pdf, row: rows[0], savedLines, savedLaborRows };
+      },
     });
 
     await externalizePdfPayload({
       organizationId: organization.id,
       ownerType: "offer",
-      ownerId: id,
+      ownerId: result.id,
       sourceType: "offer-pdf",
       category: "offers",
-      originalName: `${offerNumber}.pdf`,
-      pdfBase64: pdf.pdfData,
+      originalName: `${result.offerNumber}.pdf`,
+      pdfBase64: result.pdf.pdfData,
       createdByUserId: actor.id,
       writeReference: (tx, reference) =>
-        tx.offer.update({ where: { id }, data: { pdfData: reference } }),
+        tx.offer.update({ where: { id: result.id }, data: { pdfData: reference } }),
     });
 
-    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
+    return NextResponse.json(serializeOffer(result.row, result.savedLines, result.savedLaborRows, { includeInternalCosts }));
   } catch (error) {
     console.error("Offer creation failed", error);
     return NextResponse.json(
@@ -1591,8 +1588,8 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Der Ausfuehrungszeitraum endet vor dem Startmonat." }, { status: 400 });
   }
 
-  const existingRows = await prisma.$queryRaw<Array<{ offerNumber: string; status: string }>>`
-    SELECT "offerNumber", "status"
+  const existingRows = await prisma.$queryRaw<Array<{ offerNumber: string; status: string; updatedAt: Date }>>`
+    SELECT "offerNumber", "status", "updatedAt"
     FROM "Offer"
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     LIMIT 1
@@ -1601,6 +1598,13 @@ export async function PATCH(req: Request) {
   if (!existingOffer) {
     return NextResponse.json({ error: "Angebot wurde nicht gefunden." }, { status: 404 });
   }
+  const expectedUpdatedAt = cleanString(body.expectedUpdatedAt);
+  if (!expectedUpdatedAt || new Date(expectedUpdatedAt).getTime() !== existingOffer.updatedAt.getTime()) {
+    return NextResponse.json(
+      { error: "Das Angebot wurde zwischenzeitlich geändert. Bitte neu laden und erneut bearbeiten." },
+      { status: 409 }
+    );
+  }
 
   const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
   const pdf =
@@ -1608,98 +1612,124 @@ export async function PATCH(req: Request) {
       ? await generateOfferPdf({ ...body, company, offerNumber: existingOffer.offerNumber }, lines)
       : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
 
-  const rows = await prisma.$queryRaw<OfferRow[]>`
-    WITH updated_offer AS (
-    UPDATE "Offer"
-    SET
-      "projectId" = ${cleanString(body.projectId)},
-      "projectNumber" = ${cleanString(body.projectNumber)},
-      "projectTitle" = ${cleanString(body.projectTitle)},
-      "company" = ${company},
-      "offerType" = ${offerType},
-      "addendumMode" = ${addendumMode},
-      "plannedExecutionEndMonth" = ${plannedExecutionEndMonth},
-      "parentOfferId" = ${cleanString(body.parentOfferId)},
-      "customerName" = ${cleanString(body.customerName)},
-      "customerStreet" = ${cleanString(body.customerStreet)},
-      "customerCity" = ${cleanString(body.customerCity)},
-      "contactName" = ${cleanString(body.contactName)},
-      "internalContactName" = ${cleanString(body.internalContactName)},
-      "internalPhone" = ${cleanString(body.internalPhone)},
-      "internalEmail" = ${cleanString(body.internalEmail)},
-      "plannedExecutionMonth" = ${plannedExecutionMonth},
-      "introText" = ${cleanString(body.introText)},
-      "closingText" = ${cleanString(body.closingText)},
-      "discountPercent" = ${cleanPercent(body.discountPercent)},
-      "netTotal" = ${pdf.netTotal},
-      "vatRate" = ${pdf.vatRate},
-      "grossTotal" = ${pdf.grossTotal},
-      "pdfData" = ${pdf.pdfData},
-      "status" = CASE
-        WHEN ${saveAsDraft} THEN 'Entwurf'
-        WHEN "status" = 'Entwurf' THEN 'Erstellt'
-        ELSE "status"
-      END,
-      "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "organizationId" = ${organization.id} AND "id" = ${id}
-    RETURNING *
-    ), revoked_links AS (
-      UPDATE "OfferAcceptanceRequest"
-      SET "status" = 'revoked', "revokedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "organizationId" = ${organization.id}
-        AND "offerId" IN (SELECT id FROM updated_offer)
-        AND "acceptedAt" IS NULL AND "revokedAt" IS NULL
-      RETURNING id
-    )
-    SELECT * FROM updated_offer
-  `;
-
-  await prisma.$executeRaw`
-    DELETE FROM "OfferLine"
-    WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
-  `;
-
-  const savedLines: OfferLineRow[] = [];
-  const savedLaborRows: OfferLineLaborRow[] = [];
-  for (const [index, line] of lines.entries()) {
-    const lineRows = await prisma.$queryRaw<OfferLineRow[]>`
-      INSERT INTO "OfferLine" (
-        "id", "organizationId", "offerId", "catalogItemId", "catalogType", "isLaborPosition", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "laborCostRateKey", "laborCostRate", "vatRate", "totalNet", "updatedAt"
-      ) VALUES (
-        ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
-        ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.discountPercent}, ${line.laborCostRateKey}, ${line.laborCostRate}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
-      )
-      RETURNING *
+  const result = await runOfferCrudTransaction({
+    prisma,
+    organizationId: organization.id,
+    lockKey: `offer:${id}`,
+    operation: async (tx) => {
+    const lockedRows = await tx.$queryRaw<Array<{ id: string; updatedAt: Date }>>`
+      SELECT "id", "updatedAt"
+      FROM "Offer"
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      FOR UPDATE
     `;
-    savedLines.push(lineRows[0]);
+    if (!lockedRows[0] || lockedRows[0].updatedAt.getTime() !== existingOffer.updatedAt.getTime()) {
+      return null;
+    }
 
-    for (const [laborIndex, labor] of line.laborItems.entries()) {
-      const laborRows = await prisma.$queryRaw<OfferLineLaborRow[]>`
-        INSERT INTO "OfferLineLabor" (
-          "id", "organizationId", "offerId", "offerLineId", "userId", "employeeName",
-          "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
+    const rows = await tx.$queryRaw<OfferRow[]>`
+      WITH updated_offer AS (
+      UPDATE "Offer"
+      SET
+        "projectId" = ${cleanString(body.projectId)},
+        "projectNumber" = ${cleanString(body.projectNumber)},
+        "projectTitle" = ${cleanString(body.projectTitle)},
+        "company" = ${company},
+        "offerType" = ${offerType},
+        "addendumMode" = ${addendumMode},
+        "plannedExecutionEndMonth" = ${plannedExecutionEndMonth},
+        "parentOfferId" = ${cleanString(body.parentOfferId)},
+        "customerName" = ${cleanString(body.customerName)},
+        "customerStreet" = ${cleanString(body.customerStreet)},
+        "customerCity" = ${cleanString(body.customerCity)},
+        "contactName" = ${cleanString(body.contactName)},
+        "internalContactName" = ${cleanString(body.internalContactName)},
+        "internalPhone" = ${cleanString(body.internalPhone)},
+        "internalEmail" = ${cleanString(body.internalEmail)},
+        "plannedExecutionMonth" = ${plannedExecutionMonth},
+        "introText" = ${cleanString(body.introText)},
+        "closingText" = ${cleanString(body.closingText)},
+        "discountPercent" = ${cleanPercent(body.discountPercent)},
+        "netTotal" = ${pdf.netTotal},
+        "vatRate" = ${pdf.vatRate},
+        "grossTotal" = ${pdf.grossTotal},
+        "pdfData" = ${pdf.pdfData},
+        "status" = CASE
+          WHEN ${saveAsDraft} THEN 'Entwurf'
+          WHEN "status" = 'Entwurf' THEN 'Erstellt'
+          ELSE "status"
+        END,
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      RETURNING *
+      ), revoked_links AS (
+        UPDATE "OfferAcceptanceRequest"
+        SET "status" = 'revoked', "revokedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "organizationId" = ${organization.id}
+          AND "offerId" IN (SELECT id FROM updated_offer)
+          AND "acceptedAt" IS NULL AND "revokedAt" IS NULL
+        RETURNING id
+      )
+      SELECT * FROM updated_offer
+    `;
+
+    await tx.$executeRaw`
+      DELETE FROM "OfferLine"
+      WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
+    `;
+
+    const savedLines: OfferLineRow[] = [];
+    const savedLaborRows: OfferLineLaborRow[] = [];
+    for (const [index, line] of lines.entries()) {
+      const lineRows = await tx.$queryRaw<OfferLineRow[]>`
+        INSERT INTO "OfferLine" (
+          "id", "organizationId", "offerId", "catalogItemId", "catalogType", "isLaborPosition", "position",
+          "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "laborCostRateKey", "laborCostRate", "vatRate", "totalNet", "updatedAt"
         ) VALUES (
-          ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
+          ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
+          ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
+          ${line.unitPrice}, ${line.discountPercent}, ${line.laborCostRateKey}, ${line.laborCostRate}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
         )
         RETURNING *
       `;
-      savedLaborRows.push(laborRows[0]);
-    }
-  }
+      savedLines.push(lineRows[0]);
 
-  await addOfferHistory({
-    organizationId: organization.id,
-    offerId: id,
-    projectId: cleanString(body.projectId),
-    offerNumber: existingOffer.offerNumber,
-    eventType: "updated",
-    title: saveAsDraft ? "Angebotsentwurf gespeichert" : "Angebot bearbeitet",
-    note: `${existingOffer.offerNumber} wurde ${saveAsDraft ? "als Entwurf gespeichert" : "aktualisiert"}.`,
-    actorName,
+      for (const [laborIndex, labor] of line.laborItems.entries()) {
+        const laborRows = await tx.$queryRaw<OfferLineLaborRow[]>`
+          INSERT INTO "OfferLineLabor" (
+            "id", "organizationId", "offerId", "offerLineId", "userId", "employeeName",
+            "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
+          ) VALUES (
+            ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
+            ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
+          )
+          RETURNING *
+        `;
+        savedLaborRows.push(laborRows[0]);
+      }
+    }
+
+    await addOfferHistory({
+      organizationId: organization.id,
+      offerId: id,
+      projectId: cleanString(body.projectId),
+      offerNumber: existingOffer.offerNumber,
+      eventType: "updated",
+      title: saveAsDraft ? "Angebotsentwurf gespeichert" : "Angebot bearbeitet",
+      note: `${existingOffer.offerNumber} wurde ${saveAsDraft ? "als Entwurf gespeichert" : "aktualisiert"}.`,
+      actorName,
+    }, tx);
+
+      return { row: rows[0], savedLines, savedLaborRows };
+    },
   });
+
+  if (!result) {
+    return NextResponse.json(
+      { error: "Das Angebot wurde zwischenzeitlich geändert. Bitte neu laden und erneut bearbeiten." },
+      { status: 409 }
+    );
+  }
 
   await externalizePdfPayload({
     organizationId: organization.id,
@@ -1714,7 +1744,7 @@ export async function PATCH(req: Request) {
       tx.offer.update({ where: { id }, data: { pdfData: reference } }),
   });
 
-  return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
+  return NextResponse.json(serializeOffer(result.row, result.savedLines, result.savedLaborRows, { includeInternalCosts }));
 }
 
 export async function DELETE(req: Request) {

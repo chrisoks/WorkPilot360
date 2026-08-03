@@ -2336,7 +2336,7 @@ model WorkPilotProject {
   projectNumber               String
   title                       String
   customer                    String?
-  status                      String    @default("Lead / Kl├ñrung")
+  status                      String    @default("Lead / Klärung")
   statusCode                  String?
   description                 String?
   contactId                   String?
@@ -2390,6 +2390,7 @@ model WorkPilotProject {
   updatedAt                   DateTime  @default(now())
   responsibleName             String?
 
+  @@unique([organizationId, projectNumber])
   @@index([organizationId, reviewStatus])
 }
 

@@ -87,6 +87,8 @@ type CustomerInvoiceCountRow = {
   invoiceCount: number;
 };
 
+class ContactWriteConflictError extends Error {}
+
 function getContactDisplayName(contact: ContactRow) {
   return (
     contact.companyName ||
@@ -564,6 +566,13 @@ export async function PATCH(req: Request) {
   if (existingContacts.length === 0) {
     return NextResponse.json({ error: "Kontakt wurde nicht gefunden." }, { status: 404 });
   }
+  const expectedUpdatedAt = cleanString(body.expectedUpdatedAt);
+  if (!expectedUpdatedAt || new Date(expectedUpdatedAt).getTime() !== existingContacts[0].updatedAt.getTime()) {
+    return NextResponse.json(
+      { error: "Der Kontakt wurde zwischenzeitlich geändert. Bitte neu laden und die Eingaben erneut prüfen." },
+      { status: 409 }
+    );
+  }
   const customerNumber = cleanString(body.customerNumber) || existingContacts[0].customerNumber;
   const customerStatus = getCustomerStatusInput({
     body,
@@ -674,8 +683,15 @@ export async function PATCH(req: Request) {
       "updatedAt" = CURRENT_TIMESTAMP
       WHERE "id" = ${id}
         AND "organizationId" = ${organization.id}
+        AND "updatedAt" = ${previousContact.updatedAt}
       RETURNING *
     `;
+
+    if (!rows[0]) {
+      throw new ContactWriteConflictError(
+        "Der Kontakt wurde zwischenzeitlich geändert. Bitte neu laden und die Eingaben erneut prüfen."
+      );
+    }
 
     if (customerStatusAuditText) {
       await transaction.auditLog.create({
@@ -723,6 +739,9 @@ export async function PATCH(req: Request) {
     });
   } catch (error) {
     if (error instanceof ContactNumberConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof ContactWriteConflictError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
     throw error;
