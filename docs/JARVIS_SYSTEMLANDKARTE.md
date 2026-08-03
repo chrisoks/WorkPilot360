@@ -2,6 +2,30 @@
 
 Stand: 03.08.2026
 
+## Strenger Qualitätsvertrag und Kunden-Umsatzrangfolge
+
+- Der permanente 110er-Live-Korpus sperrt nun `unknown`, generische
+  Fähigkeitslücken, fehlende Analyseadapter und veraltete Nichtfreigabe-Texte
+  für alle bekannten Fragen. Fähigkeitenauskunft und Kundenumsatz besitzen
+  zusätzliche inhaltliche Verträge.
+- Belegte Nulltreffer sind normale Antworten. Eine konkrete Margenfrage ohne
+  aktive Fahrtenkalkulation führt zu einer gezielten Rückfrage nach Fahrzeug,
+  Strecke und Kraftstoffpreis und niemals zu einer erfundenen Zahl.
+- `management.operations.customer-revenue` aggregiert organisationsgebunden
+  alle finanziell aktiven Rechnungen über die stabile Projekt-Kunden-Zuordnung,
+  sortiert nach Netto-Umsatz und schließt Entwürfe, gelöschte und stornierte
+  Belege sichtbar aus. Der Adapter lädt nur Projekte, Kontakte und Rechnungen.
+- Produktivabnahme Runtime `405ed32626420cae600aef23355ca488d9c65296`,
+  Backups
+  `/var/backups/workpilot360/20260803T104000Z-before-jarvis-corpus-hardening`
+  und
+  `/var/backups/workpilot360/20260803T105000Z-before-jarvis-customer-revenue`,
+  190/190 Testdateien mit 1.897/1.897 Tests, 90-Seiten-Build,
+  lokal/produktiv 110/110 Fragen, produktiv 33 vorbereitete und null
+  ausgeführte Aktionen, null Rückstände, leerer Prisma-Diff sowie
+  Dashboard/Formular HTTP 200. WorkPilot PID `889992`, KlinikNavigator
+  unverändert PID `398228`.
+
 ## Rollenbezogene Fähigkeitenauskunft
 
 - Die Antwort auf „Welche Aktionen kannst du wirklich ausführen?“ entsteht

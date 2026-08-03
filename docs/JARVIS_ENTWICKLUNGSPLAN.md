@@ -2,7 +2,45 @@
 
 Stand: 03.08.2026
 
-## Aktueller Release: wahrheitsgemäße rollenbezogene Fähigkeitenauskunft
+## Aktueller Release: strenger 110er-Qualitätsvertrag und Kundenumsatz
+
+Der permanente Korpus akzeptiert bei seinen 110 bekannten Fragen nicht mehr
+nur irgendeinen erfolgreichen Text. `unknown`, generische Fähigkeitslücken,
+fehlende Analyseadapter und alte Nichtfreigabe-Texte lassen den Lauf jetzt
+scheitern. Zusätzlich besitzen die rollenbezogene Fähigkeitenauskunft und die
+Kunden-Umsatzfrage eigene inhaltliche Verträge. Dadurch wurden zwölf zuvor
+verdeckte Fälle sichtbar und fachlich korrigiert.
+
+Ein belegter Nulltreffer bei Projekten, Kunden, Aufgaben, Angeboten,
+Rechnungen oder organisationsweiten Analysen ist nun eine normale,
+verständliche Antwort und kein unbekannter Zustand. Die Frage nach der Marge
+„dieser Fahrtenkalkulation“ verlangt ohne konkreten Entwurf gezielt Fahrzeug,
+Strecke und Kraftstoffpreis; JARVIS erfindet keine Marge und erklärt den
+bewussten Ausschluss von Personalkosten.
+
+„Welche Kunden machen den meisten Umsatz?“ nutzt nun einen eigenen
+organisationsgebundenen Finanzadapter. Er lädt nur Projekte, Kontakte und
+Rechnungen, aggregiert über die stabile Projekt-Kunden-Zuordnung, sortiert den
+Netto-Umsatz aller finanziell aktiven Belege absteigend und schließt Entwürfe,
+gelöschte sowie stornierte Rechnungen aus. Zeitraum und Datenbasis werden
+sichtbar genannt; ohne aktive Belege folgt ein klarer Nulltreffer statt einer
+erfundenen Rangfolge.
+
+Produktiv abgenommen auf Runtime-Commit
+`405ed32626420cae600aef23355ca488d9c65296` mit verifiziertem Backup
+`/var/backups/workpilot360/20260803T105000Z-before-jarvis-customer-revenue`;
+der unmittelbar vorherige Qualitätsblock ist zusätzlich unter
+`/var/backups/workpilot360/20260803T104000Z-before-jarvis-corpus-hardening`
+gesichert. Lokal bestanden 190/190 Testdateien mit 1.897/1.897 Tests,
+TypeScript, Mojibake-/Regressionschecks, Prisma-Validierung, leerer
+Schema-Diff und der 90-Seiten-Build. Der verschärfte Korpus bestand lokal und
+produktiv 110/110; produktiv 33 vorbereitete, null ausgeführte Aktionen und
+null Rückstände. Live-Prisma-Diff leer, Dashboard und öffentliches Formular
+HTTP 200. WorkPilot PID `889992`, KlinikNavigator unverändert PID `398228`.
+Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und
+Online-Anfragen-Invarianten blieben erhalten.
+
+## Vorheriger Release: wahrheitsgemäße rollenbezogene Fähigkeitenauskunft
 
 JARVIS beantwortet die Frage nach seinen aktuell ausführbaren Fähigkeiten
 nicht mehr mit einem veralteten Festtext. Die Antwort wird bei jeder Anfrage
