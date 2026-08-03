@@ -235,6 +235,7 @@ import {
 } from "@/lib/jarvis/stamp-session-intake";
 import { resolveJarvisProjectStatusAutomationStatus } from "@/lib/jarvis/automation-status-analysis";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
+import { resolveJarvisDomainClarification } from "@/lib/jarvis/domain-clarification";
 
 export const dynamic = "force-dynamic";
 
@@ -3259,6 +3260,28 @@ function looksLikeDirectActionRequest(
 
 function resolveExplicitSafetyPolicyQuestion(question: string) {
   const value = normalizeJarvisIntentText(question);
+  if (/\baktion\b.*\bohne bestatig\w*\b|\bohne bestatig\w*\b.*\b(?:ausfuhr|mach|ander|speicher|send|losch)\w*\b|\b(?:ausfuhr|mach)\w*\b.*\bohne bestatig\w*\b/.test(value)) {
+    return {
+      type: "refusal" as const,
+      topicId: "jarvis.safety.confirmation-required",
+      message:
+        "Nein. Ich führe eine schreibende oder folgenreiche Aktion nicht ohne die dafür vorgesehene sichtbare Vorschau und bewusste Bestätigung aus. Es wurde nichts verändert. Wenn du mir Ziel und Aktion nennst, kann ich den kontrollierten Entwurf mit Wirkung und Prüfpunkten vorbereiten.",
+      deterministic: true,
+    };
+  }
+  if (
+    value.includes("projektdaten") &&
+    value.includes("bestatig") &&
+    /ander|aktualisier|wechsel/.test(value)
+  ) {
+    return {
+      type: "answer" as const,
+      topicId: "jarvis.safety.stale-preview",
+      message:
+        "Dann ist die alte Vorschau nicht mehr bestätigbar. JARVIS bindet die Aktion an den geprüften Datensatz- und Fachstand, erkennt die zwischenzeitliche Änderung und verlangt eine neue Vorschau. So wird nie stillschweigend gegen veraltete Projektdaten ausgeführt.",
+      deterministic: true,
+    };
+  }
   if (
     /\brechnung\w*\b/.test(value) &&
     /\b(?:send|sende|versend|schick)\w*\b/.test(value) &&
@@ -4393,6 +4416,10 @@ export async function POST(req: Request) {
         users,
       })
     );
+  }
+  const domainClarification = resolveJarvisDomainClarification(message);
+  if (domainClarification) {
+    return respond(domainClarification);
   }
   const routingContext = conversationContext ?? context;
   const aiIntentClassification = await classifyJarvisIntentWithAi({

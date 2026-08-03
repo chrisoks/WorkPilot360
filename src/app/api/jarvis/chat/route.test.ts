@@ -738,6 +738,11 @@ describe("POST /api/jarvis/chat", () => {
       "jarvis.safety.people-profile",
       "keine heimlichen Persönlichkeitsprofile",
     ],
+    [
+      "Was passiert, wenn sich Projektdaten vor der Bestätigung ändern?",
+      "jarvis.safety.stale-preview",
+      "alte Vorschau nicht mehr bestätigbar",
+    ],
   ])(
     "answers the explicit safety policy specifically: %s",
     async (message, topicId, expected) => {
@@ -760,6 +765,25 @@ describe("POST /api/jarvis/chat", () => {
       expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     }
   );
+
+  it("refuses a write action without confirmation before AI routing", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: "user-1", message: "Führe die Aktion ohne Bestätigung aus." }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "refusal",
+      topicId: "jarvis.safety.confirmation-required",
+      deterministic: true,
+    });
+    expect(payload.message).toContain("nichts verändert");
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
 
   it("answers an organization-wide receivables question before calling AI", async () => {
     mocks.resolveJarvisOrganizationReceivablesIntent.mockReturnValue({

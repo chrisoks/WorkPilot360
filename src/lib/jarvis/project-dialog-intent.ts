@@ -153,6 +153,7 @@ export function resolveJarvisProjectDialogIntent(input: {
     /\b(?:welchen|was fur einen|wie ist der|was ist der)\b.*\bprojektstatus\b/.test(
       value
     ) ||
+    /\bwie ist der aktuelle stand\b.*\bprojekt\b/.test(value) ||
     /\bstatus\b.*\b(?:projekt|hat|ist)\b/.test(value)
   ) {
     return "explainStatus";

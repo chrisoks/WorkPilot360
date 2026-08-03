@@ -1514,7 +1514,7 @@ export function resolveJarvisDirectNavigationHelp(
 ): JarvisHelpResult | undefined {
   const normalized = normalize(question);
   if (
-    !/^(?:wo\s+(?:ist|sind|liegt|liegen|befindet|befinden)\b|wo\s+(?:finde|sehe|andere|aendere)\s+ich\b|wo\s+kann\s+ich\b|wie\s+(?:komme|gelange)\s+ich\b)/.test(
+    !/^(?:wo\s+(?:ist|sind|liegt|liegen|befindet|befinden)\b|wo\s+(?:finde|sehe|andere|aendere)\s+ich\b|wo\s+kann\s+ich\b|wie\s+(?:komme|gelange)\s+ich\b|(?:offne|oeffne|zeig|zeige|navigier|bring)\w*\b)/.test(
       normalized
     )
   ) {
@@ -1527,7 +1527,7 @@ export function resolveJarvisDirectNavigationHelp(
   )[0]?.area;
   if (
     !areaDefinition ||
-    areaDefinition.kind !== "module" ||
+    (areaDefinition.kind !== "module" && areaDefinition.kind !== "report") ||
     (!normalized.includes(normalize(areaDefinition.label)) &&
       !includesOne(normalized, ["anlegen", "erstellen"]))
   ) {

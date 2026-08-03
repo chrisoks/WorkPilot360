@@ -28,6 +28,7 @@ describe("JARVIS project dialog intent", () => {
     ["Was unterscheidet HAS-1 von einem Einmalprojekt?", "explainProcess"],
     ["Was isn HAS-1 eigentlich fürn Projekt?", "explainProjectType"],
     ["Welchen Status hat HAS-1?", "explainStatus"],
+    ["Wie ist der aktuelle Stand von Projekt HAS-1?", "explainStatus"],
     ["Welche Terminmaske gilt für dieses Projekt?", "explainPlanningMask"],
     ["Welche Planungsmaske brauche ich hier?", "explainPlanningMask"],
     ["Wie muss ich dieses Projekt als Termin anlegen?", "explainPlanningMask"],

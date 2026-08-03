@@ -4,6 +4,7 @@ import { getJarvisActionDecision } from "@/lib/jarvis/actions";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import type { JarvisReadResponse, JarvisRecordResult } from "@/lib/jarvis/read-model";
 import type { JarvisAccessProfile } from "@/lib/jarvis/security";
+import { diagnoseRecurringProjectMonths } from "@/lib/jarvis/recurring-month-diagnostics";
 import {
   resolveJarvisOrganizationOperationsIntent,
   type JarvisOrganizationOperationsIntent,
@@ -14,11 +15,11 @@ export { resolveJarvisOrganizationOperationsIntent } from "@/lib/jarvis/organiza
 export type OrganizationOperationsSnapshot = {
   users: Array<{ id: string; firstName: string; lastName: string; planningBoard: string | null; planningGroup: string | null; weeklyCapacity: unknown; leadershipManagerId: string | null; leadershipDeputyId: string | null }>;
   absences: Array<{ userId: string; date: Date; dayPart: string; status: string; deletedAt: Date | null }>;
-  planningEntries: Array<{ userId: string | null; date: string; durationMinutes: number; approvalStatus: string; deletedAt: Date | null }>;
-  projects: Array<{ id: string; projectNumber: string; title: string; customer: string | null; contactId: string | null; status: string; projectType: string | null; projectKind: string | null; recurringBillingMode: string | null; timeBudgetEnabled: boolean; autoBillingEnabled: boolean; updatedAt: Date }>;
+  planningEntries: Array<{ userId: string | null; employeeName?: string | null; date: string; startTime?: string; endTime?: string; title?: string; projectId?: string | null; projectLabel?: string | null; durationMinutes: number; approvalStatus: string; deletedAt: Date | null }>;
+  projects: Array<{ id: string; projectNumber: string; title: string; customer: string | null; contactId: string | null; status: string; projectType: string | null; projectKind: string | null; projectRuntimeFrom?: string | null; projectRuntimeUntil?: string | null; recurringBillingMode: string | null; timeBudgetEnabled: boolean; timeBudgetHours?: string | null; timeBudgetAllocations?: unknown; autoBillingEnabled: boolean; autoBillingStartMonth?: string | null; autoBillingEndMonth?: string | null; updatedAt: Date }>;
   offers: Array<{ id: string; projectId: string; offerNumber: string; status: string; customerName: string; netTotal: number; updatedAt: Date }>;
   invoices: Array<{ id: string; projectId: string; invoiceNumber: string; status: string; customerName: string; netTotal: number; serviceDate: string; plannedExecutionMonth: string; dueDate: string; isPaid: boolean; createdAt: Date; updatedAt: Date }>;
-  timeEntries: Array<{ id: string; projectId: string; durationMs: bigint; invoiceId: string | null; deletedAt: Date | null; createdAt: Date }>;
+  timeEntries: Array<{ id: string; projectId: string; projectLabel?: string | null; userId?: string | null; employee?: string | null; date?: string; startTime?: string; endTime?: string; overtimeApprovalStatus?: string | null; durationMs: bigint; invoiceId: string | null; deletedAt: Date | null; createdAt: Date }>;
   contacts: Array<{ id: string; customerNumber: string; companyName: string | null; firstName: string | null; lastName: string | null; updatedAt: Date }>;
   projectLogbookEntries: Array<{ projectId: string; createdAt: Date }>;
   customerLogbookEntries: Array<{ customerId: string; occurredAt: Date }>;
@@ -45,7 +46,7 @@ function userVisibilityWhere(actor: JarvisAccessProfile["effectiveActor"]): Pris
 const liveSource: OrganizationOperationsSource = {
   async load({ organizationId, intent, accessProfile }) {
     const base = emptySnapshot();
-    if (intent === "utilization") {
+    if (intent === "utilization" || intent === "today_planning") {
       const users = await prisma.user.findMany({
         where: {
           organizationId,
@@ -58,9 +59,27 @@ const liveSource: OrganizationOperationsSource = {
       const userIds = users.map((user) => user.id);
       const [absences, planningEntries] = userIds.length ? await Promise.all([
         prisma.absence.findMany({ where: { organizationId, userId: { in: userIds } }, select: { userId: true, date: true, dayPart: true, status: true, deletedAt: true } }),
-        prisma.planningEntry.findMany({ where: { organizationId, userId: { in: userIds } }, select: { userId: true, date: true, durationMinutes: true, approvalStatus: true, deletedAt: true } }),
+        prisma.planningEntry.findMany({ where: { organizationId, userId: { in: userIds } }, select: { userId: true, employeeName: true, date: true, startTime: true, endTime: true, title: true, projectId: true, projectLabel: true, durationMinutes: true, approvalStatus: true, deletedAt: true } }),
       ]) : [[], []];
       return { ...base, users, absences, planningEntries };
+    }
+    if (intent === "today_time" || intent === "pending_overtime") {
+      const users = await prisma.user.findMany({
+        where: {
+          organizationId,
+          isActive: true,
+          AND: [userVisibilityWhere(accessProfile.sessionActor), userVisibilityWhere(accessProfile.effectiveActor)],
+        },
+        select: { id: true, firstName: true, lastName: true, planningBoard: true, planningGroup: true, weeklyCapacity: true, leadershipManagerId: true, leadershipDeputyId: true },
+      });
+      const userIds = users.map((user) => user.id);
+      const timeEntries = userIds.length
+        ? await prisma.projectTimeEntry.findMany({
+            where: { organizationId, userId: { in: userIds }, deletedAt: null },
+            select: { id: true, projectId: true, projectLabel: true, userId: true, employee: true, date: true, startTime: true, endTime: true, overtimeApprovalStatus: true, durationMs: true, invoiceId: true, deletedAt: true, createdAt: true },
+          })
+        : [];
+      return { ...base, users, timeEntries };
     }
     if (intent === "invoice_drafts" || intent === "revenue") {
       const invoices = await prisma.invoice.findMany({ where: { organizationId }, select: { id: true, projectId: true, invoiceNumber: true, status: true, customerName: true, netTotal: true, serviceDate: true, plannedExecutionMonth: true, dueDate: true, isPaid: true, createdAt: true, updatedAt: true } });
@@ -78,16 +97,20 @@ const liveSource: OrganizationOperationsSource = {
       const offerAcceptanceRequests = await prisma.offerAcceptanceRequest.findMany({ where: { organizationId }, select: { offerId: true, sentAt: true, firstViewedAt: true, acceptedAt: true, revokedAt: true } });
       return { ...base, offerAcceptanceRequests };
     }
-    const projects = await prisma.workPilotProject.findMany({ where: { organizationId }, select: { id: true, projectNumber: true, title: true, customer: true, contactId: true, status: true, projectType: true, projectKind: true, recurringBillingMode: true, timeBudgetEnabled: true, autoBillingEnabled: true, updatedAt: true } });
-    const needsOffers = intent === "missing_offer_projects" || intent === "critical_projects" || intent === "inactive_customers";
-    const needsInvoices = intent === "critical_projects" || intent === "inactive_customers";
-    const needsTimes = intent === "unbilled_projects" || intent === "critical_projects" || intent === "inactive_customers";
+    const projects = await prisma.workPilotProject.findMany({ where: { organizationId }, select: { id: true, projectNumber: true, title: true, customer: true, contactId: true, status: true, projectType: true, projectKind: true, projectRuntimeFrom: true, projectRuntimeUntil: true, recurringBillingMode: true, timeBudgetEnabled: true, timeBudgetHours: true, timeBudgetAllocations: true, autoBillingEnabled: true, autoBillingStartMonth: true, autoBillingEndMonth: true, updatedAt: true } });
+    const needsOffers = intent === "missing_offer_projects" || intent === "critical_projects" || intent === "inactive_customers" || intent === "customer_risk";
+    const needsInvoices = intent === "critical_projects" || intent === "inactive_customers" || intent === "customer_risk" || intent === "recurring_month_gaps";
+    const needsTimes = intent === "unbilled_projects" || intent === "critical_projects" || intent === "inactive_customers" || intent === "customer_risk" || intent === "recurring_month_gaps";
     const [offers, invoices, timeEntries] = await Promise.all([
       needsOffers ? prisma.offer.findMany({ where: { organizationId }, select: { id: true, projectId: true, offerNumber: true, status: true, customerName: true, netTotal: true, updatedAt: true } }) : Promise.resolve([]),
       needsInvoices ? prisma.invoice.findMany({ where: { organizationId }, select: { id: true, projectId: true, invoiceNumber: true, status: true, customerName: true, netTotal: true, serviceDate: true, plannedExecutionMonth: true, dueDate: true, isPaid: true, createdAt: true, updatedAt: true } }) : Promise.resolve([]),
       needsTimes ? prisma.projectTimeEntry.findMany({ where: { organizationId }, select: { id: true, projectId: true, durationMs: true, invoiceId: true, deletedAt: true, createdAt: true } }) : Promise.resolve([]),
     ]);
-    if (intent !== "inactive_customers") return { ...base, projects, offers, invoices, timeEntries };
+    if (intent === "recurring_month_gaps" || intent === "monthly_quota_available") {
+      const planningEntries = await prisma.planningEntry.findMany({ where: { organizationId, projectId: { in: projects.map((project) => project.id) } }, select: { userId: true, employeeName: true, date: true, startTime: true, endTime: true, title: true, projectId: true, projectLabel: true, durationMinutes: true, approvalStatus: true, deletedAt: true } });
+      return { ...base, projects, offers, invoices, timeEntries, planningEntries };
+    }
+    if (intent !== "inactive_customers" && intent !== "customer_risk") return { ...base, projects, offers, invoices, timeEntries };
     const [contacts, projectLogbookEntries, customerLogbookEntries, tasks] = await Promise.all([
       prisma.contact.findMany({ where: { organizationId }, select: { id: true, customerNumber: true, companyName: true, firstName: true, lastName: true, updatedAt: true } }),
       prisma.projectLogbookEntry.findMany({ where: { organizationId }, select: { projectId: true, createdAt: true } }),
@@ -105,8 +128,8 @@ function normalize(value: string | null | undefined) {
 function actionFor(intent: JarvisOrganizationOperationsIntent) {
   if (intent === "invoice_drafts" || intent === "revenue" || intent === "customer_revenue") return "invoice.read";
   if (intent === "offer_rates") return "offer.read";
-  if (intent === "inactive_customers") return "contact.read";
-  if (intent === "utilization") return "planning.analysis.read";
+  if (intent === "inactive_customers" || intent === "customer_risk") return "contact.read";
+  if (intent === "utilization" || intent === "today_planning" || intent === "today_time" || intent === "pending_overtime") return "planning.analysis.read";
   return "project.read";
 }
 
@@ -159,6 +182,19 @@ function money(value: number) {
 
 function dateKey(value: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
+}
+
+function monthBudgets(value: unknown) {
+  const budgets = new Map<string, number>();
+  if (!Array.isArray(value)) return budgets;
+  value.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const row = entry as Record<string, unknown>;
+    const month = typeof row.month === "string" && /^\d{4}-\d{2}$/.test(row.month) ? row.month : "";
+    const hours = Number(String(row.hours ?? "").replace(",", "."));
+    if (month && Number.isFinite(hours) && hours > 0) budgets.set(month, hours);
+  });
+  return budgets;
 }
 
 function projectRecord(project: OrganizationOperationsSnapshot["projects"][number], status: string, summary: string): JarvisRecordResult {
@@ -255,6 +291,97 @@ export async function resolveJarvisOrganizationOperationsRequest(input: { questi
     return { type: "answer", topicId: "management.operations.utilization", message: `Die Auslastung für ${range.label} wurde für ${utilizationScopeLabel(input.accessProfile)} aus bestätigten, nicht gelöschten Planungen gegen die persönliche Wochenkapazität abzüglich genehmigter Abwesenheiten berechnet. ${selected.length} passende ${groupMode ? "Planungsgruppen" : "Mitarbeiter"} gefunden.`, structured: { title: `Auslastung · ${range.label}`, sections: [{ title: "Sichtbarer Bereich", items: [`Ausgewertet wird ausschließlich ${utilizationScopeLabel(input.accessProfile)}.`] }, { title: "Planungsstand", items: items.slice(0, 30), tone: selected.some((row) => row.percent > 100) ? "warning" : "neutral" }, { title: "Datenbasis", items: ["Bestätigte Planungen; Terminwünsche sind bis zur Freigabe nicht als feste Auslastung enthalten.", "Kapazität aus dem Mitarbeiterprofil; genehmigte Ganz- und Halbtagsabwesenheiten reduzieren sie."] }] }, deterministic: true };
   }
 
+  if (intent === "today_planning") {
+    const today = dateKey(now);
+    const scopedUserIds = new Set(visibleUtilizationUsers(input.accessProfile, snapshot.users).map((user) => user.id));
+    const entries = snapshot.planningEntries
+      .filter((entry) => entry.userId && scopedUserIds.has(entry.userId) && entry.date === today && !entry.deletedAt && normalize(entry.approvalStatus) === "confirmed")
+      .sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
+    return {
+      type: "answer",
+      topicId: "planning.today",
+      message: entries.length ? `${entries.length} bestätigte ${entries.length === 1 ? "Termin ist" : "Termine sind"} heute in deinem sichtbaren Bereich geplant.` : "Heute sind in deinem sichtbaren Bereich keine bestätigten Termine geplant. Offene Terminwünsche zählen noch nicht als feste Termine.",
+      structured: entries.length ? { title: `Termine heute · ${today}`, sections: [{ title: "Bestätigte Planung", items: entries.map((entry) => `${entry.startTime || "--:--"}–${entry.endTime || "--:--"} · ${entry.title || "Termin"}${entry.projectLabel ? ` · ${entry.projectLabel}` : ""}${entry.employeeName ? ` · ${entry.employeeName}` : ""}`) }] } : undefined,
+      deterministic: true,
+    };
+  }
+
+  if (intent === "today_time") {
+    const today = dateKey(now);
+    const entries = snapshot.timeEntries.filter((entry) => entry.date === today && !entry.deletedAt).sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
+    const hours = entries.reduce((sum, entry) => sum + Number(entry.durationMs) / 3_600_000, 0);
+    return {
+      type: "answer",
+      topicId: "time.today",
+      message: entries.length ? `Heute wurden ${entries.length} ${entries.length === 1 ? "Zeiteintrag" : "Zeiteinträge"} mit insgesamt ${hours.toFixed(2)} Stunden in deinem sichtbaren Bereich erfasst.` : "Heute wurden in deinem sichtbaren Bereich noch keine Zeiten erfasst.",
+      structured: entries.length ? { title: `Gestempelte Zeiten · ${today}`, sections: [{ title: "Einträge", items: entries.map((entry) => `${entry.startTime || "--:--"}–${entry.endTime || "--:--"} · ${(Number(entry.durationMs) / 3_600_000).toFixed(2)} Std.${entry.projectLabel ? ` · ${entry.projectLabel}` : ""}${entry.employee ? ` · ${entry.employee}` : ""}`) }] } : undefined,
+      deterministic: true,
+    };
+  }
+
+  if (intent === "pending_overtime") {
+    const entries = snapshot.timeEntries.filter((entry) => normalize(entry.overtimeApprovalStatus) === "pending" && !entry.deletedAt).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+    return {
+      type: "answer",
+      topicId: "time.overtime.pending",
+      message: entries.length ? `${entries.length} ${entries.length === 1 ? "Zeiteintrag wartet" : "Zeiteinträge warten"} in deinem rollenbezogen sichtbaren Bereich auf Überstundenfreigabe.` : "In deinem rollenbezogen sichtbaren Bereich wartet aktuell kein Zeiteintrag auf Überstundenfreigabe.",
+      structured: entries.length ? { title: "Ausstehende Überstundenfreigaben", sections: [{ title: "Zeiteinträge", items: entries.map((entry) => `${entry.date || "Datum fehlt"} · ${(Number(entry.durationMs) / 3_600_000).toFixed(2)} Std.${entry.projectLabel ? ` · ${entry.projectLabel}` : ""}${entry.employee ? ` · ${entry.employee}` : ""}`) }] } : undefined,
+      deterministic: true,
+    };
+  }
+
+  if (intent === "recurring_month_gaps") {
+    const recurringProjects = activeProjects.filter((project) => {
+      const mode = normalize(project.recurringBillingMode);
+      return mode === "monthlyflat" || mode === "hourly" || normalize(project.projectKind).includes("dauer");
+    });
+    const gaps = recurringProjects.flatMap((project) => {
+      const diagnostics = diagnoseRecurringProjectMonths({
+        project: {
+          projectRuntimeFrom: project.projectRuntimeFrom ?? null,
+          projectRuntimeUntil: project.projectRuntimeUntil ?? null,
+          recurringBillingMode: project.recurringBillingMode,
+          timeBudgetEnabled: project.timeBudgetEnabled,
+          timeBudgetHours: project.timeBudgetHours ?? null,
+          timeBudgetAllocations: project.timeBudgetAllocations ?? [],
+          autoBillingEnabled: project.autoBillingEnabled,
+          autoBillingStartMonth: project.autoBillingStartMonth ?? null,
+          autoBillingEndMonth: project.autoBillingEndMonth ?? null,
+        },
+        planningEntries: snapshot.planningEntries.filter((entry) => entry.projectId === project.id),
+        timeEntries: snapshot.timeEntries.filter((entry) => entry.projectId === project.id).map((entry) => ({ date: entry.date ?? "", durationMs: entry.durationMs, deletedAt: entry.deletedAt })),
+        invoices: snapshot.invoices.filter((invoice) => invoice.projectId === project.id),
+        evaluationDateKey: dateKey(now),
+      });
+      return diagnostics.issues.length ? [{ project, diagnostics }] : [];
+    });
+    return {
+      type: "answer",
+      topicId: "management.operations.recurring-month-gaps",
+      message: gaps.length ? `${gaps.length} aktive Dauerläufer haben mindestens einen belegten offenen Monats-, Planungs- oder Abrechnungspunkt.` : "Aktuell wurden bei den aktiven Dauerläufern keine offenen Monats-, Planungs- oder Abrechnungspunkte gefunden.",
+      records: gaps.slice(0, 20).map(({ project, diagnostics }) => projectRecord(project, `${diagnostics.issues.length} offene Monatsprüfung${diagnostics.issues.length === 1 ? "" : "en"}`, diagnostics.issues.map((issue) => issue.title).join(" · "))),
+      structured: { title: "Offene Dauerläufer-Monate", sections: [{ title: "Datenbasis", items: ["Projektlaufzeit, Monatskontingente, bestätigte und nicht gelöschte Planung, erfasste Zeiten sowie aktive Monatsrechnungen.", "Planungswünsche gelten bis zur Freigabe nicht als fest geplant."] }] },
+      deterministic: true,
+    };
+  }
+
+  if (intent === "monthly_quota_available") {
+    const month = dateKey(now).slice(0, 7);
+    const rows = activeProjects.filter((project) => normalize(project.recurringBillingMode) === "monthlyflat").map((project) => {
+      const allocated = monthBudgets(project.timeBudgetAllocations).get(month) ?? (project.timeBudgetEnabled ? Number(String(project.timeBudgetHours ?? "0").replace(",", ".")) : 0);
+      const planned = snapshot.planningEntries.filter((entry) => entry.projectId === project.id && entry.date.startsWith(month) && !entry.deletedAt && normalize(entry.approvalStatus) === "confirmed").reduce((sum, entry) => sum + entry.durationMinutes / 60, 0);
+      return { project, allocated: Number.isFinite(allocated) ? Math.max(0, allocated) : 0, planned, free: Math.max(0, (Number.isFinite(allocated) ? allocated : 0) - planned) };
+    }).filter((row) => row.allocated > 0 && row.free > 0).sort((a, b) => b.free - a.free);
+    return {
+      type: "answer",
+      topicId: "management.operations.monthly-quota-available",
+      message: rows.length ? `${rows.length} aktive Monatspauschalen haben im Leistungsmonat ${month} noch frei verplanbares Kontingent.` : `Im Leistungsmonat ${month} wurde keine aktive Monatspauschale mit positivem freiem Kontingent gefunden.`,
+      records: rows.slice(0, 20).map(({ project, allocated, planned, free }) => projectRecord(project, `${free.toFixed(2)} Std. frei`, `${planned.toFixed(2)} von ${allocated.toFixed(2)} Std. bestätigt geplant`)),
+      structured: { title: `Monatskontingente · ${month}`, sections: [{ title: "Berechnung", items: ["Frei = hinterlegtes Monatskontingent minus bestätigte, nicht gelöschte Planung.", "Offene Terminwünsche sind noch nicht als feste Planung enthalten; eine Überplanung benötigt Bestätigung und Grund."] }] },
+      deterministic: true,
+    };
+  }
+
   if (intent === "unbilled_projects") {
     const projects = activeProjects.filter((project) => (unbilledByProject.get(project.id)?.length ?? 0) > 0);
     const records = projects.slice(0, 20).map((project) => { const entries = unbilledByProject.get(project.id) ?? []; const hours = entries.reduce((sum, entry) => sum + Number(entry.durationMs) / 3_600_000, 0); return projectRecord(project, "Abrechnung prüfen", `${entries.length} unberechnete Zeiteinträge · ${hours.toFixed(2)} Std.`); });
@@ -281,6 +408,29 @@ export async function resolveJarvisOrganizationOperationsRequest(input: { questi
     const contacts = snapshot.contacts.filter((contact) => openOfferContactIds.has(contact.id) && (contactActivity.get(contact.id) ?? new Date(0)) < threshold).sort((a, b) => (contactActivity.get(a.id)?.getTime() ?? 0) - (contactActivity.get(b.id)?.getTime() ?? 0));
     const records: JarvisRecordResult[] = contacts.slice(0, 20).map((contact) => ({ id: `inactive-customer-${contact.id}`, kind: "customer", title: contactName(contact), subtitle: contact.customerNumber, summary: `Letzte belegte WorkPilot-Aktivität: ${dateKey(contactActivity.get(contact.id) ?? new Date(0))}`, status: "Offenes Angebot · >30 Tage ohne Aktivität", target: { kind: "customer", id: contact.id } }));
     return { type: "answer", topicId: "management.operations.inactive-customers", message: contacts.length ? `${contacts.length} Kunden haben mindestens ein offenes Angebot, aber seit mehr als 30 Tagen keine belegte WorkPilot-Aktivität.` : "Aktuell gibt es keinen Kunden mit offenem Angebot und mehr als 30 Tagen ohne belegte WorkPilot-Aktivität.", records, structured: contacts.length ? { title: "Offene Angebote ohne Aktivität", sections: [{ title: "Berücksichtigte Aktivität", items: ["Kontakt- und Projektänderungen, Angebote, Rechnungen, Projektzeiten, Aufgaben sowie Kunden- und Projektlogbuch.", "Die Aussage bezieht sich auf WorkPilot-Aktivität; externe Telefonate oder E-Mails ohne Protokoll sind nicht ableitbar."] }] } : undefined, deterministic: true };
+  }
+
+  if (intent === "customer_risk") {
+    const threshold = new Date(now.getTime() - 30 * 86_400_000);
+    const projectById = new Map(snapshot.projects.map((project) => [project.id, project]));
+    const reasons = new Map<string, string[]>();
+    snapshot.invoices.filter((invoice) => isFinancialInvoice(invoice.status) && !invoice.isPaid && Boolean(invoice.dueDate) && invoice.dueDate < dateKey(now)).forEach((invoice) => {
+      const contactId = projectById.get(invoice.projectId)?.contactId;
+      if (contactId) reasons.set(contactId, [...(reasons.get(contactId) ?? []), `Überfällige offene Rechnung ${invoice.invoiceNumber}`]);
+    });
+    snapshot.offers.filter((offer) => isOpenOffer(offer.status) && offer.updatedAt < threshold).forEach((offer) => {
+      const contactId = projectById.get(offer.projectId)?.contactId;
+      if (contactId) reasons.set(contactId, [...(reasons.get(contactId) ?? []), `Offenes Angebot ${offer.offerNumber} seit mehr als 30 Tagen ohne belegte Aktualisierung`]);
+    });
+    const rows = snapshot.contacts.map((contact) => ({ contact, reasons: [...new Set(reasons.get(contact.id) ?? [])] })).filter((row) => row.reasons.length).sort((a, b) => b.reasons.length - a.reasons.length);
+    return {
+      type: "answer",
+      topicId: "management.operations.customer-risk",
+      message: rows.length ? `${rows.length} Kundenbeziehungen haben mindestens ein belegtes kaufmännisches Risikosignal.` : "Aktuell wurden anhand überfälliger Forderungen und alter offener Angebote keine gefährdeten Kundenbeziehungen gefunden.",
+      records: rows.slice(0, 20).map(({ contact, reasons: contactReasons }) => ({ id: `customer-risk-${contact.id}`, kind: "customer", title: contactName(contact), subtitle: contact.customerNumber, summary: contactReasons.join(" · "), status: `${contactReasons.length} Risikosignal${contactReasons.length === 1 ? "" : "e"}`, target: { kind: "customer", id: contact.id } })),
+      structured: { title: "Gefährdete Kundenbeziehungen", sections: [{ title: "Abgrenzung", items: ["Berücksichtigt werden aktuell überfällige unbezahlte Rechnungen und seit mehr als 30 Tagen unveränderte offene Angebote.", "Eine Beziehung wird nicht psychologisch bewertet; JARVIS nennt ausschließlich belegte WorkPilot-Signale."] }] },
+      deterministic: true,
+    };
   }
 
   if (intent === "offer_rates") {

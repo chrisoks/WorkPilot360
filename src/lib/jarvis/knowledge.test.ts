@@ -692,9 +692,13 @@ describe("JARVIS system help", () => {
   it.each([
     ["Wo kann ich eine Rechnung anlegen?", "systemMap.accounting"],
     ["Wo ändere ich Firmeneinstellungen?", "systemMap.settings"],
+    ["Zeig mir die Geschäftsführungsansicht.", "systemMap.reports.executive"],
   ])("keeps natural navigation commands ahead of analysis: %s", (question, topicId) => {
     expect(
-      resolveJarvisDirectNavigationHelp(question, leadershipAccess)
+      resolveJarvisDirectNavigationHelp(
+        question,
+        question.includes("Geschäftsführung") ? executiveAccess : leadershipAccess
+      )
     ).toMatchObject({
       type: "answer",
       topicId,

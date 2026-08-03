@@ -39,4 +39,10 @@ describe("JARVIS intent text tolerance", () => {
       "was ist has-1 fur ein projekt"
     );
   });
+
+  it("does not rewrite the known term Projektdaten as Projektarten", () => {
+    expect(normalizeJarvisIntentText("Projektdaten ändern")).toBe(
+      "projektdaten andern"
+    );
+  });
 });

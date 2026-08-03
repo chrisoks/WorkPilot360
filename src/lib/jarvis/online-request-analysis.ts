@@ -56,6 +56,7 @@ export type JarvisOnlineRequestSource = {
     organizationId: string;
     referenceNumber: string | null;
     statuses: OnlineRequestStatus[] | null;
+    customerDecisions: string[] | null;
     oldestFirst: boolean;
   }): Promise<{
     statusCounts: Record<string, number>;
@@ -82,10 +83,11 @@ export type JarvisOnlineRequestIntent = {
   presentation: "summary" | "list" | "detail";
   oldestFirst: boolean;
   readinessRequested: boolean;
+  customerDecisions: string[] | null;
 };
 
 const liveSource: JarvisOnlineRequestSource = {
-  async load({ organizationId, referenceNumber, statuses, oldestFirst }) {
+  async load({ organizationId, referenceNumber, statuses, customerDecisions, oldestFirst }) {
     const [groupedCounts, requests] = await Promise.all([
       prisma.onlineRequest.groupBy({
         by: ["status"],
@@ -97,6 +99,7 @@ const liveSource: JarvisOnlineRequestSource = {
           organizationId,
           ...(referenceNumber ? { referenceNumber } : {}),
           ...(statuses ? { status: { in: statuses } } : {}),
+          ...(customerDecisions ? { customerDecision: { in: customerDecisions } } : {}),
         },
         orderBy: { createdAt: oldestFirst ? "asc" : "desc" },
         take: referenceNumber || oldestFirst ? 1 : 50,
@@ -279,7 +282,7 @@ export function resolveJarvisOnlineRequestIntent(
   const mentionsOnlineRequest =
     /\bonline\s*anfrag\w*\b|\bformularanfrag\w*\b|\banfragenposteingang\b/.test(
       value
-    );
+    ) || /\banfrag\w*\b.*\bkundenpruf\w*\b/.test(value);
   if (!mentionsOnlineRequest && !referenceNumber) return undefined;
 
   if (
@@ -317,6 +320,9 @@ export function resolveJarvisOnlineRequestIntent(
   }
 
   const oldestFirst = /\baltest\w*\b/.test(value);
+  const customerDecisions = /\bkundenpruf\w*\b/.test(value)
+    ? ["unreviewed", "unresolved"]
+    : null;
   const readinessRequested =
     Boolean(referenceNumber) &&
     /\b(?:bereit|ubernehm|umwandel|konvertier|freigab|blockier|fehlt|voraussetzung)\w*\b/.test(
@@ -334,6 +340,7 @@ export function resolveJarvisOnlineRequestIntent(
     presentation,
     oldestFirst,
     readinessRequested,
+    customerDecisions,
   };
 }
 
@@ -750,6 +757,7 @@ export async function resolveJarvisOnlineRequestAnalysis(input: {
     organizationId: input.organizationId,
     referenceNumber: intent.referenceNumber,
     statuses: intent.statuses,
+    customerDecisions: intent.customerDecisions,
     oldestFirst: intent.oldestFirst,
   });
   if (intent.referenceNumber) {

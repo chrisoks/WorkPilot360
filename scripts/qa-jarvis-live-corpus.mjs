@@ -414,6 +414,43 @@ async function main() {
   const cookie = `workpilot_session=${createSessionToken(sessionId, 1)}`;
   const createdDraftIds = new Set();
   const failures = [];
+  const responseTypes = new Map();
+  const responseTopics = new Map();
+  const expectedTopics = {
+    "navigation-08": "systemMap.reports.executive",
+    "projects-04": "management.operations.recurring-month-gaps",
+    "projects-06": "project.health.reference-required",
+    "projects-08": "management.operations.unbilled-projects",
+    "customers-04": "management.operations.customer-risk",
+    "tasks-06": "task.escalation.reference-required",
+    "planning-01": "planning.today",
+    "planning-05": "management.operations.monthly-quota-available",
+    "planning-09": "planning.overbooking.reference-required",
+    "time-01": "time.today",
+    "time-03": "management.operations.unbilled-projects",
+    "time-08": "time.overtime.pending",
+    "calculators-03": "calculator.winter.variant-comparison",
+    "calculators-07": "calculator.vehicle-trip.fuel-context",
+    "calculators-09": "calculator.explanation.choice",
+    "offers-05": "offer.health.reference-required",
+    "invoices-10": "management.receivables",
+    "onlineRequests-04": "online-requests.request-type.reference-required",
+    "onlineRequests-05": "online-requests.trade.reference-required",
+    "onlineRequests-07": "online-requests.inventory",
+    "security-07": "jarvis.safety.confirmation-required",
+    "security-10": "jarvis.safety.stale-preview",
+  };
+  const clarificationTopicsRequiringChoices = new Set([
+    "project.health.reference-required",
+    "task.escalation.reference-required",
+    "planning.overbooking.reference-required",
+    "calculator.winter.variant-comparison",
+    "calculator.vehicle-trip.fuel-context",
+    "calculator.explanation.choice",
+    "offer.health.reference-required",
+    "online-requests.request-type.reference-required",
+    "online-requests.trade.reference-required",
+  ]);
   let actionDraftCount = 0;
   let invoicePaymentDraftPrepared = false;
   let invoiceReminderDraftPrepared = false;
@@ -552,6 +589,16 @@ async function main() {
           });
           continue;
         }
+        responseTypes.set(payload.type, (responseTypes.get(payload.type) || 0) + 1);
+        if (typeof payload.topicId === "string" && payload.topicId.trim()) {
+          responseTopics.set(payload.topicId, (responseTopics.get(payload.topicId) || 0) + 1);
+        } else {
+          failures.push({
+            id: item.id,
+            status: response.status,
+            error: "Die bekannte Korpusfrage besitzt keinen stabilen fachlichen topicId-Vertrag.",
+          });
+        }
         if (payload.actionDraft?.previewId) {
           actionDraftCount += 1;
           createdDraftIds.add(payload.actionDraft.previewId);
@@ -572,12 +619,31 @@ async function main() {
         if (
           payload.type === "unknown" ||
           payload.topicId === "capability.analysis-adapter-missing" ||
+          payload.topicId === "system-help.clarification" ||
           genericGapFragments.some((fragment) => payload.message.includes(fragment))
         ) {
           failures.push({
             id: item.id,
             status: response.status,
-            error: `Bekannte Korpusfrage fiel in eine generische Fähigkeitslücke: ${payload.topicId || payload.type}.`,
+            error: `Bekannte Korpusfrage fiel in eine generische Fähigkeitslücke: ${payload.topicId || payload.type}. Antwort: ${payload.message.replace(/\s+/g, " ").slice(0, 240)}`,
+          });
+        }
+        const expectedTopic = expectedTopics[item.id];
+        if (expectedTopic && payload.topicId !== expectedTopic) {
+          failures.push({
+            id: item.id,
+            status: response.status,
+            error: `Fachvertrag verletzt: erwartet ${expectedTopic}, erhalten ${payload.topicId || "ohne topicId"}.`,
+          });
+        }
+        if (
+          clarificationTopicsRequiringChoices.has(payload.topicId) &&
+          (!Array.isArray(payload.choices) || payload.choices.length === 0)
+        ) {
+          failures.push({
+            id: item.id,
+            status: response.status,
+            error: `Die fachliche Rückfrage ${payload.topicId} bietet keine direkt nutzbare Auswahl an.`,
           });
         }
         if (item.question === "Welche Aktionen kannst du derzeit wirklich ausführen?") {
@@ -1415,6 +1481,8 @@ async function main() {
     qaOnlineContactRemaining: await prisma.contact.count({ where: { id: onlineContact.id } }),
     qaStampSessionRemaining: await prisma.activeStampSession.count({ where: { id: corpusStampSession.id } }),
     executedActions: 0,
+    responseTypes: Object.fromEntries([...responseTypes.entries()].sort()),
+    responseTopics: Object.fromEntries([...responseTopics.entries()].sort()),
     failures,
     qaDraftsRemaining: remainingDrafts,
     qaSessionsRemaining: await prisma.authSession.count({

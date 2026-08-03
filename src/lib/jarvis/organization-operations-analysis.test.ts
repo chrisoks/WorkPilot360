@@ -18,9 +18,9 @@ function snapshot(): OrganizationOperationsSnapshot {
     ],
     absences: [{ userId: "user-2", date: new Date("2026-08-04T00:00:00.000Z"), dayPart: "full", status: "genehmigt", deletedAt: null }],
     planningEntries: [
-      { userId: "user-1", date: "2026-08-03", durationMinutes: 600, approvalStatus: "confirmed", deletedAt: null },
-      { userId: "user-2", date: "2026-08-03", durationMinutes: 120, approvalStatus: "confirmed", deletedAt: null },
-      { userId: "user-2", date: "2026-08-04", durationMinutes: 480, approvalStatus: "requested", deletedAt: null },
+      { userId: "user-1", employeeName: "Max Muster", date: "2026-08-03", startTime: "08:00", endTime: "18:00", title: "Tageseinsatz", durationMinutes: 600, approvalStatus: "confirmed", deletedAt: null },
+      { userId: "user-2", employeeName: "Mia Beispiel", date: "2026-08-03", startTime: "09:00", endTime: "11:00", title: "Kundentermin", durationMinutes: 120, approvalStatus: "confirmed", deletedAt: null },
+      { userId: "user-2", employeeName: "Mia Beispiel", date: "2026-08-04", startTime: "08:00", endTime: "16:00", title: "Terminwunsch", durationMinutes: 480, approvalStatus: "requested", deletedAt: null },
     ],
     projects: [
       { id: "project-1", projectNumber: "HAS-1", title: "Hausmeisterdienst", customer: "Kunde Alt", contactId: "contact-1", status: "Umsetzung", projectType: "Dauerläufer", projectKind: "hourly", recurringBillingMode: "Stundenabrechnung", timeBudgetEnabled: false, autoBillingEnabled: false, updatedAt: new Date("2026-06-01T00:00:00.000Z") },
@@ -37,8 +37,8 @@ function snapshot(): OrganizationOperationsSnapshot {
       { id: "invoice-3", projectId: "project-2", invoiceNumber: "RE-3", status: "Storniert", customerName: "Kunde Neu", netTotal: -100, serviceDate: "2026-08-02", plannedExecutionMonth: "2026-08", dueDate: "2026-08-31", isPaid: false, createdAt: new Date("2026-08-02T00:00:00.000Z"), updatedAt: new Date("2026-08-02T00:00:00.000Z") },
     ],
     timeEntries: [
-      { id: "time-1", projectId: "project-1", durationMs: 7_200_000n, invoiceId: null, deletedAt: null, createdAt: new Date("2026-06-12T00:00:00.000Z") },
-      { id: "time-2", projectId: "project-2", durationMs: 3_600_000n, invoiceId: "invoice-2", deletedAt: null, createdAt: new Date("2026-08-02T00:00:00.000Z") },
+      { id: "time-1", projectId: "project-1", projectLabel: "HAS-1", userId: "user-1", employee: "Max Muster", date: "2026-08-03", startTime: "08:00", endTime: "10:00", overtimeApprovalStatus: "pending", durationMs: 7_200_000n, invoiceId: null, deletedAt: null, createdAt: new Date("2026-06-12T00:00:00.000Z") },
+      { id: "time-2", projectId: "project-2", projectLabel: "GLR-2", userId: "user-2", employee: "Mia Beispiel", date: "2026-08-02", startTime: "09:00", endTime: "10:00", overtimeApprovalStatus: "not_required", durationMs: 3_600_000n, invoiceId: "invoice-2", deletedAt: null, createdAt: new Date("2026-08-02T00:00:00.000Z") },
     ],
     contacts: [
       { id: "contact-1", customerNumber: "7001", companyName: "Kunde Alt", firstName: null, lastName: null, updatedAt: new Date("2026-06-01T00:00:00.000Z") },
@@ -62,8 +62,15 @@ describe("organization-wide JARVIS operations analysis", () => {
   it.each([
     ["Wie viele Rechnungsentwürfe gibt es aktuell?", "invoice_drafts"],
     ["Welche Planungsgruppe ist nächste Woche überlastet?", "utilization"],
+    ["Welche Termine habe ich heute?", "today_planning"],
+    ["Welche Zeiten habe ich heute gestempelt?", "today_time"],
+    ["Welche Überstunden warten auf Freigabe?", "pending_overtime"],
+    ["Welche Dauerläufer haben offene Monate?", "recurring_month_gaps"],
+    ["Welche Monatspauschale hat noch freies Kontingent?", "monthly_quota_available"],
+    ["Welche Kundenbeziehungen sind gefährdet?", "customer_risk"],
     ["Welche Kunden haben offene Angebote, aber seit 30 Tagen keine Aktivität?", "inactive_customers"],
     ["Welche Projekte haben Zeiten, aber noch keine Rechnung?", "unbilled_projects"],
+    ["Welche Projektzeiten sind noch nicht abgerechnet?", "unbilled_projects"],
     ["Welche Projekte laufen ohne gültiges Angebot?", "missing_offer_projects"],
     ["Analysiere alle kritischen Projekte und nenne mir die Ursache.", "critical_projects"],
     ["Wie hoch ist unsere Öffnungsquote und Annahmequote?", "offer_rates"],
@@ -86,6 +93,43 @@ describe("organization-wide JARVIS operations analysis", () => {
     expect(revenue).toMatchObject({ topicId: "management.operations.revenue" });
     expect(revenue?.message).toContain("800,00");
     expect(revenue?.message).toContain("einer finanziell aktiven Rechnung");
+  });
+
+  it("answers today's planning, stamped time and pending overtime from the visible role scope", async () => {
+    const dataSource = source();
+    const todayPlanning = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Termine habe ich heute?", organizationId: "org-1", accessProfile: management, now: new Date("2026-08-03T10:00:00.000Z"), source: dataSource });
+    const todayTime = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Zeiten habe ich heute gestempelt?", organizationId: "org-1", accessProfile: management, now: new Date("2026-08-03T10:00:00.000Z"), source: dataSource });
+    const overtime = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Überstunden warten auf Freigabe?", organizationId: "org-1", accessProfile: management, now: new Date("2026-08-03T10:00:00.000Z"), source: dataSource });
+
+    expect(todayPlanning).toMatchObject({ topicId: "planning.today", type: "answer" });
+    expect(JSON.stringify(todayPlanning)).toContain("Max Muster");
+    expect(JSON.stringify(todayPlanning)).toContain("Mia Beispiel");
+    expect(JSON.stringify(todayPlanning)).not.toContain("Terminwunsch");
+    expect(todayTime).toMatchObject({ topicId: "time.today", type: "answer" });
+    expect(todayTime?.message).toContain("2.00 Stunden");
+    expect(overtime).toMatchObject({ topicId: "time.overtime.pending", type: "answer" });
+    expect(JSON.stringify(overtime)).toContain("HAS-1");
+  });
+
+  it("reports free monthly quota and recurring month gaps from the same planning facts", async () => {
+    const data = snapshot();
+    data.projects.push({ id: "project-4", projectNumber: "MON-4", title: "Monatspauschale", customer: "Kunde Vier", contactId: null, status: "Umsetzung", projectType: "Objektbetreuung", projectKind: "Dauerprojekt", projectRuntimeFrom: "2026-01", projectRuntimeUntil: "2026-12", recurringBillingMode: "monthlyFlat", timeBudgetEnabled: true, timeBudgetHours: "10", timeBudgetAllocations: [{ month: "2026-08", hours: 10 }, { month: "2026-09", hours: 10 }], autoBillingEnabled: false, updatedAt: new Date("2026-08-01T00:00:00.000Z") });
+    data.planningEntries.push({ userId: "user-1", employeeName: "Max Muster", projectId: "project-4", projectLabel: "MON-4", date: "2026-08-03", startTime: "10:00", endTime: "12:00", title: "Objektbetreuung", durationMinutes: 120, approvalStatus: "confirmed", deletedAt: null });
+    const dataSource = source(data);
+    const quota = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Monatspauschale hat noch freies Kontingent?", organizationId: "org-1", accessProfile: management, now: new Date("2026-08-03T10:00:00.000Z"), source: dataSource });
+    const gaps = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Dauerläufer haben offene Monate?", organizationId: "org-1", accessProfile: management, now: new Date("2026-08-03T10:00:00.000Z"), source: dataSource });
+
+    expect(quota).toMatchObject({ topicId: "management.operations.monthly-quota-available", records: [{ title: "MON-4 · Monatspauschale" }] });
+    expect(quota?.records?.[0].summary).toContain("2.00 von 10.00 Std.");
+    expect(gaps).toMatchObject({ topicId: "management.operations.recurring-month-gaps", type: "answer" });
+    expect(JSON.stringify(gaps)).toContain("MON-4");
+  });
+
+  it("names only evidence-based customer relationship risks", async () => {
+    const response = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Kundenbeziehungen sind gefährdet?", organizationId: "org-1", accessProfile: management, now: new Date("2026-08-03T10:00:00.000Z"), source: source() });
+    expect(response).toMatchObject({ topicId: "management.operations.customer-risk", records: [{ title: "Kunde Alt" }] });
+    expect(JSON.stringify(response)).toContain("Offenes Angebot ANG-1");
+    expect(JSON.stringify(response)).toContain("nicht psychologisch bewertet");
   });
 
   it("ranks customers by financially active all-time net revenue", async () => {

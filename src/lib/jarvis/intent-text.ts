@@ -5,6 +5,7 @@ const KNOWN_JARVIS_INTENT_TERMS = [
   "projektarten",
   "projekttyp",
   "projektnummer",
+  "projektdaten",
   "abrechnung",
   "abrechnungen",
   "abrechnungsmodell",

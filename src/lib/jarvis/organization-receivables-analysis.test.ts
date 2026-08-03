@@ -108,6 +108,7 @@ describe("organization-wide JARVIS receivables analysis", () => {
     "Wie hoch sind unsere offenen Posten?",
     "Wie hoch sint unser offnen Posten?",
     "Welche offenen Forderungen sind überfällig?",
+    "Welche Forderungen sind überfällig?",
     "Zeig mir die überfälligen Forderungen.",
     "Zeig mir offene Rechnungen bei uns.",
     "Wie viele Rechnungen sind überfällig?",

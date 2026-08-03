@@ -167,6 +167,25 @@ describe("JARVIS online request analysis", () => {
       organizationId: "org-1",
       referenceNumber: null,
       statuses: ["waiting_customer"],
+      customerDecisions: null,
+      oldestFirst: false,
+    });
+  });
+
+  it("filters requests that still need the explicit customer decision", async () => {
+    const dataSource = source();
+    await resolveJarvisOnlineRequestAnalysis({
+      question: "Welche Anfrage wartet auf Kundenprüfung?",
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      source: dataSource,
+    });
+
+    expect(dataSource.load).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      referenceNumber: null,
+      statuses: null,
+      customerDecisions: ["unreviewed", "unresolved"],
       oldestFirst: false,
     });
   });
