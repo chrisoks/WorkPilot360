@@ -28,6 +28,16 @@ type WinterServiceImage = {
   storageFileId?: string;
 };
 
+class WinterServiceReportImageError extends Error {
+  constructor(imageName: string, options?: { cause?: unknown }) {
+    super(
+      `Das Nachweisbild „${imageName || "Unbenannt"}“ konnte nicht sicher geladen werden. Der Tätigkeitsbericht wurde nicht erzeugt.`,
+      options
+    );
+    this.name = "WinterServiceReportImageError";
+  }
+}
+
 type WinterServiceRunRow = {
   id: string;
   organizationId: string;
@@ -381,8 +391,8 @@ async function drawImageGrid(
         width: imageWidth,
         height: imageHeight,
       });
-    } catch {
-      drawText(page, "Bild konnte nicht eingebettet werden", left + 10, top - 56, fonts.regular, 8);
+    } catch (error) {
+      throw new WinterServiceReportImageError(image.name, { cause: error });
     }
     drawText(page, image.name.slice(0, 28), left, top - height - 12, fonts.regular, 7, rgb(0.35, 0.42, 0.52));
   }
@@ -675,7 +685,18 @@ export async function PATCH(req: Request) {
     }
 
     const reportNumber = current.reportNumber || (await getNextReportNumber(organization.id));
-    const reportPdfData = await generateActivityReportPdf(current, reportNumber);
+    let reportPdfData = "";
+    try {
+      reportPdfData = await generateActivityReportPdf(current, reportNumber);
+    } catch (error) {
+      if (error instanceof WinterServiceReportImageError) {
+        return NextResponse.json(
+          { error: error.message, code: "report_image_unavailable" },
+          { status: 503, headers: { "Retry-After": "30" } }
+        );
+      }
+      throw error;
+    }
     const reportBytes = Math.round((reportPdfData.length * 3) / 4);
     if (reportBytes > MAX_WINTER_SERVICE_REPORT_BYTES) {
       return NextResponse.json(

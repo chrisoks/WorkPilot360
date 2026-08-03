@@ -29,6 +29,7 @@ import {
   claimDocumentMailDispatch,
   InvoiceDeliveryServiceError,
 } from "@/lib/invoices/invoice-delivery-service";
+import { planCompositeDocumentDispatch } from "@/lib/document-mail/composite-dispatch";
 import {
   readStoredFileBytes,
   resolveStorageBackedBase64,
@@ -1106,51 +1107,92 @@ export async function POST(req: Request) {
     );
   }
   const id = requestedDispatchKey || randomUUID();
+  const activityDispatchId = `${id}:activity-report`;
+  const activityDocumentId = `${documentId}:activity-report`;
+  let primaryDispatchReplayed = false;
   const existingDispatch = await prisma.documentMailDispatch.findUnique({
     where: { id },
   });
-  if (existingDispatch) {
-    const sameRequest =
-      existingDispatch.organizationId === organization.id &&
-      existingDispatch.documentKind === kind &&
-      existingDispatch.documentId === documentId &&
-      existingDispatch.senderUserId === actor.id;
-    if (!sameRequest) {
-      return NextResponse.json(
-        { error: "Der Versandauftrag kollidiert mit einem anderen Vorgang." },
-        { status: 409 }
-      );
-    }
-    if (existingDispatch.status === "sent") {
-      return NextResponse.json({
-        id,
-        status: "sent",
-        provider: existingDispatch.provider,
-        senderEmail: existingDispatch.senderEmail,
-        recipients,
-        replayed: true,
-      });
-    }
+  const existingActivityDispatch =
+    shouldSendSeparateActivityReport && existingDispatch?.status === "sent"
+      ? await prisma.documentMailDispatch.findUnique({
+          where: { id: activityDispatchId },
+        })
+      : null;
+  const dispatchPlan = planCompositeDocumentDispatch({
+    primary: existingDispatch,
+    activity: existingActivityDispatch,
+    expectsActivity: shouldSendSeparateActivityReport,
+    expectedPrimary: {
+      organizationId: organization.id,
+      documentKind: kind,
+      documentId,
+      senderUserId: actor.id,
+    },
+    expectedActivity: {
+      organizationId: organization.id,
+      documentKind: "activityReport",
+      documentId: activityDocumentId,
+      senderUserId: actor.id,
+    },
+  });
+  if (dispatchPlan.action === "conflict") {
     return NextResponse.json(
       {
         error:
-          existingDispatch.status === "sending"
-            ? "Der Versand wurde bereits gestartet. Prüfe den Versandstatus, bevor du erneut handelst."
-            : "Dieser Versandauftrag ist fehlgeschlagen oder unklar und wird aus Sicherheitsgründen nicht automatisch wiederholt.",
+          dispatchPlan.target === "activity"
+            ? "Der Tätigkeitsbericht-Versand kollidiert mit einem anderen Vorgang."
+            : "Der Versandauftrag kollidiert mit einem anderen Vorgang.",
       },
       { status: 409 }
     );
   }
-  const preparedFeedbackRequest = await prepareFeedbackRequestLink(req, { ...body, organizationId: organization.id });
-  const preparedOfferAcceptance = await prepareOfferAcceptance(
-    req,
-    organization.id,
-    body,
-    actor,
-    actorName,
-    senderEmail,
-    recipients[0] ?? ""
-  );
+  if (dispatchPlan.action === "blocked") {
+    const running = dispatchPlan.status === "sending";
+    return NextResponse.json(
+      {
+        error:
+          dispatchPlan.target === "activity"
+            ? running
+              ? "Der separate Tätigkeitsbericht-Versand wurde bereits gestartet. Prüfe den Versandstatus, bevor du erneut handelst."
+              : "Der separate Tätigkeitsbericht-Versand ist fehlgeschlagen oder unklar und wird nicht automatisch wiederholt."
+            : running
+              ? "Der Versand wurde bereits gestartet. Prüfe den Versandstatus, bevor du erneut handelst."
+              : "Dieser Versandauftrag ist fehlgeschlagen oder unklar und wird aus Sicherheitsgründen nicht automatisch wiederholt.",
+      },
+      { status: 409 }
+    );
+  }
+  if (dispatchPlan.action === "replay-complete") {
+    return NextResponse.json({
+      id,
+      status: "sent",
+      provider: existingDispatch?.provider ?? "microsoft365",
+      senderEmail: existingDispatch?.senderEmail ?? senderEmail,
+      recipients,
+      activityReportRecipients: shouldSendSeparateActivityReport
+        ? activityReportRecipients
+        : [],
+      replayed: true,
+    });
+  }
+  if (dispatchPlan.action === "resume-activity") {
+    primaryDispatchReplayed = true;
+  }
+  const preparedFeedbackRequest = primaryDispatchReplayed
+    ? null
+    : await prepareFeedbackRequestLink(req, { ...body, organizationId: organization.id });
+  const preparedOfferAcceptance = primaryDispatchReplayed
+    ? null
+    : await prepareOfferAcceptance(
+        req,
+        organization.id,
+        body,
+        actor,
+        actorName,
+        senderEmail,
+        recipients[0] ?? ""
+      );
   const acceptanceAttachments = preparedOfferAcceptance?.withdrawalNoticePdfData
     ? [{
         "@odata.type": "#microsoft.graph.fileAttachment",
@@ -1177,35 +1219,50 @@ export async function POST(req: Request) {
   const messageHtml = `${textToHtml(messageBody)}${acceptanceHtml}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
 
   try {
-    const claim = await claimDocumentMailDispatch({
-      id,
-      organizationId: organization.id,
-      documentKind: kind,
-      documentId,
-      documentNumber,
-      projectId,
-      projectNumber: cleanText(body.projectNumber),
-      projectTitle: cleanText(body.projectTitle),
-      customerName: cleanText(body.customerName),
-      senderUserId: actor.id,
-      senderName: actorName,
-      senderEmail,
-      toRecipients: recipients.join(", "),
-      ccRecipients: ccRecipients.join(", "),
-      bccRecipients: bccRecipients.join(", "),
-      subject: cleanText(body.subject),
-      body: `${messageBody}${acceptanceText}${feedbackText}`,
-      attachPdf: Boolean(body.attachPdf),
-    });
-    if (claim.replay) {
-      return NextResponse.json({
+    if (!primaryDispatchReplayed) {
+      const claim = await claimDocumentMailDispatch({
         id,
-        status: "sent",
-        provider: claim.dispatch.provider,
-        senderEmail: claim.dispatch.senderEmail,
-        recipients,
-        replayed: true,
+        organizationId: organization.id,
+        documentKind: kind,
+        documentId,
+        documentNumber,
+        projectId,
+        projectNumber: cleanText(body.projectNumber),
+        projectTitle: cleanText(body.projectTitle),
+        customerName: cleanText(body.customerName),
+        senderUserId: actor.id,
+        senderName: actorName,
+        senderEmail,
+        toRecipients: recipients.join(", "),
+        ccRecipients: ccRecipients.join(", "),
+        bccRecipients: bccRecipients.join(", "),
+        subject: cleanText(body.subject),
+        body: `${messageBody}${acceptanceText}${feedbackText}`,
+        attachPdf: Boolean(body.attachPdf),
       });
+      if (claim.replay) {
+        await discardUnsentFeedbackRequest(organization.id, preparedFeedbackRequest).catch(
+          () => undefined
+        );
+        if (preparedOfferAcceptance) {
+          await prisma.$executeRaw`
+            DELETE FROM "OfferAcceptanceRequest"
+            WHERE id = ${preparedOfferAcceptance.id}
+              AND status = 'prepared'
+          `.catch(() => undefined);
+        }
+        if (!shouldSendSeparateActivityReport) {
+          return NextResponse.json({
+            id,
+            status: "sent",
+            provider: claim.dispatch.provider,
+            senderEmail: claim.dispatch.senderEmail,
+            recipients,
+            replayed: true,
+          });
+        }
+        primaryDispatchReplayed = true;
+      }
     }
   } catch (error) {
     if (error instanceof InvoiceDeliveryServiceError) {
@@ -1217,30 +1274,34 @@ export async function POST(req: Request) {
     throw error;
   }
 
-  let primaryMailDelivered = false;
+  let primaryMailDelivered = primaryDispatchReplayed;
   let preparedActivityFeedbackRequest: PreparedFeedbackRequest | null = null;
   let activityMailDelivered = false;
+  let activityDispatchClaimed = false;
+  let activityDispatchReplayed = false;
   try {
-    await sendViaMicrosoftGraph({
-      accessToken: mailAccount.accessToken,
-      to: recipients,
-      cc: ccRecipients,
-      bcc: bccRecipients,
-      subject: cleanText(body.subject),
-      body: messageHtml,
-      attachments: [...attachments, ...acceptanceAttachments],
-    });
-    primaryMailDelivered = true;
-    await prisma.documentMailDispatch.update({
-      where: { id },
-      data: {
-        status: "sent",
-        providerMessageId: `ms365-${id}`,
-        errorMessage: "",
-      },
-    });
-    await markFeedbackRequestAsSent(organization.id, preparedFeedbackRequest);
-    if (preparedOfferAcceptance) {
+    if (!primaryDispatchReplayed) {
+      await sendViaMicrosoftGraph({
+        accessToken: mailAccount.accessToken,
+        to: recipients,
+        cc: ccRecipients,
+        bcc: bccRecipients,
+        subject: cleanText(body.subject),
+        body: messageHtml,
+        attachments: [...attachments, ...acceptanceAttachments],
+      });
+      primaryMailDelivered = true;
+      await prisma.documentMailDispatch.update({
+        where: { id },
+        data: {
+          status: "sent",
+          providerMessageId: `ms365-${id}`,
+          errorMessage: "",
+        },
+      });
+      await markFeedbackRequestAsSent(organization.id, preparedFeedbackRequest);
+    }
+    if (!primaryDispatchReplayed && preparedOfferAcceptance) {
       await prisma.$transaction(async (tx) => {
         const activated = await tx.$executeRaw`
           UPDATE "OfferAcceptanceRequest"
@@ -1264,33 +1325,63 @@ export async function POST(req: Request) {
       }, { isolationLevel: "Serializable" });
     }
     if (shouldSendSeparateActivityReport) {
-      const activityReportRawBody = cleanText(body.activityReportBody) || rawMessageBody;
-      const activityReportBody = signatureHtml ? stripTrailingMailClosing(activityReportRawBody) : activityReportRawBody;
-      preparedActivityFeedbackRequest = await prepareFeedbackRequestLink(
-        req,
-        {
+      const activityClaim = await claimDocumentMailDispatch({
+        id: activityDispatchId,
+        organizationId: organization.id,
+        documentKind: "activityReport",
+        documentId: activityDocumentId,
+        documentNumber: `${documentNumber} Tätigkeitsbericht`,
+        projectId,
+        projectNumber: cleanText(body.projectNumber),
+        projectTitle: cleanText(body.projectTitle),
+        customerName: cleanText(body.customerName),
+        senderUserId: actor.id,
+        senderName: actorName,
+        senderEmail,
+        toRecipients: activityReportRecipients.join(", "),
+        ccRecipients: "",
+        bccRecipients: bccRecipients.join(", "),
+        subject: cleanText(body.activityReportSubject) || cleanText(body.subject),
+        body: cleanText(body.activityReportBody) || rawMessageBody,
+        attachPdf: true,
+      });
+      if (activityClaim.replay) {
+        activityMailDelivered = true;
+        activityDispatchReplayed = true;
+      } else {
+        activityDispatchClaimed = true;
+        const activityReportRawBody = cleanText(body.activityReportBody) || rawMessageBody;
+        const activityReportBody = signatureHtml
+          ? stripTrailingMailClosing(activityReportRawBody)
+          : activityReportRawBody;
+        preparedActivityFeedbackRequest = await prepareFeedbackRequestLink(req, {
           ...body,
           organizationId: organization.id,
-          documentId: `${documentId}:activity-report`,
+          documentId: activityDocumentId,
           documentNumber: `${documentNumber} Tätigkeitsbericht`,
           to: cleanText(body.activityReportTo),
           includeFeedbackLink: body.includeActivityReportFeedbackLink !== false,
-        }
-      );
-      const activityReportFeedbackLink = preparedActivityFeedbackRequest?.url ?? "";
-      const activityReportFeedbackHtml = activityReportFeedbackLink ? getFeedbackMailBlockHtml(activityReportFeedbackLink) : "";
-      const activityReportHtml = `${textToHtml(activityReportBody)}${activityReportFeedbackHtml}${signatureHtml ? signatureHtml : ""}`;
-      await sendViaMicrosoftGraph({
-        accessToken: mailAccount.accessToken,
-        to: activityReportRecipients,
-        cc: [],
-        bcc: bccRecipients,
-        subject: cleanText(body.activityReportSubject) || cleanText(body.subject),
-        body: activityReportHtml,
-        attachments: [...additionalAttachments, ...activityReportManualAttachments],
-      });
-      activityMailDelivered = true;
-      await markFeedbackRequestAsSent(organization.id, preparedActivityFeedbackRequest);
+        });
+        const activityReportFeedbackLink = preparedActivityFeedbackRequest?.url ?? "";
+        const activityReportFeedbackHtml = activityReportFeedbackLink
+          ? getFeedbackMailBlockHtml(activityReportFeedbackLink)
+          : "";
+        const activityReportHtml = `${textToHtml(activityReportBody)}${activityReportFeedbackHtml}${signatureHtml ? signatureHtml : ""}`;
+        await sendViaMicrosoftGraph({
+          accessToken: mailAccount.accessToken,
+          to: activityReportRecipients,
+          cc: [],
+          bcc: bccRecipients,
+          subject: cleanText(body.activityReportSubject) || cleanText(body.subject),
+          body: activityReportHtml,
+          attachments: [...additionalAttachments, ...activityReportManualAttachments],
+        });
+        activityMailDelivered = true;
+        await markFeedbackRequestAsSent(
+          organization.id,
+          preparedActivityFeedbackRequest
+        );
+      }
     }
   } catch (error) {
     if (!primaryMailDelivered) {
@@ -1316,13 +1407,31 @@ export async function POST(req: Request) {
     if (!activityMailDelivered) {
       await discardUnsentFeedbackRequest(organization.id, preparedActivityFeedbackRequest).catch(() => undefined);
     }
+    if (activityDispatchClaimed && !activityMailDelivered) {
+      await prisma.documentMailDispatch
+        .update({
+          where: { id: activityDispatchId },
+          data: {
+            status: "failed",
+            errorMessage:
+              error instanceof Error
+                ? error.message.slice(0, 2_000)
+                : "Microsoft 365 Versand des Tätigkeitsberichts fehlgeschlagen.",
+          },
+        })
+        .catch(() => undefined);
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Microsoft 365 Versand fehlgeschlagen." },
-      { status: 502 }
+      { status: error instanceof InvoiceDeliveryServiceError ? 409 : 502 }
     );
   }
 
-  if (kind === "invoice" && Boolean(body.attachActivityReports)) {
+  if (
+    kind === "invoice" &&
+    Boolean(body.attachActivityReports) &&
+    !activityDispatchReplayed
+  ) {
     const activityReportAttachments = additionalAttachments;
     const reportHistoryRecipients = shouldSendSeparateActivityReport ? activityReportRecipients : recipients;
     for (const attachment of activityReportAttachments) {
@@ -1346,6 +1455,17 @@ export async function POST(req: Request) {
     }
   }
 
+  if (activityDispatchClaimed && activityMailDelivered) {
+    await prisma.documentMailDispatch.update({
+      where: { id: activityDispatchId },
+      data: {
+        status: "sent",
+        providerMessageId: `ms365-${activityDispatchId}`,
+        errorMessage: "",
+      },
+    });
+  }
+
   await addDocumentMailHistory(organization.id, body, actorName, recipients);
 
   return NextResponse.json({
@@ -1354,6 +1474,8 @@ export async function POST(req: Request) {
     provider: "microsoft365",
     senderEmail,
     recipients,
+    activityReportRecipients: shouldSendSeparateActivityReport ? activityReportRecipients : [],
+    replayed: primaryDispatchReplayed,
   });
 }
 

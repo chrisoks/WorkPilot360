@@ -2348,6 +2348,14 @@ export async function POST(req: Request) {
           stampEntryIds: billedStampEntryIds,
         });
       }
+      await syncInvoiceInventoryMovements({
+        db: tx,
+        organizationId: organization.id,
+        invoiceId: id,
+        actorUserId: actor.id,
+        actorName,
+        useExistingTransaction: true,
+      });
       return { invoiceNumber, pdf, row: rows[0], ...persisted };
     },
   });
@@ -2375,14 +2383,6 @@ export async function POST(req: Request) {
     createdByUserId: actor.id,
     writeReference: (tx, reference) =>
       tx.invoice.update({ where: { id }, data: { pdfData: reference } }),
-  });
-
-  await syncInvoiceInventoryMovements({
-    db: prisma,
-    organizationId: organization.id,
-    invoiceId: id,
-    actorUserId: actor.id,
-    actorName,
   });
 
   return NextResponse.json(serializeInvoice(row, savedLines, savedLaborRows, { includeInternalCosts }));
@@ -2523,13 +2523,22 @@ export async function PATCH(req: Request) {
             where: { id: storedDraft.id },
             data: { pdfData: finalizedPdf.pdfData },
           });
-          return finalizeInvoiceDraft({
+          const finalizedInvoice = await finalizeInvoiceDraft({
             tx,
             organizationId: organization.id,
             invoiceId: id,
             actorName,
             source: "ui",
           });
+          await syncInvoiceInventoryMovements({
+            db: tx,
+            organizationId: organization.id,
+            invoiceId: id,
+            actorUserId: actor.id,
+            actorName,
+            useExistingTransaction: true,
+          });
+          return finalizedInvoice;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
       );
@@ -2548,20 +2557,6 @@ export async function PATCH(req: Request) {
             data: { pdfData: reference },
           }),
       });
-      try {
-        await syncInvoiceInventoryMovements({
-          db: prisma,
-          organizationId: organization.id,
-          invoiceId: finalized.id,
-          actorUserId: actor.id,
-          actorName,
-        });
-      } catch (inventoryError) {
-        console.error(
-          "Invoice inventory synchronization failed after finalization",
-          inventoryError
-        );
-      }
       const [lines, laborRows] = await Promise.all([
         getInvoiceLinesForInvoice(organization.id, finalized.id),
         prisma.invoiceLineLabor.findMany({
@@ -2914,6 +2909,14 @@ export async function PATCH(req: Request) {
             stampEntryIds: billedStampEntryIds,
           });
         }
+        await syncInvoiceInventoryMovements({
+          db: tx,
+          organizationId: organization.id,
+          invoiceId: id,
+          actorUserId: actor.id,
+          actorName,
+          useExistingTransaction: true,
+        });
         return { row: rows[0], ...persisted };
       },
     });
@@ -2947,14 +2950,6 @@ export async function PATCH(req: Request) {
     createdByUserId: actor.id,
     writeReference: (tx, reference) =>
       tx.invoice.update({ where: { id }, data: { pdfData: reference } }),
-  });
-
-  await syncInvoiceInventoryMovements({
-    db: prisma,
-    organizationId: organization.id,
-    invoiceId: id,
-    actorUserId: actor.id,
-    actorName,
   });
 
   return NextResponse.json(serializeInvoice(row, savedLines, savedLaborRows, { includeInternalCosts }));

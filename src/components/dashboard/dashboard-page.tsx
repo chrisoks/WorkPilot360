@@ -10282,6 +10282,7 @@ type LogbookAttachment = {
   mimeType?: string;
   size?: number;
   dataUrl?: string;
+  storageFileId?: string;
 };
 
 type SmokeDetectorDeviceDraft = {
@@ -10346,6 +10347,7 @@ type ProjectLogbookEntrySummary = {
     type: LogbookAttachment["type"];
     mimeType?: string;
     size?: number;
+    storageFileId?: string;
   }>;
 };
 
@@ -28771,7 +28773,8 @@ export function DashboardPage() {
     attachmentIndex: number,
     attachmentName: string,
     action: "delete" | "move",
-    targetCategory?: string
+    targetCategory?: string,
+    attachmentStorageFileId?: string
   ) {
     if (!selectedProjectFile) return;
     if (!activeUserId) {
@@ -28792,6 +28795,7 @@ export function DashboardPage() {
           entryId,
           attachmentIndex,
           attachmentName,
+          attachmentStorageFileId,
           action,
           targetTitle: targetCategory ? `Bilder: ${targetCategory}` : "",
           actorUserId: activeUserId,
@@ -28816,7 +28820,8 @@ export function DashboardPage() {
     entryId: string,
     attachmentIndex: number,
     attachmentName: string,
-    documentLabel = "Dokument"
+    documentLabel = "Dokument",
+    attachmentStorageFileId?: string
   ) {
     if (!selectedProjectFile) return;
     if (!activeUserId) {
@@ -28837,6 +28842,7 @@ export function DashboardPage() {
           entryId,
           attachmentIndex,
           attachmentName,
+          attachmentStorageFileId,
           action: "delete",
           actorUserId: activeUserId,
           actorName: activeUser?.name || "Christian Eid",
@@ -53308,7 +53314,8 @@ await addProjectLogbookEntry(
                                             image.attachmentIndex,
                                             image.name,
                                             "move",
-                                            targetCategory.label
+                                            targetCategory.label,
+                                            image.storageFileId
                                           )
                                         }
                                       >
@@ -53323,7 +53330,9 @@ await addProjectLogbookEntry(
                                           image.entryId,
                                           image.attachmentIndex,
                                           image.name,
-                                          "delete"
+                                          "delete",
+                                          undefined,
+                                          image.storageFileId
                                         )
                                       }
                                     >
@@ -53889,7 +53898,8 @@ await addProjectLogbookEntry(
                                               document.entryId,
                                               document.attachmentIndex,
                                               document.name || documentNumber,
-                                              "Tätigkeitsbericht"
+                                              "Tätigkeitsbericht",
+                                              document.storageFileId
                                             )
                                           }
                                         >

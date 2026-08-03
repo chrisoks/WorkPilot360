@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
@@ -10,6 +9,8 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { isInternalAutomationRequest } from "@/lib/auth/internal-automation";
 import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
+import { buildActivityReportEntryId } from "@/lib/activity-reports/report-identity";
+import { getReportImages } from "@/lib/activity-reports/image-selection";
 import {
   cleanupStorageBackedPayload,
   persistStorageBackedPayload,
@@ -579,45 +580,6 @@ function getMonthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function getReportImageIdentity(image: LogbookAttachment) {
-  const normalizedFileStem = cleanString(image.name)
-    .toLowerCase()
-    .replace(/\.[^.]+$/, "")
-    .replace(/\s+/g, " ");
-
-  return normalizedFileStem || cleanString(image.dataUrl).slice(0, 240);
-}
-
-export function getReportImages(
-  entries: ProjectLogbookEntryRow[],
-  category: "Vorherbilder" | "Nachherbilder",
-  month: string,
-  useMonth: boolean,
-  selectedKeys: string[] = []
-) {
-  const uniqueImages = new Map<string, ReportImage>();
-  const selectedKeySet = new Set(selectedKeys);
-
-  entries
-    .filter((entry) => entry.title === `Bilder: ${category}`)
-    .filter((entry) => !useMonth || entry.projectMonth === month || (!entry.projectMonth && getMonthKey(entry.createdAt) === month))
-    .forEach((entry) => {
-      cleanAttachments(entry.attachments)
-        .forEach((attachment, attachmentIndex) => {
-          const sourceKey = `${entry.id}:${attachmentIndex}:${attachment.name}`;
-          if (attachment.type !== "Bild" || (!attachment.dataUrl && !attachment.storageFileId)) return;
-          if (selectedKeySet.size > 0 && !selectedKeySet.has(sourceKey)) return;
-
-          const key = getReportImageIdentity(attachment);
-          if (!uniqueImages.has(key)) {
-            uniqueImages.set(key, { ...attachment, entryDate: entry.createdAt });
-          }
-        });
-    });
-
-  return Array.from(uniqueImages.values());
-}
-
 async function generateActivityReportPdf(input: {
   project: ProjectRow;
   customerContact?: ContactRow | null;
@@ -904,69 +866,83 @@ export async function POST(req: Request) {
       { status: 413 }
     );
   }
-  const preparedPdf = await prepareStorageBackedPayload({
-    organizationId: organization.id,
-    ownerType: "project",
-    ownerId: projectId,
-    sourceType: "activity-report-pdf",
-    category: "activity-reports",
-    originalName: attachment.name,
-    contentType: "application/pdf",
-    bytes: Buffer.from(pdfData, "base64"),
-    createdByUserId: actor.id,
-  });
-  const storedAttachment = preparedPdf.prepared.attachments[0] ?? attachment;
   const reportCreatedAt = useMonth ? new Date(`${month}-01T12:00:00`) : new Date();
   const contextNote = reportContextKey
     ? ` Zuordnung: ${reportContextKey}${reportContextLabel ? ` (${reportContextLabel})` : ""}.`
     : "";
-
-  if (existingReport) {
-    let rows: ProjectLogbookEntryRow[];
-    try {
-      rows = await prisma.$transaction(async (tx) => {
+  const reportEntryId =
+    existingReport?.id ??
+    buildActivityReportEntryId({
+      organizationId: organization.id,
+      projectId,
+      month: useMonth ? month : "",
+      contextKey: reportContextKey,
+    });
+  let preparedPdf: Awaited<ReturnType<typeof prepareStorageBackedPayload>> | null = null;
+  let rows: ProjectLogbookEntryRow[] = [];
+  try {
+    rows = await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtext(${`workpilot:activity-report:${organization.id}:${projectId}:${useMonth ? month : "single"}:${reportContextKey || "default"}`})
+          )
+        `;
+        preparedPdf = await prepareStorageBackedPayload({
+          organizationId: organization.id,
+          ownerType: "project",
+          ownerId: projectId,
+          sourceType: "activity-report-pdf",
+          category: "activity-reports",
+          originalName: attachment.name,
+          contentType: "application/pdf",
+          bytes: Buffer.from(pdfData, "base64"),
+          createdByUserId: actor.id,
+        });
+        const storedAttachment =
+          preparedPdf.prepared.attachments[0] ?? attachment;
         await persistStorageBackedPayload(tx, preparedPdf);
         return tx.$queryRaw<ProjectLogbookEntryRow[]>`
-          UPDATE "ProjectLogbookEntry"
-          SET "attachments" = ${JSON.stringify([storedAttachment])}::jsonb,
-              "body" = ${`${reportName} automatisch aktualisiert.${contextNote}`},
-              "author" = ${getUserName(actor)},
-              "projectMonth" = ${useMonth ? month : null}
-          WHERE "id" = ${existingReport.id}
-            AND "organizationId" = ${organization.id}
-          RETURNING *
-        `;
-      });
-    } catch (error) {
-      await cleanupStorageBackedPayload(preparedPdf);
-      throw error;
-    }
-
-    return NextResponse.json(formatEntry(rows[0]));
-  }
-
-  let rows: ProjectLogbookEntryRow[];
-  try {
-    rows = await prisma.$transaction(async (tx) => {
-      await persistStorageBackedPayload(tx, preparedPdf);
-      return tx.$queryRaw<ProjectLogbookEntryRow[]>`
         INSERT INTO "ProjectLogbookEntry" (
           "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments", "projectMonth", "createdAt"
         ) VALUES (
-          ${randomUUID()}, ${organization.id}, ${projectId}, ${"Dokumente: Tätigkeitsberichte"},
-          ${`${reportName} automatisch erstellt.${contextNote}`}, ${getUserName(actor)}, ${""},
+          ${reportEntryId}, ${organization.id}, ${projectId}, ${"Dokumente: Tätigkeitsberichte"},
+          ${`${reportName} automatisch ${existingReport ? "aktualisiert" : "erstellt"}.${contextNote}`}, ${getUserName(actor)}, ${""},
           ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Buchhaltung"])}::jsonb,
           ${JSON.stringify([storedAttachment])}::jsonb,
           ${useMonth ? month : null},
           ${reportCreatedAt}
         )
+        ON CONFLICT ("id") DO UPDATE SET
+          "attachments" = EXCLUDED."attachments",
+          "body" = EXCLUDED."body",
+          "author" = EXCLUDED."author",
+          "projectMonth" = EXCLUDED."projectMonth"
+        WHERE "ProjectLogbookEntry"."organizationId" = ${organization.id}
+          AND "ProjectLogbookEntry"."projectId" = ${projectId}
         RETURNING *
       `;
-    });
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 10_000,
+        timeout: 45_000,
+      }
+    );
   } catch (error) {
-    await cleanupStorageBackedPayload(preparedPdf);
+    if (preparedPdf) await cleanupStorageBackedPayload(preparedPdf);
     throw error;
   }
 
-  return NextResponse.json(formatEntry(rows[0]), { status: 201 });
+  if (!rows[0]) {
+    if (preparedPdf) await cleanupStorageBackedPayload(preparedPdf);
+    return NextResponse.json(
+      { error: "Der Tätigkeitsbericht kollidiert mit einem anderen Projektkontext." },
+      { status: 409 }
+    );
+  }
+
+  return NextResponse.json(formatEntry(rows[0]), {
+    status: existingReport ? 200 : 201,
+  });
 }

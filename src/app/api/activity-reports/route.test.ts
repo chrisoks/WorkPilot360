@@ -8,7 +8,7 @@ vi.mock("@/lib/storage/document-file", () => ({
   readStoredFileBytes: vi.fn(),
 }));
 
-import { getReportImages } from "./route";
+import { getReportImages } from "@/lib/activity-reports/image-selection";
 
 describe("activity-report route image selection", () => {
   it("keeps protected file metadata for server-side PDF resolution", () => {

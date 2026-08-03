@@ -21,6 +21,7 @@ import {
   StorageAttachmentValidationError,
 } from "@/lib/storage/file-pilot";
 import { buildProjectLogbookAttachmentSourceEntityId } from "@/lib/project-logbook/storage-identity";
+import { findProjectAttachmentIndex } from "@/lib/project-logbook/attachment-identity";
 
 type LogbookAttachment = {
   name: string;
@@ -512,6 +513,7 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({}));
   const entryId = cleanString(body.entryId);
   const attachmentName = cleanString(body.attachmentName);
+  const attachmentStorageFileId = cleanString(body.attachmentStorageFileId);
   const attachmentIndex = Number(body.attachmentIndex);
   const action = cleanString(body.action) || "delete";
   const targetTitle = cleanString(body.targetTitle);
@@ -526,6 +528,9 @@ export async function PATCH(req: Request) {
 
   if (!entryId) {
     return NextResponse.json({ error: "Logbucheintrag fehlt." }, { status: 400 });
+  }
+  if (action !== "delete" && action !== "move") {
+    return NextResponse.json({ error: "Unbekannte Anhang-Aktion." }, { status: 400 });
   }
 
   await ensureProjectLogbookEntryTable();
@@ -550,17 +555,40 @@ export async function PATCH(req: Request) {
     return forbiddenAttachmentResponse();
   }
 
-  const attachments = cleanAttachments(entry.attachments);
-  const targetIndex =
-    Number.isInteger(attachmentIndex) &&
-    attachmentIndex >= 0 &&
-    attachmentIndex < attachments.length &&
-    (!attachmentName || attachments[attachmentIndex]?.name === attachmentName)
-      ? attachmentIndex
-      : attachments.findIndex((attachment) => attachment.name === attachmentName);
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtext(${`workpilot:project-logbook-attachments:${organization.id}:${entry.projectId}`})
+        )
+      `;
+      const lockedRows = await tx.$queryRaw<ProjectLogbookEntryRow[]>`
+        SELECT *
+        FROM "ProjectLogbookEntry"
+        WHERE "id" = ${entry.id}
+          AND "organizationId" = ${organization.id}
+          AND "projectId" = ${entry.projectId}
+        LIMIT 1
+        FOR UPDATE
+      `;
+      const lockedEntry = lockedRows[0];
+      if (!lockedEntry) {
+        return NextResponse.json({ error: "Logbucheintrag wurde nicht gefunden." }, { status: 404 });
+      }
+
+  const attachments = cleanAttachments(lockedEntry.attachments);
+  const targetIndex = findProjectAttachmentIndex({
+    attachments,
+    requestedStorageFileId: attachmentStorageFileId,
+    requestedIndex: attachmentIndex,
+    requestedName: attachmentName,
+  });
 
   if (targetIndex < 0) {
-    return NextResponse.json({ error: "Anhang wurde nicht gefunden." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Der Anhang wurde zwischenzeitlich verändert. Bitte Projektakte neu laden." },
+      { status: 409 }
+    );
   }
 
   const removedAttachment = attachments[targetIndex];
@@ -571,39 +599,44 @@ export async function PATCH(req: Request) {
     if (!targetTitle || !targetTitle.startsWith("Bilder: ")) {
       return NextResponse.json({ error: "Bild-Zielordner fehlt." }, { status: 400 });
     }
+    if (targetTitle === lockedEntry.title) {
+      return NextResponse.json({ error: "Quelle und Zielordner dürfen nicht identisch sein." }, { status: 400 });
+    }
   }
 
   const nextAttachments = attachments.filter((_, index) => index !== targetIndex);
-  const updatedRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+  const updatedRows = await tx.$queryRaw<ProjectLogbookEntryRow[]>`
     UPDATE "ProjectLogbookEntry"
     SET "attachments" = ${JSON.stringify(nextAttachments)}::jsonb,
         "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "id" = ${entry.id}
+    WHERE "id" = ${lockedEntry.id}
       AND "organizationId" = ${organization.id}
     RETURNING *
   `;
 
-  const normalizedEntryTitle = (entry.title || "")
+  const normalizedEntryTitle = (lockedEntry.title || "")
     .replaceAll("Taetigkeitsbericht", "Tätigkeitsbericht")
     .replaceAll("T\u00c3\u00a4tigkeitsbericht", "Tätigkeitsbericht");
   const isActivityReport =
-    ACTIVITY_REPORT_TITLES.has(entry.title || "") ||
+    ACTIVITY_REPORT_TITLES.has(lockedEntry.title || "") ||
     normalizedEntryTitle === "Dokumente: Tätigkeitsberichte" ||
     normalizedEntryTitle.includes("Tätigkeitsbericht");
   const historyTitle = isActivityReport ? ACTIVITY_REPORT_DELETE_TITLE : PROJECT_ATTACHMENT_DELETE_TITLE;
-  const sourceTitle = entry.title || "Projektakte";
+  const sourceTitle = lockedEntry.title || "Projektakte";
   if (action === "move") {
-    const targetRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+    const targetRows = await tx.$queryRaw<ProjectLogbookEntryRow[]>`
       SELECT *
       FROM "ProjectLogbookEntry"
       WHERE "organizationId" = ${organization.id}
-        AND "projectId" = ${entry.projectId}
+        AND "projectId" = ${lockedEntry.projectId}
         AND "title" = ${targetTitle}
       ORDER BY "createdAt" DESC
     `;
-    const targetEntry = targetRows.find((row) => (row.projectMonth || "") === (entry.projectMonth || ""));
+    const targetEntry = targetRows.find(
+      (row) => (row.projectMonth || "") === (lockedEntry.projectMonth || "")
+    );
     const movedRows = targetEntry
-      ? await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+      ? await tx.$queryRaw<ProjectLogbookEntryRow[]>`
           UPDATE "ProjectLogbookEntry"
           SET "attachments" = ${JSON.stringify([...cleanAttachments(targetEntry.attachments), removedAttachment])}::jsonb,
               "updatedAt" = CURRENT_TIMESTAMP
@@ -611,7 +644,7 @@ export async function PATCH(req: Request) {
             AND "organizationId" = ${organization.id}
           RETURNING *
         `
-      : await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+      : await tx.$queryRaw<ProjectLogbookEntryRow[]>`
           INSERT INTO "ProjectLogbookEntry" (
             "id",
             "organizationId",
@@ -628,20 +661,20 @@ export async function PATCH(req: Request) {
           VALUES (
             ${randomUUID()},
             ${organization.id},
-            ${entry.projectId},
+            ${lockedEntry.projectId},
             ${targetTitle},
             ${`Bild "${removedAttachment.name}" verschoben.`},
             ${actorName},
             ${actorUserId || null},
-            ${entry.colleague || null},
-            ${JSON.stringify(cleanStringList(entry.visibleFor))}::jsonb,
+            ${lockedEntry.colleague || null},
+            ${JSON.stringify(cleanStringList(lockedEntry.visibleFor))}::jsonb,
             ${JSON.stringify([removedAttachment])}::jsonb,
-            ${entry.projectMonth || null}
+            ${lockedEntry.projectMonth || null}
           )
           RETURNING *
         `;
 
-    const historyRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+    const historyRows = await tx.$queryRaw<ProjectLogbookEntryRow[]>`
       INSERT INTO "ProjectLogbookEntry" (
         "id",
         "organizationId",
@@ -658,15 +691,15 @@ export async function PATCH(req: Request) {
       VALUES (
         ${randomUUID()},
         ${organization.id},
-        ${entry.projectId},
+        ${lockedEntry.projectId},
         ${"Projektbild: verschoben"},
         ${`Bild "${removedAttachment.name}" wurde aus "${sourceTitle}" nach "${targetTitle}" verschoben.`},
         ${actorName},
         ${actorUserId || null},
-        ${entry.colleague || null},
-        ${JSON.stringify(cleanStringList(entry.visibleFor))}::jsonb,
+        ${lockedEntry.colleague || null},
+        ${JSON.stringify(cleanStringList(lockedEntry.visibleFor))}::jsonb,
         ${JSON.stringify([])}::jsonb,
-        ${entry.projectMonth || null}
+        ${lockedEntry.projectMonth || null}
       )
       RETURNING *
     `;
@@ -681,7 +714,7 @@ export async function PATCH(req: Request) {
     ? `Tätigkeitsbericht "${removedAttachment.name}" wurde gelöscht.`
     : `${removedAttachment.type === "Bild" ? "Bild" : "Dokument"} "${removedAttachment.name}" wurde aus "${sourceTitle}" gelöscht.`;
 
-  const historyRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+  const historyRows = await tx.$queryRaw<ProjectLogbookEntryRow[]>`
     INSERT INTO "ProjectLogbookEntry" (
       "id",
       "organizationId",
@@ -698,15 +731,15 @@ export async function PATCH(req: Request) {
     VALUES (
       ${randomUUID()},
       ${organization.id},
-      ${entry.projectId},
+      ${lockedEntry.projectId},
       ${historyTitle},
       ${historyBody},
       ${actorName},
       ${actorUserId || null},
-      ${entry.colleague || null},
-      ${JSON.stringify(cleanStringList(entry.visibleFor))}::jsonb,
+      ${lockedEntry.colleague || null},
+      ${JSON.stringify(cleanStringList(lockedEntry.visibleFor))}::jsonb,
       ${JSON.stringify([])}::jsonb,
-      ${entry.projectMonth || null}
+      ${lockedEntry.projectMonth || null}
     )
     RETURNING *
   `;
@@ -715,4 +748,11 @@ export async function PATCH(req: Request) {
     entry: formatEntry(updatedRows[0]),
     history: formatEntry(historyRows[0]),
   });
+    },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 10_000,
+      timeout: 30_000,
+    }
+  );
 }
