@@ -18,6 +18,11 @@ import {
   executeContactDeletion,
   getContactDeletionConfirmationText,
 } from "@/lib/contacts/contact-deletion-service";
+import {
+  allocateContactCustomerNumber,
+  assertChangedContactCustomerNumberAvailable,
+  ContactNumberConflictError,
+} from "@/lib/contacts/customer-number-service";
 
 type ContactRow = {
   id: string;
@@ -388,18 +393,6 @@ function getCustomerStatusInput(args: {
   } as const;
 }
 
-async function getNextCustomerNumber(organizationId: string) {
-  const rows = await prisma.$queryRaw<Array<{ customerNumber: string }>>`
-    SELECT "customerNumber"
-    FROM "Contact"
-    WHERE "organizationId" = ${organizationId}
-    ORDER BY "createdAt" DESC
-    LIMIT 1
-  `;
-  const currentNumber = Number(rows[0]?.customerNumber ?? "7000048");
-  return String(Number.isFinite(currentNumber) ? currentNumber + 1 : 7000049);
-}
-
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
@@ -446,7 +439,7 @@ export async function POST(req: Request) {
   if (requiredContactError) {
     return NextResponse.json({ error: requiredContactError }, { status: 400 });
   }
-  const customerNumber = cleanString(body.customerNumber) || (await getNextCustomerNumber(organization.id));
+  const requestedCustomerNumber = cleanString(body.customerNumber);
   const email = cleanString(body.email);
   const invoiceEmail = cleanString(body.invoiceEmail);
   const activityReportEmail = cleanString(body.activityReportEmail);
@@ -472,7 +465,14 @@ export async function POST(req: Request) {
     if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
-  const inserted = await prisma.$transaction(async (transaction) => {
+  let inserted: ContactRow[];
+  try {
+    inserted = await prisma.$transaction(async (transaction) => {
+    const customerNumber = await allocateContactCustomerNumber({
+      tx: transaction,
+      organizationId: organization.id,
+      requestedNumber: requestedCustomerNumber,
+    });
     const rows = await transaction.$queryRaw<ContactRow[]>`
     INSERT INTO "Contact" (
       "id", "organizationId", "category", "type", "legalForm", "customerNumber",
@@ -507,7 +507,13 @@ export async function POST(req: Request) {
       data: { organizationId: organization.id, contactId: id, eventType: "created", changedFields: [] },
     });
     return rows;
-  });
+    });
+  } catch (error) {
+    if (error instanceof ContactNumberConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
+  }
 
   return NextResponse.json(formatContact(inserted[0]));
 }
@@ -538,7 +544,6 @@ export async function PATCH(req: Request) {
   if (requiredContactError) {
     return NextResponse.json({ error: requiredContactError }, { status: 400 });
   }
-  const customerNumber = cleanString(body.customerNumber) || (await getNextCustomerNumber(organization.id));
   const email = cleanString(body.email);
   const invoiceEmail = cleanString(body.invoiceEmail);
   const activityReportEmail = cleanString(body.activityReportEmail);
@@ -559,6 +564,7 @@ export async function PATCH(req: Request) {
   if (existingContacts.length === 0) {
     return NextResponse.json({ error: "Kontakt wurde nicht gefunden." }, { status: 404 });
   }
+  const customerNumber = cleanString(body.customerNumber) || existingContacts[0].customerNumber;
   const customerStatus = getCustomerStatusInput({
     body,
     actor,
@@ -601,7 +607,16 @@ export async function PATCH(req: Request) {
       )
     : [];
 
-  const updated = await prisma.$transaction(async (transaction) => {
+  let updated: ContactRow[];
+  try {
+    updated = await prisma.$transaction(async (transaction) => {
+    await assertChangedContactCustomerNumberAvailable({
+      tx: transaction,
+      organizationId: organization.id,
+      contactId: id,
+      previousNumber: previousContact.customerNumber,
+      nextNumber: customerNumber,
+    });
     const rows = await transaction.$queryRaw<ContactRow[]>`
       UPDATE "Contact"
       SET
@@ -705,7 +720,13 @@ export async function PATCH(req: Request) {
     }
 
     return rows;
-  });
+    });
+  } catch (error) {
+    if (error instanceof ContactNumberConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
+  }
 
   if (updated.length === 0) {
     return NextResponse.json({ error: "Kontakt wurde nicht gefunden." }, { status: 404 });

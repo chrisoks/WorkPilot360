@@ -257,6 +257,18 @@ export async function executeOfferDecision(input: {
     );
   }
 
+  if (input.decision === "lost") {
+    await input.tx.offerAcceptanceRequest.updateMany({
+      where: {
+        organizationId: input.organizationId,
+        offerId: input.offerId,
+        acceptedAt: null,
+        revokedAt: null,
+      },
+      data: { status: "revoked", revokedAt: now },
+    });
+  }
+
   const result = await input.tx.offer.findFirstOrThrow({
     where: { id: input.offerId, organizationId: input.organizationId },
   });

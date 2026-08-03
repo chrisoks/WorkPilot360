@@ -33,6 +33,14 @@ import {
   readStoredFileBytes,
   resolveStorageBackedBase64,
 } from "@/lib/storage/document-file";
+import {
+  assertAdditionalAttachmentSize,
+  findReminderAttachment,
+  resolveDocumentMailAttachment,
+  resolveDocumentMailAttachments,
+  type GraphFileAttachment,
+} from "./attachments";
+import { isDraftDocument } from "./validation";
 
 type MailAccount = {
   provider?: string;
@@ -158,30 +166,6 @@ function getDataUrlAttachment(name: string, dataUrl: string) {
     contentType: match[1] || "application/octet-stream",
     contentBytes: match[2],
   };
-}
-
-function getAdditionalDataUrlAttachments(value: unknown) {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>) : null))
-    .filter(Boolean)
-    .map((item) => getDataUrlAttachment(cleanText(item?.name), cleanText(item?.dataUrl)))
-    .filter((item): item is NonNullable<ReturnType<typeof getDataUrlAttachment>> => Boolean(item));
-}
-
-function getTargetedDataUrlAttachments(value: unknown, target: "invoice" | "activityReport") {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>) : null))
-    .filter(Boolean)
-    .filter((item) => {
-      const itemTarget = cleanText(item?.target) || "both";
-      return itemTarget === "both" || itemTarget === target;
-    })
-    .map((item) => getDataUrlAttachment(cleanText(item?.name), cleanText(item?.dataUrl)))
-    .filter((item): item is NonNullable<ReturnType<typeof getDataUrlAttachment>> => Boolean(item));
 }
 
 function escapeHtml(value: string) {
@@ -595,6 +579,26 @@ async function documentBelongsToOrganization(
   return kind === "document";
 }
 
+async function isDocumentDraft(organizationId: string, kind: string, documentId: string) {
+  if (kind === "offer") {
+    const rows = await prisma.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "Offer"
+      WHERE id = ${documentId} AND "organizationId" = ${organizationId}
+      LIMIT 1
+    `;
+    return isDraftDocument(kind, rows[0]?.status);
+  }
+  if (kind === "invoice") {
+    const rows = await prisma.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "Invoice"
+      WHERE id = ${documentId} AND "organizationId" = ${organizationId}
+      LIMIT 1
+    `;
+    return isDraftDocument(kind, rows[0]?.status);
+  }
+  return false;
+}
+
 function formatDispatch(row: {
   id: string;
   documentKind: string;
@@ -617,7 +621,7 @@ function formatDispatch(row: {
   };
 }
 
-async function getPdfAttachment(organizationId: string, kind: string, documentId: string, documentNumber: string) {
+async function getPdfAttachment(organizationId: string, kind: string, documentId: string, documentNumber: string, projectId: string) {
   if (kind === "offer") {
     const rows = await prisma.$queryRaw<Array<{ pdfData: string | null }>>`
       SELECT "pdfData" FROM "Offer"
@@ -694,6 +698,35 @@ async function getPdfAttachment(organizationId: string, kind: string, documentId
         }]
       : [];
   }
+
+  if (kind === "reminder") {
+    const invoiceNumber = getReminderInvoiceNumber(documentNumber);
+    const invoices = await prisma.$queryRaw<Array<{ id: string; projectId: string }>>`
+      SELECT id, "projectId" FROM "Invoice"
+      WHERE "organizationId" = ${organizationId}
+        AND (id = ${documentId} OR (${invoiceNumber} <> '' AND "invoiceNumber" = ${invoiceNumber} AND "projectId" = ${projectId}))
+      LIMIT 1
+    `;
+    const ownerProjectId = invoices[0]?.projectId;
+    if (!ownerProjectId) return [];
+    const entries = await prisma.$queryRaw<Array<{ attachments: unknown }>>`
+      SELECT "attachments" FROM "ProjectLogbookEntry"
+      WHERE "organizationId" = ${organizationId}
+        AND "projectId" = ${ownerProjectId}
+        AND "title" = 'Dokumente: Mahnung'
+      ORDER BY "createdAt" DESC
+    `;
+    const attachment = findReminderAttachment(entries, documentNumber);
+    if (!attachment) return [];
+    const resolved = await resolveDocumentMailAttachment({
+      organizationId,
+      projectId: ownerProjectId,
+      attachment,
+    });
+    return resolved ? [resolved] : [];
+  }
+
+  if (kind === "document") return [];
 
   const rows = await prisma.$queryRaw<Array<{ pdfData: string | null }>>`
     SELECT "pdfData" FROM "Invoice"
@@ -949,6 +982,12 @@ export async function POST(req: Request) {
   if (!(await documentBelongsToOrganization(organization.id, kind, documentId, projectId, documentNumber))) {
     return NextResponse.json({ error: "Dokument wurde nicht gefunden." }, { status: 404 });
   }
+  if (await isDocumentDraft(organization.id, kind, documentId)) {
+    return NextResponse.json(
+      { error: kind === "offer" ? "Angebotsentwürfe können nicht versendet werden." : "Rechnungsentwürfe können nicht versendet werden." },
+      { status: 409 }
+    );
+  }
 
   if (recipients.length === 0) {
     return NextResponse.json({ error: "Bitte mindestens einen Empfänger eintragen." }, { status: 400 });
@@ -967,15 +1006,35 @@ export async function POST(req: Request) {
     (Boolean(body.attachPdf) && eInvoiceFormat !== "zugferd") ||
     (kind === "invoice" && eInvoiceFormat === "pdf-xrechnung");
   const storedAttachments = shouldAttachStoredPdf
-    ? await getPdfAttachment(organization.id, kind, cleanText(body.documentId), cleanText(body.documentNumber))
+    ? await getPdfAttachment(organization.id, kind, cleanText(body.documentId), cleanText(body.documentNumber), projectId)
     : [];
-  const uploadedAttachment =
-    shouldAttachStoredPdf && cleanText(body.attachmentDataUrl)
-      ? getDataUrlAttachment(
-          cleanText(body.attachmentName) || `${cleanText(body.documentNumber)}.pdf`,
-          cleanText(body.attachmentDataUrl)
-        )
-      : null;
+  let uploadedAttachment: GraphFileAttachment | null = null;
+  if (shouldAttachStoredPdf && storedAttachments.length === 0 && cleanText(body.attachmentDataUrl)) {
+    try {
+      uploadedAttachment = await resolveDocumentMailAttachment({
+        organizationId: organization.id,
+        projectId,
+        attachment: {
+          name: cleanText(body.attachmentName) || `${cleanText(body.documentNumber)}.pdf`,
+          dataUrl: cleanText(body.attachmentDataUrl),
+        },
+      });
+    } catch {
+      uploadedAttachment = null;
+    }
+    if (!uploadedAttachment) {
+      return NextResponse.json(
+        { error: "Der Dokumentanhang wurde nicht gefunden oder gehört nicht zu diesem Projekt." },
+        { status: 400 }
+      );
+    }
+  }
+  if (kind === "reminder" && shouldAttachStoredPdf && storedAttachments.length === 0) {
+    return NextResponse.json(
+      { error: "Das Mahnungs-PDF wurde nicht gefunden und der Versand wurde abgebrochen." },
+      { status: 409 }
+    );
+  }
   let xrechnungAttachment: Record<string, unknown> | null = null;
   let zugferdAttachment: Record<string, unknown> | null = null;
   if (kind === "invoice" && ["xrechnung", "pdf-xrechnung"].includes(eInvoiceFormat)) {
@@ -1001,15 +1060,29 @@ export async function POST(req: Request) {
   const separateActivityReportRecipients =
     kind === "invoice" && parseRecipients(body.activityReportTo).length > 0;
   const activityReportRecipients = parseRecipients(body.activityReportTo);
-  const additionalAttachments = Boolean(body.attachActivityReports)
-    ? getAdditionalDataUrlAttachments(body.additionalAttachments)
-    : [];
-  const invoiceManualAttachments = separateActivityReportRecipients
-    ? getTargetedDataUrlAttachments(body.manualAttachments, "invoice")
-    : getAdditionalDataUrlAttachments(body.manualAttachments);
-  const activityReportManualAttachments = separateActivityReportRecipients
-    ? getTargetedDataUrlAttachments(body.manualAttachments, "activityReport")
-    : [];
+  let additionalAttachments: GraphFileAttachment[] = [];
+  let invoiceManualAttachments: GraphFileAttachment[] = [];
+  let activityReportManualAttachments: GraphFileAttachment[] = [];
+  try {
+    additionalAttachments = Boolean(body.attachActivityReports)
+      ? await resolveDocumentMailAttachments({ organizationId: organization.id, projectId, value: body.additionalAttachments })
+      : [];
+    invoiceManualAttachments = await resolveDocumentMailAttachments({
+      organizationId: organization.id,
+      projectId,
+      value: body.manualAttachments,
+      target: separateActivityReportRecipients ? "invoice" : undefined,
+    });
+    activityReportManualAttachments = separateActivityReportRecipients
+      ? await resolveDocumentMailAttachments({ organizationId: organization.id, projectId, value: body.manualAttachments, target: "activityReport" })
+      : [];
+    assertAdditionalAttachmentSize([...additionalAttachments, ...invoiceManualAttachments, ...activityReportManualAttachments]);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Zusatzanhang konnte nicht sicher geladen werden." },
+      { status: 400 }
+    );
+  }
   const shouldSendSeparateActivityReport =
     separateActivityReportRecipients && (additionalAttachments.length > 0 || activityReportManualAttachments.length > 0);
   const attachments = [
@@ -1168,8 +1241,27 @@ export async function POST(req: Request) {
     });
     await markFeedbackRequestAsSent(organization.id, preparedFeedbackRequest);
     if (preparedOfferAcceptance) {
-      await prisma.$executeRaw`UPDATE "OfferAcceptanceRequest" SET "status" = 'sent', "sentAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ${preparedOfferAcceptance.id}`;
-      await prisma.$executeRaw`UPDATE "OfferAcceptanceRequest" SET "status" = 'revoked', "revokedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE "organizationId" = ${organization.id} AND "offerId" = ${documentId} AND id <> ${preparedOfferAcceptance.id} AND "acceptedAt" IS NULL AND "revokedAt" IS NULL`;
+      await prisma.$transaction(async (tx) => {
+        const activated = await tx.$executeRaw`
+          UPDATE "OfferAcceptanceRequest"
+          SET "status" = 'sent', "sentAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+          WHERE id = ${preparedOfferAcceptance.id}
+            AND "organizationId" = ${organization.id}
+            AND "offerId" = ${documentId}
+            AND "status" = 'prepared' AND "revokedAt" IS NULL
+        `;
+        if (activated !== 1) {
+          throw new Error("Der Freigabelink wurde zwischenzeitlich ungültig. Der Versand ist sicher gesperrt.");
+        }
+        await tx.$executeRaw`
+          UPDATE "OfferAcceptanceRequest"
+          SET "status" = 'revoked', "revokedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+          WHERE "organizationId" = ${organization.id} AND "offerId" = ${documentId}
+            AND id <> ${preparedOfferAcceptance.id}
+            AND "status" <> 'prepared'
+            AND "acceptedAt" IS NULL AND "revokedAt" IS NULL
+        `;
+      }, { isolationLevel: "Serializable" });
     }
     if (shouldSendSeparateActivityReport) {
       const activityReportRawBody = cleanText(body.activityReportBody) || rawMessageBody;
@@ -1231,7 +1323,7 @@ export async function POST(req: Request) {
   }
 
   if (kind === "invoice" && Boolean(body.attachActivityReports)) {
-    const activityReportAttachments = getAdditionalDataUrlAttachments(body.additionalAttachments);
+    const activityReportAttachments = additionalAttachments;
     const reportHistoryRecipients = shouldSendSeparateActivityReport ? activityReportRecipients : recipients;
     for (const attachment of activityReportAttachments) {
       const attachmentName = cleanText(attachment.name).replace(/\.pdf$/i, "");

@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
@@ -20,6 +20,7 @@ import {
   prepareStorageAttachments,
   StorageAttachmentValidationError,
 } from "@/lib/storage/file-pilot";
+import { buildProjectLogbookAttachmentSourceEntityId } from "@/lib/project-logbook/storage-identity";
 
 type LogbookAttachment = {
   name: string;
@@ -406,6 +407,18 @@ export async function POST(req: Request) {
   }
 
   const id = cleanString(body.id) || randomUUID();
+  const existingIdRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"
+    FROM "ProjectLogbookEntry"
+    WHERE "id" = ${id}
+    LIMIT 1
+  `;
+  if (existingIdRows[0]) {
+    return NextResponse.json(
+      { error: "Dieser Logbucheintrag wurde bereits verarbeitet." },
+      { status: 409 }
+    );
+  }
   const title = cleanString(body.title) || "Eintrag";
   const authorUserId = actor.id;
   const colleague = cleanString(body.colleague);
@@ -419,6 +432,7 @@ export async function POST(req: Request) {
   const requestedCreatedAt = cleanString(body.createdAt);
   const createdAt = requestedCreatedAt ? new Date(requestedCreatedAt) : new Date();
   const createdAtValue = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
+  const uploadBatchId = randomUUID();
 
   let preparedStorage;
   try {
@@ -432,7 +446,13 @@ export async function POST(req: Request) {
       createdByUserId: actor.id,
       attachments: attachments.map((attachment, index) => ({
         ...attachment,
-        sourceEntityId: `${id}:${index}`,
+        // A request-scoped suffix prevents a duplicate client entry ID from ever
+        // overwriting an already available object before the DB conflict is known.
+        sourceEntityId: buildProjectLogbookAttachmentSourceEntityId({
+          entryId: id,
+          attachmentIndex: index,
+          uploadBatchId,
+        }),
       })),
     });
   } catch (error) {
@@ -469,6 +489,12 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     await cleanupPreparedStorageUploads(preparedStorage);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json(
+        { error: "Dieser Logbucheintrag wurde bereits verarbeitet." },
+        { status: 409 }
+      );
+    }
     if (error instanceof ProjectLogbookServiceError) {
       const status =
         error.code === "project_not_found"

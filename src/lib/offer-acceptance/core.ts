@@ -22,6 +22,43 @@ export function hashAcceptanceValue(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+export type PublicOfferAcceptanceState = {
+  requestStatus: string;
+  revokedAt: Date | null;
+  expiresAt: Date;
+  offerStatus: string;
+  offerVersionHash: string;
+  currentOfferPdfData: string | null;
+};
+
+export type PublicOfferAcceptanceStateResult =
+  | { ok: true }
+  | { ok: false; reason: "revoked" | "expired" | "inactive" | "version-mismatch" };
+
+const PUBLIC_ACCEPTANCE_REQUEST_STATUSES = new Set(["sent", "viewed", "started", "accepted", "withdrawn"]);
+
+/** Fail-closed gate shared by every public read/write path. */
+export function validatePublicOfferAcceptanceState(
+  input: PublicOfferAcceptanceState,
+  now = new Date()
+): PublicOfferAcceptanceStateResult {
+  if (input.revokedAt) return { ok: false, reason: "revoked" };
+  // Accepted/withdrawn requests are immutable evidence. Keep their public
+  // receipt and consumer-withdrawal flow available even if the working offer
+  // record is changed later; only still-actionable links follow the live offer.
+  if (["accepted", "withdrawn"].includes(input.requestStatus)) return { ok: true };
+  if (!PUBLIC_ACCEPTANCE_REQUEST_STATUSES.has(input.requestStatus) || input.offerStatus !== "Erstellt") {
+    return { ok: false, reason: "inactive" };
+  }
+  if (input.expiresAt.getTime() < now.getTime() && !["accepted", "withdrawn"].includes(input.requestStatus)) {
+    return { ok: false, reason: "expired" };
+  }
+  if (!input.currentOfferPdfData || hashAcceptanceValue(input.currentOfferPdfData) !== input.offerVersionHash) {
+    return { ok: false, reason: "version-mismatch" };
+  }
+  return { ok: true };
+}
+
 export function createAcceptanceToken() {
   return randomBytes(32).toString("hex");
 }

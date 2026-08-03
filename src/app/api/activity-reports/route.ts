@@ -15,6 +15,10 @@ import {
   persistStorageBackedPayload,
   prepareStorageBackedPayload,
 } from "@/lib/storage/document-file";
+import {
+  ActivityReportImageSourceError,
+  resolveActivityReportImage,
+} from "./report-image-source";
 
 type LogbookAttachment = {
   name: string;
@@ -22,6 +26,7 @@ type LogbookAttachment = {
   mimeType?: string;
   size?: number;
   dataUrl?: string;
+  storageFileId?: string;
 };
 
 type ProjectRow = {
@@ -118,6 +123,7 @@ function cleanAttachments(value: unknown): LogbookAttachment[] {
       mimeType: cleanString(candidate.mimeType),
       size: Number.isFinite(Number(candidate.size)) ? Number(candidate.size) : 0,
       dataUrl: cleanString(candidate.dataUrl),
+      storageFileId: cleanString(candidate.storageFileId),
     });
 
     return attachments;
@@ -475,10 +481,15 @@ async function addTemplatePage(pdfDoc: PDFDocument, templateDoc: PDFDocument, pa
   return templatePage;
 }
 
-async function embedReportImage(pdfDoc: PDFDocument, image: ReportImage) {
-  const base64 = image.dataUrl?.split(",")[1] ?? "";
-  const bytes = Buffer.from(base64, "base64");
-  const mimeType = image.mimeType?.toLowerCase() ?? "";
+async function embedReportImage(
+  pdfDoc: PDFDocument,
+  image: ReportImage,
+  organizationId: string,
+  projectId: string
+) {
+  const resolved = await resolveActivityReportImage({ organizationId, projectId, image });
+  const bytes = resolved.bytes;
+  const mimeType = resolved.mimeType.toLowerCase();
   const orientation = getJpegOrientation(bytes);
 
   if (mimeType.includes("png")) {
@@ -577,7 +588,7 @@ function getReportImageIdentity(image: LogbookAttachment) {
   return normalizedFileStem || cleanString(image.dataUrl).slice(0, 240);
 }
 
-function getReportImages(
+export function getReportImages(
   entries: ProjectLogbookEntryRow[],
   category: "Vorherbilder" | "Nachherbilder",
   month: string,
@@ -594,7 +605,7 @@ function getReportImages(
       cleanAttachments(entry.attachments)
         .forEach((attachment, attachmentIndex) => {
           const sourceKey = `${entry.id}:${attachmentIndex}:${attachment.name}`;
-          if (attachment.type !== "Bild" || !attachment.dataUrl) return;
+          if (attachment.type !== "Bild" || (!attachment.dataUrl && !attachment.storageFileId)) return;
           if (selectedKeySet.size > 0 && !selectedKeySet.has(sourceKey)) return;
 
           const key = getReportImageIdentity(attachment);
@@ -617,6 +628,7 @@ async function generateActivityReportPdf(input: {
   month: string;
   useMonth: boolean;
   reportContextLabel?: string;
+  organizationId: string;
 }) {
   const company = input.project.branch || "";
   const templateBytes = await readFile(getTemplatePath(company));
@@ -716,9 +728,15 @@ async function generateActivityReportPdf(input: {
       page.drawRectangle({ x: imageBox.x, y: imageBox.y, width: imageBox.width, height: imageBox.height, borderColor: LINE, borderWidth: 0.8 });
 
       try {
-        const { embedded, orientation } = await embedReportImage(pdfDoc, image);
+        const { embedded, orientation } = await embedReportImage(
+          pdfDoc,
+          image,
+          input.organizationId,
+          input.project.id
+        );
         drawImageContained(page, embedded, { x: imageBox.x + 8, y: imageBox.y + 8, width: imageBox.width - 16, height: imageBox.height - 16 }, orientation);
-      } catch {
+      } catch (error) {
+        if (error instanceof ActivityReportImageSourceError) throw error;
         throw new Error(`${image.name} konnte nicht in den Tätigkeitsbericht eingebettet werden. Bitte das Bild erneut als JPG oder PNG hochladen.`);
       }
     }
@@ -861,6 +879,7 @@ export async function POST(req: Request) {
       month,
       useMonth,
       reportContextLabel,
+      organizationId: organization.id,
     });
   } catch (error) {
     return NextResponse.json(

@@ -105,4 +105,28 @@ describe("offer decision service", () => {
     expect(tx.offerHistory.create).toHaveBeenCalledTimes(1);
     expect(tx.projectLogbookEntry.create).toHaveBeenCalledTimes(1);
   });
+
+  it("revokes every still-active acceptance link when an offer is lost", async () => {
+    const source = offer();
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      offer: {
+        findFirst: vi.fn().mockResolvedValue(source),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findFirstOrThrow: vi.fn().mockResolvedValue({ ...source, status: "Verloren", lostAt: new Date() }),
+      },
+      invoice: { findMany: vi.fn().mockResolvedValue([]) },
+      offerAcceptanceRequest: { updateMany: vi.fn().mockResolvedValue({ count: 2 }) },
+      offerHistory: { create: vi.fn().mockResolvedValue({ id: "history-1" }) },
+      projectLogbookEntry: { create: vi.fn().mockResolvedValue({ id: "log-1" }) },
+    } as any;
+    await executeOfferDecision({
+      tx, organizationId: "org-1", offerId: "offer-1", decision: "lost",
+      reason: "Preis", note: "Kunde hat abgesagt", actorId: "user-1", actorName: "GF Test", source: "jarvis",
+    });
+    expect(tx.offerAcceptanceRequest.updateMany).toHaveBeenCalledWith({
+      where: { organizationId: "org-1", offerId: "offer-1", acceptedAt: null, revokedAt: null },
+      data: { status: "revoked", revokedAt: expect.any(Date) },
+    });
+  });
 });

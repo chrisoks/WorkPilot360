@@ -1403,6 +1403,7 @@ export async function PATCH(req: Request) {
     }
 
     const rows = await prisma.$queryRaw<OfferRow[]>`
+      WITH updated_offer AS (
       UPDATE "Offer"
       SET
         "status" = 'Verloren',
@@ -1415,6 +1416,15 @@ export async function PATCH(req: Request) {
         "updatedAt" = CURRENT_TIMESTAMP
       WHERE "organizationId" = ${organization.id} AND "id" = ${id}
       RETURNING *
+      ), revoked_links AS (
+        UPDATE "OfferAcceptanceRequest"
+        SET "status" = 'revoked', "revokedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "organizationId" = ${organization.id}
+          AND "offerId" IN (SELECT id FROM updated_offer)
+          AND "acceptedAt" IS NULL AND "revokedAt" IS NULL
+        RETURNING id
+      )
+      SELECT * FROM updated_offer
     `;
 
     const savedLines = await prisma.$queryRaw<OfferLineRow[]>`
@@ -1599,6 +1609,7 @@ export async function PATCH(req: Request) {
       : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
 
   const rows = await prisma.$queryRaw<OfferRow[]>`
+    WITH updated_offer AS (
     UPDATE "Offer"
     SET
       "projectId" = ${cleanString(body.projectId)},
@@ -1632,6 +1643,15 @@ export async function PATCH(req: Request) {
       "updatedAt" = CURRENT_TIMESTAMP
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     RETURNING *
+    ), revoked_links AS (
+      UPDATE "OfferAcceptanceRequest"
+      SET "status" = 'revoked', "revokedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id}
+        AND "offerId" IN (SELECT id FROM updated_offer)
+        AND "acceptedAt" IS NULL AND "revokedAt" IS NULL
+      RETURNING id
+    )
+    SELECT * FROM updated_offer
   `;
 
   await prisma.$executeRaw`

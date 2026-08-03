@@ -15,7 +15,9 @@ import {
   ensureOfferAcceptanceTable,
   getAcceptanceClientIp,
   hashAcceptanceValue,
+  validatePublicOfferAcceptanceState,
 } from "@/lib/offer-acceptance/core";
+import { resolveStorageBackedBase64 } from "@/lib/storage/document-file";
 
 type AcceptanceRow = {
   id: string; organizationId: string; offerId: string; projectId: string; customerId: string;
@@ -29,6 +31,7 @@ type AcceptanceRow = {
   withdrawnAt: Date | null; withdrawnByName: string; withdrawnByEmail: string;
   withdrawalReceiptPdfData: string | null;
   revokedAt: Date | null;
+  currentOfferStatus: string; currentOfferPdfData: string | null;
   customerName: string; projectNumber: string; projectTitle: string; netTotal: number; vatRate: number; grossTotal: number;
 };
 
@@ -37,12 +40,34 @@ type AcceptanceDb = typeof prisma | Prisma.TransactionClient;
 async function getAcceptance(token: string, db: AcceptanceDb = prisma, lock = false) {
   const hash = hashAcceptanceValue(token);
   return db.$queryRawUnsafe<AcceptanceRow[]>(`
-    SELECT r.*, o."customerName", o."projectNumber", o."projectTitle", o."netTotal", o."vatRate", o."grossTotal"
+    SELECT r.*, o."customerName", o."projectNumber", o."projectTitle", o."netTotal", o."vatRate", o."grossTotal",
+      o."status" AS "currentOfferStatus", o."pdfData" AS "currentOfferPdfData"
     FROM "OfferAcceptanceRequest" r
     INNER JOIN "Offer" o ON o.id = r."offerId" AND o."organizationId" = r."organizationId"
     WHERE r."tokenHash" = $1
     LIMIT 1${lock ? " FOR UPDATE" : ""}
   `, hash).then((rows) => rows[0] ?? null);
+}
+
+async function getPublicAcceptanceState(row: AcceptanceRow) {
+  const currentOfferPdfData = await resolveStorageBackedBase64({
+    organizationId: row.organizationId,
+    payload: row.currentOfferPdfData,
+    expectedOwnerType: "offer",
+    expectedOwnerId: row.offerId,
+  }).catch(() => null);
+  return validatePublicOfferAcceptanceState({
+    requestStatus: row.status,
+    revokedAt: row.revokedAt,
+    expiresAt: row.expiresAt,
+    offerStatus: row.currentOfferStatus,
+    offerVersionHash: row.offerVersionHash,
+    currentOfferPdfData,
+  });
+}
+
+function unavailableResponse() {
+  return NextResponse.json({ error: "Dieser Freigabelink ist nicht mehr verfügbar oder wurde ersetzt." }, { status: 410 });
 }
 
 function publicPayload(row: AcceptanceRow) {
@@ -156,6 +181,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const token = cleanAcceptanceText((await params).token);
   const row = await getAcceptance(token);
   if (!row) return NextResponse.json({ error: "Freigabelink nicht gefunden." }, { status: 404 });
+  if (!(await getPublicAcceptanceState(row)).ok) return unavailableResponse();
   await prisma.$executeRaw`UPDATE "OfferAcceptanceRequest" SET "firstAccessedAt" = COALESCE("firstAccessedAt", CURRENT_TIMESTAMP), "updatedAt" = CURRENT_TIMESTAMP WHERE id = ${row.id}`;
   return NextResponse.json(publicPayload(row));
 }
@@ -167,6 +193,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ token:
   const event = cleanAcceptanceText(body.event);
   const row = await getAcceptance(token);
   if (!row) return NextResponse.json({ error: "Freigabelink nicht gefunden." }, { status: 404 });
+  if (!(await getPublicAcceptanceState(row)).ok) return unavailableResponse();
   if (event === "viewed") {
     const firstView = await prisma.$queryRaw<Array<{ id: string }>>`
       UPDATE "OfferAcceptanceRequest"
@@ -212,7 +239,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const row = await getAcceptance(token, tx, true);
     if (!row) return { kind: "not-found" } as const;
     if (row.acceptedAt || row.status === "accepted") return { kind: "accepted" } as const;
-    if (row.revokedAt || row.expiresAt.getTime() < Date.now()) return { kind: "expired" } as const;
+    if (!(await getPublicAcceptanceState(row)).ok) return { kind: "expired" } as const;
     if (row.consumerFlow && body.withdrawalAcknowledged !== true) {
       return { kind: "consumer-consent-missing" } as const;
     }
@@ -248,6 +275,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         "earlyPerformanceConsentText" = ${earlyPerformanceConsentText},
         "withdrawalDeadline" = ${withdrawalDeadline}, "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = ${row.id} AND "acceptedAt" IS NULL
+        AND "organizationId" = ${row.organizationId} AND "offerId" = ${row.offerId}
+        AND "revokedAt" IS NULL
     `;
     await tx.$executeRaw`UPDATE "Offer" SET "wonAt" = COALESCE("wonAt", ${acceptedAt}), "wonByName" = ${acceptedByName}, "wonReason" = 'Digital durch den Kunden angenommen', "updatedAt" = CURRENT_TIMESTAMP WHERE id = ${row.offerId} AND "organizationId" = ${row.organizationId}`;
     await tx.$executeRaw`INSERT INTO "OfferHistory" ("id", "organizationId", "offerId", "projectId", "offerNumber", "eventType", "title", "note", "actorName") VALUES (${randomUUID()}, ${row.organizationId}, ${row.offerId}, ${row.projectId}, ${row.offerNumber}, 'customer_accepted', 'Angebot digital angenommen', ${`${acceptedByName}${acceptedByRole ? ` (${acceptedByRole})` : ""} hat das Angebot verbindlich angenommen.`}, ${acceptedByName})`;

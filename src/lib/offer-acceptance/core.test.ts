@@ -7,6 +7,7 @@ import {
   createWithdrawalNotice,
   createWithdrawalReceipt,
   hashAcceptanceValue,
+  validatePublicOfferAcceptanceState,
 } from "./core";
 
 describe("offer acceptance evidence", () => {
@@ -18,6 +19,39 @@ describe("offer acceptance evidence", () => {
     expect(first).not.toBe(second);
     expect(hashAcceptanceValue(first)).toMatch(/^[a-f0-9]{64}$/);
     expect(hashAcceptanceValue(first)).toBe(hashAcceptanceValue(first));
+  });
+
+  it("fails closed for revoked, inactive, expired, prepared, or changed offer versions", () => {
+    const pdf = "current-pdf";
+    const active = {
+      requestStatus: "sent",
+      revokedAt: null,
+      expiresAt: new Date("2026-08-31T00:00:00.000Z"),
+      offerStatus: "Erstellt",
+      offerVersionHash: hashAcceptanceValue(pdf),
+      currentOfferPdfData: pdf,
+    };
+    const now = new Date("2026-08-03T00:00:00.000Z");
+    expect(validatePublicOfferAcceptanceState(active, now)).toEqual({ ok: true });
+    expect(validatePublicOfferAcceptanceState({ ...active, revokedAt: now }, now)).toEqual({ ok: false, reason: "revoked" });
+    expect(validatePublicOfferAcceptanceState({ ...active, offerStatus: "Verloren" }, now)).toEqual({ ok: false, reason: "inactive" });
+    expect(validatePublicOfferAcceptanceState({ ...active, requestStatus: "prepared" }, now)).toEqual({ ok: false, reason: "inactive" });
+    expect(validatePublicOfferAcceptanceState({ ...active, expiresAt: new Date("2026-08-02T00:00:00.000Z") }, now)).toEqual({ ok: false, reason: "expired" });
+    expect(validatePublicOfferAcceptanceState({ ...active, currentOfferPdfData: "changed-pdf" }, now)).toEqual({ ok: false, reason: "version-mismatch" });
+  });
+
+  it("keeps immutable accepted evidence and the withdrawal flow readable", () => {
+    const accepted = {
+      requestStatus: "accepted",
+      revokedAt: null,
+      expiresAt: new Date("2026-08-02T00:00:00.000Z"),
+      offerStatus: "Gewonnen",
+      offerVersionHash: hashAcceptanceValue("accepted-version"),
+      currentOfferPdfData: "later-working-version",
+    };
+    expect(validatePublicOfferAcceptanceState(accepted, new Date("2026-08-03T00:00:00.000Z"))).toEqual({ ok: true });
+    expect(validatePublicOfferAcceptanceState({ ...accepted, requestStatus: "withdrawn" })).toEqual({ ok: true });
+    expect(validatePublicOfferAcceptanceState({ ...accepted, revokedAt: new Date() })).toEqual({ ok: false, reason: "revoked" });
   });
 
   it("creates a readable one-page acceptance certificate", async () => {

@@ -82,6 +82,10 @@ describe("offer lifecycle service", () => {
       actorId: "user-1", actorName: "GF Test", expectedFingerprint: preview.fingerprint, source: "jarvis",
     });
     expect(tx.offer.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.offerAcceptanceRequest.updateMany).toHaveBeenCalledWith({
+      where: { organizationId: "org-1", offerId: "offer-1", revokedAt: null, acceptedAt: null },
+      data: { status: "revoked", revokedAt: expect.any(Date) },
+    });
     expect(tx.offerHistory.create).toHaveBeenCalledTimes(1);
     expect(tx.projectLogbookEntry.create).toHaveBeenCalledTimes(1);
   });
