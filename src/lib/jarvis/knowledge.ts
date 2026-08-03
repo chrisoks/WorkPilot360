@@ -4,7 +4,10 @@ import {
   JarvisAccessProfile,
   JarvisQuestionAuthorization,
 } from "@/lib/jarvis/security";
-import { getJarvisActionDecision } from "@/lib/jarvis/actions";
+import {
+  getJarvisActionCatalog,
+  getJarvisActionDecision,
+} from "@/lib/jarvis/actions";
 import {
   findJarvisAreaByContext,
   findJarvisSystemAreas,
@@ -34,6 +37,58 @@ export type JarvisHelpResult = {
   topicId?: string;
   navigation?: JarvisNavigationTarget;
 };
+
+const CURRENT_CAPABILITY_GROUPS = [
+  { label: "Aufgaben anlegen und kommentieren", ids: ["task.create", "task-comment.create"] },
+  { label: "Aufgaben archivieren und wiederherstellen", ids: ["task.delete"] },
+  { label: "eigene Stempelung und eigene Zeiteinträge", ids: ["time.create", "time.session.manage"] },
+  { label: "Zeiteinträge anderer verwalten", ids: ["time.manage"] },
+  { label: "Projektlogbuch-Einträge", ids: ["project-logbook.create"] },
+  { label: "Projektstammdaten, Projektstatus und Projektarchiv", ids: ["project.manage", "project.status.change", "project.archive"] },
+  { label: "Online-Anfragen in neue Lead-Projekte umwandeln", ids: ["online-request.convert"] },
+  { label: "Kontakte anlegen und bearbeiten", ids: ["contact.manage"] },
+  { label: "referenzfreie Kontakte kontrolliert löschen", ids: ["contact.delete"] },
+  { label: "Angebote und Nachträge bis Finalisierung, Versand und Lebenszyklus", ids: ["offer.draft.create", "offer.finalize", "offer.send", "offer.manage", "offer.delete"] },
+  { label: "Rechnungen bis Fakturierung, Versand, Zahlung, Mahnung, Storno und Korrektur", ids: ["invoice.prepare", "invoice.finalize", "document.send", "invoice.mark-paid", "invoice.remind", "invoice.cancel", "invoice.credit", "invoice.delete"] },
+  { label: "Winterdienst- und Fahrtenkalkulationen vorbereiten", ids: ["winter-calculation.prepare", "vehicle-trip-calculation.prepare"] },
+  { label: "Kalkulations-Snapshots speichern", ids: ["winter-calculation.save", "vehicle-trip-calculation.save"] },
+  { label: "Katalog verwalten", ids: ["catalog.manage"] },
+  { label: "Personalstammdaten verwalten", ids: ["personnel.manage"] },
+  { label: "Lohnkosten verwalten", ids: ["payroll.manage"] },
+  { label: "kontrollierte Massenänderungen", ids: ["bulk.update"] },
+  { label: "Projektstatus-Automationen verwalten", ids: ["automation.manage"] },
+] as const;
+
+function getJarvisCurrentCapabilitiesAnswer(accessProfile?: JarvisAccessProfile) {
+  if (!accessProfile) {
+    return "Ich kann WorkPilot-Daten lesen und erklären sowie freigegebene Arbeitsabläufe kontrolliert vorbereiten und nach sichtbarer Vorschau bewusst bestätigen lassen. Welche Schreibwege verfügbar sind, hängt von deiner serverseitig geprüften Rolle ab; ohne diese Rollenprüfung behaupte ich keine konkrete Berechtigung.";
+  }
+
+  const permittedActionIds = new Set(
+    getJarvisActionCatalog(accessProfile)
+      .filter((decision) => decision.permitted && decision.executable)
+      .map((decision) => decision.action?.id)
+      .filter((id): id is string => Boolean(id))
+  );
+  const groups: string[] = CURRENT_CAPABILITY_GROUPS.filter((group) =>
+    group.ids.some((id) => permittedActionIds.has(id))
+  ).map((group) => group.label);
+  if (permittedActionIds.has("planning.create")) {
+    const managesPlanning =
+      canManagePlanningEntries(accessProfile.sessionActor) &&
+      canManagePlanningEntries(accessProfile.effectiveActor);
+    groups.splice(
+      2,
+      0,
+      managesPlanning
+        ? "Termine, Terminwünsche und Serien verwalten"
+        : "eigene Terminwünsche vorbereiten, speichern und zurückziehen"
+    );
+  }
+  const capabilityList = groups.length ? groups.join("; ") : "derzeit keine schreibende Aktion";
+
+  return `Für deine aktuelle Rolle kann ich freigegebene Daten lesen, prüfen und erklären. Kontrolliert verfügbar sind: ${capabilityList}. Das bedeutet nie autonome Ausführung: Jede Datenänderung bleibt an den konkreten Datensatz, deine Sitzung und Rolle sowie den aktuellen Fachstand gebunden und benötigt die jeweils vorgesehene sichtbare Vorschau und bewusste Bestätigung. Nicht aufgeführte Wege sind für deine Rolle nicht freigegeben oder fachlich noch nicht produktiv; insbesondere Teilzahlungen und Fahrzeugvermietung gehören nicht zum freigegebenen V1-Umfang.`;
+}
 
 export function resolveJarvisProjectTypeOverview(
   question: string
@@ -195,7 +250,8 @@ export function resolveJarvisStorageGuidance(
 }
 
 export function resolveJarvisOperationalGuidance(
-  question: string
+  question: string,
+  accessProfile?: JarvisAccessProfile
 ): JarvisHelpResult | undefined {
   const value = question
     .toLocaleLowerCase("de-DE")
@@ -520,8 +576,7 @@ export function resolveJarvisOperationalGuidance(
     return {
       type: "answer",
       topicId: "jarvis.governance.current-actions",
-      message:
-        "JARVIS kann freigegebene Daten lesen und erklären sowie sichere Aufgaben- und projektartgerechte Termin- oder Terminwunsch-Entwürfe vorbereiten. Vollständig geprüfte Entwürfe werden erst nach bewusster menschlicher Bestätigung ausgeführt. Versand, Zahlung, Löschung, Rollen-, Personal- und Stempelaktionen führt JARVIS nicht aus.",
+      message: getJarvisCurrentCapabilitiesAnswer(accessProfile),
     };
   }
   if (/\bniemals\b.*\bautonom\b/.test(value)) {
@@ -1763,7 +1818,11 @@ export function resolveJarvisSystemHelp(
   }
 }
 
-function getJarvisSafetyAnswer(question: string, overview: string) {
+function getJarvisSafetyAnswer(
+  question: string,
+  overview: string,
+  accessProfile?: JarvisAccessProfile
+) {
   const normalized = normalizeJarvisIntentText(question);
 
   if (normalized.includes("sicher selbst") || normalized.includes("schon sicher")) {
@@ -1842,7 +1901,7 @@ function getJarvisSafetyAnswer(question: string, overview: string) {
     normalized.includes("aktionen") &&
     (normalized.includes("wirklich") || normalized.includes("derzeit"))
   ) {
-    return "Derzeit kann ich freigegebene Daten lesen und erklären sowie sichere Aufgaben- und projektartgerechte Termin-/Terminwunsch-Entwürfe vorbereiten. Aufgaben und vollständig geprüfte Planungsvorgänge können nach einer bewussten menschlichen Bestätigung ausgeführt werden. Versand, Rechnung, Zahlung, Löschung, Rollen-, Personal- und Stempelaktionen führe ich nicht aus.";
+    return getJarvisCurrentCapabilitiesAnswer(accessProfile);
   }
 
   return overview;
@@ -2077,7 +2136,7 @@ export function resolveJarvisSystemHelpTopic(
     return {
       type: "answer",
       topicId: topic.id,
-      message: getJarvisSafetyAnswer(cleaned, topic.answer),
+      message: getJarvisSafetyAnswer(cleaned, topic.answer, accessProfile),
     };
   }
   if (topic.id === "jarvis.people") {

@@ -563,6 +563,22 @@ async function main() {
             });
           }
         }
+        if (item.question === "Welche Aktionen kannst du derzeit wirklich ausführen?") {
+          if (
+            payload.topicId !== "jarvis.governance.current-actions" ||
+            !payload.message.includes("Rechnungen bis Fakturierung") ||
+            !payload.message.includes("Angebote und Nachträge") ||
+            !payload.message.includes("bewusste Bestätigung") ||
+            payload.message.includes("Versand, Zahlung, Löschung")
+          ) {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error:
+                "Die Fähigkeitenauskunft bildet den aktuellen kontrollierten Aktionskatalog nicht korrekt ab.",
+            });
+          }
+        }
         if (isPaymentCase && paymentInvoice) {
           if (payload.actionDraft?.actionId !== "invoice.mark-paid") {
             failures.push({

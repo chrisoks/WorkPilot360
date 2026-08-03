@@ -4087,7 +4087,10 @@ export async function POST(req: Request) {
   if (projectTypeOverview) {
     return respond(projectTypeOverview, "system");
   }
-  const operationalGuidance = resolveJarvisOperationalGuidance(message);
+  const operationalGuidance = resolveJarvisOperationalGuidance(
+    message,
+    accessProfile
+  );
   if (operationalGuidance) {
     return respond(operationalGuidance, "system");
   }

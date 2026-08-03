@@ -17,15 +17,23 @@ async function createSession(userId, now) {
   return { id, cookie: `workpilot_session=${sessionToken(id)}` };
 }
 
-async function ask(user, session, question) {
+async function askRaw(user, session, question) {
   const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: session.cookie },
     body: JSON.stringify({ actorId: user.id, message: question, context: { activeTab: "dashboard", activeMainView: "dashboard" } }),
   });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.topicId !== "management.operations.utilization") {
-    throw new Error(`Auslastungsantwort fehlgeschlagen (${response.status}): ${JSON.stringify(payload)}`);
+  if (!response.ok || !payload) {
+    throw new Error(`JARVIS-Antwort fehlgeschlagen (${response.status}): ${JSON.stringify(payload)}`);
+  }
+  return payload;
+}
+
+async function ask(user, session, question) {
+  const payload = await askRaw(user, session, question);
+  if (payload?.topicId !== "management.operations.utilization") {
+    throw new Error(`Auslastungsantwort hat das falsche Thema: ${JSON.stringify(payload)}`);
   }
   return JSON.stringify(payload);
 }
@@ -67,7 +75,23 @@ async function main() {
     if (!employeeAnswer.includes(`${marker} Direkt`) || employeeAnswer.includes(`${marker} Vertretung`) || employeeAnswer.includes(`${marker} Fremd`) || employeeAnswer.includes(`${marker} Leitung`)) {
       throw new Error("Mitarbeitersicht ist nicht strikt auf die eigene Auslastung begrenzt.");
     }
-    console.log(JSON.stringify({ baseUrl, managementScope: "organization", leaderScope: "direct-and-deputy", employeeScope: "self", passed: true }, null, 2));
+
+    const capabilityQuestion = "Welche Aktionen kannst du derzeit wirklich ausführen?";
+    const [gfCapabilities, leaderCapabilities, employeeCapabilities] = await Promise.all([
+      askRaw(primary, gfSession, capabilityQuestion),
+      askRaw(leader, leaderSession, capabilityQuestion),
+      askRaw(employee, employeeSession, capabilityQuestion),
+    ]);
+    if (!gfCapabilities.message?.includes("Rechnungen bis Fakturierung") || !gfCapabilities.message?.includes("Personalstammdaten verwalten")) {
+      throw new Error("Die Fähigkeitenauskunft der Geschäftsführung ist unvollständig.");
+    }
+    if (!leaderCapabilities.message?.includes("Termine, Terminwünsche und Serien verwalten")) {
+      throw new Error("Die Fähigkeitenauskunft der Führungskraft bildet die Planungsverantwortung nicht ab.");
+    }
+    if (!employeeCapabilities.message?.includes("eigene Terminwünsche vorbereiten") || employeeCapabilities.message?.includes("Rechnungen bis Fakturierung") || employeeCapabilities.message?.includes("Personalstammdaten verwalten")) {
+      throw new Error("Die Fähigkeitenauskunft des Mitarbeiters ist nicht strikt rollenbegrenzt.");
+    }
+    console.log(JSON.stringify({ baseUrl, managementScope: "organization", leaderScope: "direct-and-deputy", employeeScope: "self", capabilityCatalog: "role-scoped", passed: true }, null, 2));
   } finally {
     await prisma.authSession.deleteMany({ where: { id: { in: sessionIds } } });
     await prisma.user.deleteMany({ where: { organizationId: primary.organizationId, id: { in: Object.values(ids) } } });

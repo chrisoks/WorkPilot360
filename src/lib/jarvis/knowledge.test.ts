@@ -341,6 +341,40 @@ describe("JARVIS system help", () => {
     expect(new Set(messages).size).toBe(cases.length);
   });
 
+  it("reports the real role-scoped action catalog instead of an obsolete capability state", () => {
+    const executiveResult = resolveJarvisOperationalGuidance(
+      "Welche Aktionen kannst du derzeit wirklich ausführen?",
+      executiveAccess
+    );
+    expect(executiveResult).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.governance.current-actions",
+    });
+    expect(executiveResult?.message).toContain("Rechnungen bis Fakturierung");
+    expect(executiveResult?.message).toContain("Angebote und Nachträge");
+    expect(executiveResult?.message).toContain("Personal");
+    expect(executiveResult?.message).toContain("bewusste Bestätigung");
+    expect(executiveResult?.message).not.toContain(
+      "Versand, Zahlung, Löschung"
+    );
+
+    const employeeResult = resolveJarvisSystemHelp(
+      "Welche Aktionen kannst du derzeit wirklich ausführen?",
+      {},
+      employeeAccess
+    );
+    expect(employeeResult).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.safety",
+    });
+    expect(employeeResult.message).toContain("eigene Stempelung");
+    expect(employeeResult.message).toContain(
+      "Winterdienst- und Fahrtenkalkulationen"
+    );
+    expect(employeeResult.message).not.toContain("Rechnungen bis Fakturierung");
+    expect(employeeResult.message).not.toContain("Personal, Lohnkosten");
+  });
+
   it.each([
     ["Wie gehst du mit personenbezogenen Daten um?", "freigegebenen Zweck"],
     ["Wie schützt du Organisations- und Mandantengrenzen?", "serverseitig geprüft"],
