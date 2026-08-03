@@ -51,6 +51,19 @@ describe("JARVIS read intent", () => {
     });
   });
 
+  it("extracts the customer name from natural project ownership questions", () => {
+    expect(resolveJarvisReadIntent("Welche Projekte gehören Klaus Testmann?")).toMatchObject({
+      kind: "project",
+      query: "klaus testmann",
+      filter: "all",
+    });
+    expect(resolveJarvisReadIntent("Welche Projekte gehören zu Klaus Testmann?")).toMatchObject({
+      kind: "project",
+      query: "klaus testmann",
+      filter: "all",
+    });
+  });
+
   it("recognizes overdue invoices", () => {
     expect(resolveJarvisReadIntent("Zeige mir die überfälligen Rechnungen.")).toMatchObject({
       kind: "invoice",

@@ -117,6 +117,9 @@ function cleanQuery(kind: JarvisRecordKind, question: string) {
     "organisation",
     "gibt",
     "es",
+    "gehort",
+    "gehoren",
+    "zu",
   ].sort((first, second) => second.length - first.length);
 
   let query = ` ${normalized} `;
