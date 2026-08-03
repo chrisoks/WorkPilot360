@@ -13,8 +13,8 @@ const management = createJarvisAccessProfile({ id: "gf-1", role: Role.GESCHAEFTS
 function snapshot(): OrganizationOperationsSnapshot {
   return {
     users: [
-      { id: "user-1", firstName: "Max", lastName: "Muster", planningBoard: "Immocare", planningGroup: "Team A", weeklyCapacity: { monday: 8, tuesday: 8, wednesday: 8, thursday: 8, friday: 8, saturday: 0, sunday: 0 } },
-      { id: "user-2", firstName: "Mia", lastName: "Beispiel", planningBoard: "Immocare", planningGroup: "Team A", weeklyCapacity: { monday: 8, tuesday: 8, wednesday: 8, thursday: 8, friday: 8, saturday: 0, sunday: 0 } },
+      { id: "user-1", firstName: "Max", lastName: "Muster", planningBoard: "Immocare", planningGroup: "Team A", weeklyCapacity: { monday: 8, tuesday: 8, wednesday: 8, thursday: 8, friday: 8, saturday: 0, sunday: 0 }, leadershipManagerId: "lead-1", leadershipDeputyId: null },
+      { id: "user-2", firstName: "Mia", lastName: "Beispiel", planningBoard: "Immocare", planningGroup: "Team A", weeklyCapacity: { monday: 8, tuesday: 8, wednesday: 8, thursday: 8, friday: 8, saturday: 0, sunday: 0 }, leadershipManagerId: "other-lead", leadershipDeputyId: "lead-1" },
     ],
     absences: [{ userId: "user-2", date: new Date("2026-08-04T00:00:00.000Z"), dayPart: "full", status: "genehmigt", deletedAt: null }],
     planningEntries: [
@@ -117,7 +117,7 @@ describe("organization-wide JARVIS operations analysis", () => {
     const response = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Mitarbeiter haben im August zu wenig Arbeit?", organizationId: "org-1", accessProfile: management, now: new Date("2026-08-03T10:00:00.000Z"), source: source() });
     expect(response).toMatchObject({ topicId: "management.operations.utilization" });
     expect(response?.message).toContain("bestätigten, nicht gelöschten Planungen");
-    const items = response?.structured?.sections?.[0].items.join(" ") ?? "";
+    const items = response?.structured?.sections?.flatMap((section) => section.items).join(" ") ?? "";
     expect(items).toContain("Mia Beispiel");
     expect(items).not.toContain("requested");
   });
@@ -144,11 +144,24 @@ describe("organization-wide JARVIS operations analysis", () => {
     ]));
   });
 
-  it("refuses personnel utilization for an employee before loading organization data", async () => {
-    const dataSource = source();
-    const employee = createJarvisAccessProfile({ id: "employee", role: Role.MITARBEITER });
-    const response = await resolveJarvisOrganizationOperationsRequest({ question: "Wie stark sind unsere Mitarbeiter aktuell ausgelastet?", organizationId: "org-1", accessProfile: employee, source: dataSource });
-    expect(response?.type).toBe("refusal");
-    expect(dataSource.load).not.toHaveBeenCalled();
+  it("restricts employees to their own utilization even if a source returns foreign users", async () => {
+    const employee = createJarvisAccessProfile({ id: "user-1", role: Role.MITARBEITER });
+    const response = await resolveJarvisOrganizationOperationsRequest({ question: "Wie stark sind unsere Mitarbeiter aktuell ausgelastet?", organizationId: "org-1", accessProfile: employee, now: new Date("2026-08-03T10:00:00.000Z"), source: source() });
+    const items = response?.structured?.sections?.flatMap((section) => section.items).join(" ") ?? "";
+    expect(response?.message).toContain("deine eigene Auslastung");
+    expect(items).toContain("Max Muster");
+    expect(items).not.toContain("Mia Beispiel");
+  });
+
+  it("restricts leaders to direct and deputy assignments", async () => {
+    const leader = createJarvisAccessProfile({ id: "lead-1", role: Role.FUEHRUNGSKRAFT });
+    const data = snapshot();
+    data.users.push({ id: "user-3", firstName: "Fremde", lastName: "Person", planningBoard: "Solutions", planningGroup: "Team B", weeklyCapacity: { monday: 8 }, leadershipManagerId: "other-lead", leadershipDeputyId: null });
+    const response = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Mitarbeiter haben im August zu wenig Arbeit?", organizationId: "org-1", accessProfile: leader, now: new Date("2026-08-03T10:00:00.000Z"), source: source(data) });
+    const items = response?.structured?.sections?.flatMap((section) => section.items).join(" ") ?? "";
+    expect(response?.message).toContain("Führungs- und Vertretungsbereich");
+    expect(items).toContain("Max Muster");
+    expect(items).toContain("Mia Beispiel");
+    expect(items).not.toContain("Fremde Person");
   });
 });

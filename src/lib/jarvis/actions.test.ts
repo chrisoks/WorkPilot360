@@ -273,6 +273,7 @@ describe("JARVIS action registry", () => {
       "time.prepare",
       "time.create",
       "time.session.manage",
+      "planning.analysis.read",
     ]);
   });
 

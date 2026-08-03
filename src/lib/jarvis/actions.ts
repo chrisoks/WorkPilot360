@@ -580,6 +580,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: canManageUsers,
   },
   {
+    id: "planning.analysis.read",
+    title: "Auslastung im eigenen sichtbaren Führungs- oder Mitarbeiterbereich lesen",
+    category: "planning",
+    risk: "read",
+    confirmation: "none",
+    dataClasses: ["internal"],
+    implementation: "available",
+    canUse: isActiveInternalUser,
+  },
+  {
     id: "personnel.manage",
     title: "Personalstammdaten oder Rolle ändern",
     category: "personnel",

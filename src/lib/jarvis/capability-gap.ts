@@ -1,6 +1,6 @@
 import { extractJarvisProjectReferences } from "@/lib/jarvis/dialog-state";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
-import { resolveJarvisOrganizationOperationsIntent } from "@/lib/jarvis/organization-operations-analysis";
+import { resolveJarvisOrganizationOperationsIntent } from "@/lib/jarvis/organization-operations-intent";
 import type { JarvisReadResponse } from "@/lib/jarvis/read-model";
 
 const ORGANIZATION_ANALYSIS_PATTERNS = [

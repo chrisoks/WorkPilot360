@@ -1,3 +1,4 @@
+import { Role, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 import { getJarvisActionDecision } from "@/lib/jarvis/actions";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
@@ -11,7 +12,7 @@ import {
 export { resolveJarvisOrganizationOperationsIntent } from "@/lib/jarvis/organization-operations-intent";
 
 export type OrganizationOperationsSnapshot = {
-  users: Array<{ id: string; firstName: string; lastName: string; planningBoard: string | null; planningGroup: string | null; weeklyCapacity: unknown }>;
+  users: Array<{ id: string; firstName: string; lastName: string; planningBoard: string | null; planningGroup: string | null; weeklyCapacity: unknown; leadershipManagerId: string | null; leadershipDeputyId: string | null }>;
   absences: Array<{ userId: string; date: Date; dayPart: string; status: string; deletedAt: Date | null }>;
   planningEntries: Array<{ userId: string | null; date: string; durationMinutes: number; approvalStatus: string; deletedAt: Date | null }>;
   projects: Array<{ id: string; projectNumber: string; title: string; customer: string | null; contactId: string | null; status: string; projectType: string | null; projectKind: string | null; recurringBillingMode: string | null; timeBudgetEnabled: boolean; autoBillingEnabled: boolean; updatedAt: Date }>;
@@ -26,26 +27,66 @@ export type OrganizationOperationsSnapshot = {
 };
 
 export type OrganizationOperationsSource = {
-  load(input: { organizationId: string }): Promise<OrganizationOperationsSnapshot>;
+  load(input: { organizationId: string; intent: JarvisOrganizationOperationsIntent; accessProfile: JarvisAccessProfile }): Promise<OrganizationOperationsSnapshot>;
 };
 
+function emptySnapshot(): OrganizationOperationsSnapshot {
+  return { users: [], absences: [], planningEntries: [], projects: [], offers: [], invoices: [], timeEntries: [], contacts: [], projectLogbookEntries: [], customerLogbookEntries: [], tasks: [], offerAcceptanceRequests: [] };
+}
+
+function userVisibilityWhere(actor: JarvisAccessProfile["effectiveActor"]): Prisma.UserWhereInput {
+  if (actor.role === Role.ADMIN || actor.role === Role.GESCHAEFTSFUEHRER) return {};
+  if (actor.role === Role.FUEHRUNGSKRAFT) {
+    return { OR: [{ id: actor.id }, { leadershipManagerId: actor.id }, { leadershipDeputyId: actor.id }] };
+  }
+  return { id: actor.id };
+}
+
 const liveSource: OrganizationOperationsSource = {
-  async load({ organizationId }) {
-    const [users, absences, planningEntries, projects, offers, invoices, timeEntries, contacts, projectLogbookEntries, customerLogbookEntries, tasks, offerAcceptanceRequests] = await Promise.all([
-      prisma.user.findMany({ where: { organizationId, isActive: true, sellableCapacityEnabled: { not: false } }, select: { id: true, firstName: true, lastName: true, planningBoard: true, planningGroup: true, weeklyCapacity: true } }),
-      prisma.absence.findMany({ where: { organizationId }, select: { userId: true, date: true, dayPart: true, status: true, deletedAt: true } }),
-      prisma.planningEntry.findMany({ where: { organizationId }, select: { userId: true, date: true, durationMinutes: true, approvalStatus: true, deletedAt: true } }),
-      prisma.workPilotProject.findMany({ where: { organizationId }, select: { id: true, projectNumber: true, title: true, customer: true, contactId: true, status: true, projectType: true, projectKind: true, recurringBillingMode: true, timeBudgetEnabled: true, autoBillingEnabled: true, updatedAt: true } }),
-      prisma.offer.findMany({ where: { organizationId }, select: { id: true, projectId: true, offerNumber: true, status: true, customerName: true, netTotal: true, updatedAt: true } }),
-      prisma.invoice.findMany({ where: { organizationId }, select: { id: true, projectId: true, invoiceNumber: true, status: true, customerName: true, netTotal: true, serviceDate: true, plannedExecutionMonth: true, dueDate: true, isPaid: true, createdAt: true, updatedAt: true } }),
-      prisma.projectTimeEntry.findMany({ where: { organizationId }, select: { id: true, projectId: true, durationMs: true, invoiceId: true, deletedAt: true, createdAt: true } }),
+  async load({ organizationId, intent, accessProfile }) {
+    const base = emptySnapshot();
+    if (intent === "utilization") {
+      const users = await prisma.user.findMany({
+        where: {
+          organizationId,
+          isActive: true,
+          sellableCapacityEnabled: { not: false },
+          AND: [userVisibilityWhere(accessProfile.sessionActor), userVisibilityWhere(accessProfile.effectiveActor)],
+        },
+        select: { id: true, firstName: true, lastName: true, planningBoard: true, planningGroup: true, weeklyCapacity: true, leadershipManagerId: true, leadershipDeputyId: true },
+      });
+      const userIds = users.map((user) => user.id);
+      const [absences, planningEntries] = userIds.length ? await Promise.all([
+        prisma.absence.findMany({ where: { organizationId, userId: { in: userIds } }, select: { userId: true, date: true, dayPart: true, status: true, deletedAt: true } }),
+        prisma.planningEntry.findMany({ where: { organizationId, userId: { in: userIds } }, select: { userId: true, date: true, durationMinutes: true, approvalStatus: true, deletedAt: true } }),
+      ]) : [[], []];
+      return { ...base, users, absences, planningEntries };
+    }
+    if (intent === "invoice_drafts" || intent === "revenue") {
+      const invoices = await prisma.invoice.findMany({ where: { organizationId }, select: { id: true, projectId: true, invoiceNumber: true, status: true, customerName: true, netTotal: true, serviceDate: true, plannedExecutionMonth: true, dueDate: true, isPaid: true, createdAt: true, updatedAt: true } });
+      return { ...base, invoices };
+    }
+    if (intent === "offer_rates") {
+      const offerAcceptanceRequests = await prisma.offerAcceptanceRequest.findMany({ where: { organizationId }, select: { offerId: true, sentAt: true, firstViewedAt: true, acceptedAt: true, revokedAt: true } });
+      return { ...base, offerAcceptanceRequests };
+    }
+    const projects = await prisma.workPilotProject.findMany({ where: { organizationId }, select: { id: true, projectNumber: true, title: true, customer: true, contactId: true, status: true, projectType: true, projectKind: true, recurringBillingMode: true, timeBudgetEnabled: true, autoBillingEnabled: true, updatedAt: true } });
+    const needsOffers = intent === "missing_offer_projects" || intent === "critical_projects" || intent === "inactive_customers";
+    const needsInvoices = intent === "critical_projects" || intent === "inactive_customers";
+    const needsTimes = intent === "unbilled_projects" || intent === "critical_projects" || intent === "inactive_customers";
+    const [offers, invoices, timeEntries] = await Promise.all([
+      needsOffers ? prisma.offer.findMany({ where: { organizationId }, select: { id: true, projectId: true, offerNumber: true, status: true, customerName: true, netTotal: true, updatedAt: true } }) : Promise.resolve([]),
+      needsInvoices ? prisma.invoice.findMany({ where: { organizationId }, select: { id: true, projectId: true, invoiceNumber: true, status: true, customerName: true, netTotal: true, serviceDate: true, plannedExecutionMonth: true, dueDate: true, isPaid: true, createdAt: true, updatedAt: true } }) : Promise.resolve([]),
+      needsTimes ? prisma.projectTimeEntry.findMany({ where: { organizationId }, select: { id: true, projectId: true, durationMs: true, invoiceId: true, deletedAt: true, createdAt: true } }) : Promise.resolve([]),
+    ]);
+    if (intent !== "inactive_customers") return { ...base, projects, offers, invoices, timeEntries };
+    const [contacts, projectLogbookEntries, customerLogbookEntries, tasks] = await Promise.all([
       prisma.contact.findMany({ where: { organizationId }, select: { id: true, customerNumber: true, companyName: true, firstName: true, lastName: true, updatedAt: true } }),
       prisma.projectLogbookEntry.findMany({ where: { organizationId }, select: { projectId: true, createdAt: true } }),
       prisma.customerLogbookEntry.findMany({ where: { organizationId }, select: { customerId: true, occurredAt: true } }),
       prisma.task.findMany({ where: { organizationId }, select: { projectId: true, updatedAt: true } }),
-      prisma.offerAcceptanceRequest.findMany({ where: { organizationId }, select: { offerId: true, sentAt: true, firstViewedAt: true, acceptedAt: true, revokedAt: true } }),
     ]);
-    return { users, absences, planningEntries, projects, offers, invoices, timeEntries, contacts, projectLogbookEntries, customerLogbookEntries, tasks, offerAcceptanceRequests };
+    return { ...base, projects, offers, invoices, timeEntries, contacts, projectLogbookEntries, customerLogbookEntries, tasks };
   },
 };
 
@@ -57,8 +98,25 @@ function actionFor(intent: JarvisOrganizationOperationsIntent) {
   if (intent === "invoice_drafts" || intent === "revenue") return "invoice.read";
   if (intent === "offer_rates") return "offer.read";
   if (intent === "inactive_customers") return "contact.read";
-  if (intent === "utilization") return "personnel.read";
+  if (intent === "utilization") return "planning.analysis.read";
   return "project.read";
+}
+
+function actorCanViewUtilizationUser(actor: JarvisAccessProfile["effectiveActor"], user: OrganizationOperationsSnapshot["users"][number]) {
+  if (actor.role === Role.ADMIN || actor.role === Role.GESCHAEFTSFUEHRER) return true;
+  if (actor.role === Role.FUEHRUNGSKRAFT) return user.id === actor.id || user.leadershipManagerId === actor.id || user.leadershipDeputyId === actor.id;
+  return user.id === actor.id;
+}
+
+function visibleUtilizationUsers(profile: JarvisAccessProfile, users: OrganizationOperationsSnapshot["users"]) {
+  return users.filter((user) => actorCanViewUtilizationUser(profile.sessionActor, user) && actorCanViewUtilizationUser(profile.effectiveActor, user));
+}
+
+function utilizationScopeLabel(profile: JarvisAccessProfile) {
+  const roles = [profile.sessionActor.role, profile.effectiveActor.role];
+  if (roles.every((role) => role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER)) return "das gesamte Unternehmen";
+  if (roles.every((role) => role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER || role === Role.FUEHRUNGSKRAFT)) return "deinen zugeordneten Führungs- und Vertretungsbereich einschließlich dir";
+  return "deine eigene Auslastung";
 }
 
 function isInactiveProject(status: string) {
@@ -153,7 +211,7 @@ export async function resolveJarvisOrganizationOperationsRequest(input: { questi
   const decision = getJarvisActionDecision(actionFor(intent), input.accessProfile);
   if (!decision.executable) return { type: "refusal", topicId: `management.operations.${intent}`, message: "Deine aktuelle WorkPilot-Rolle darf diese organisationsweite Auswertung nicht über JARVIS abrufen.", deterministic: true };
 
-  const snapshot = await (input.source ?? liveSource).load({ organizationId: input.organizationId });
+  const snapshot = await (input.source ?? liveSource).load({ organizationId: input.organizationId, intent, accessProfile: input.accessProfile });
   const now = input.now ?? new Date();
   const activeProjects = snapshot.projects.filter((project) => !isInactiveProject(project.status));
   const operationalProjects = activeProjects.filter((project) => isOperationalProject(project.status));
@@ -173,18 +231,20 @@ export async function resolveJarvisOrganizationOperationsRequest(input: { questi
   if (intent === "utilization") {
     const range = parseRequestedRange(input.question, now);
     const keySet = new Set(range.keys);
-    const approvedAbsences = snapshot.absences.filter((absence) => !absence.deletedAt && normalize(absence.status) === "genehmigt");
-    const rows = snapshot.users.map((user) => {
+    const scopedUsers = visibleUtilizationUsers(input.accessProfile, snapshot.users);
+    const scopedUserIds = new Set(scopedUsers.map((user) => user.id));
+    const approvedAbsences = snapshot.absences.filter((absence) => scopedUserIds.has(absence.userId) && !absence.deletedAt && normalize(absence.status) === "genehmigt");
+    const rows = scopedUsers.map((user) => {
       let capacity = range.keys.reduce((sum, key) => sum + capacityForDate(user.weeklyCapacity, key), 0);
       approvedAbsences.filter((absence) => absence.userId === user.id && keySet.has(dateKey(absence.date))).forEach((absence) => { const base = capacityForDate(user.weeklyCapacity, dateKey(absence.date)); capacity -= absence.dayPart === "full" ? base : base / 2; });
-      const planned = snapshot.planningEntries.filter((entry) => entry.userId === user.id && keySet.has(entry.date) && !entry.deletedAt && normalize(entry.approvalStatus) === "confirmed").reduce((sum, entry) => sum + entry.durationMinutes / 60, 0);
+      const planned = snapshot.planningEntries.filter((entry) => scopedUserIds.has(entry.userId ?? "") && entry.userId === user.id && keySet.has(entry.date) && !entry.deletedAt && normalize(entry.approvalStatus) === "confirmed").reduce((sum, entry) => sum + entry.durationMinutes / 60, 0);
       return { ...user, capacity: Math.max(0, capacity), planned, percent: capacity > 0 ? planned / capacity * 100 : planned > 0 ? 999 : 0 };
     });
     const value = normalize(input.question);
     const selected = rows.filter((row) => /zu wenig arbeit/.test(value) ? row.percent < 70 : /uberlastet/.test(value) ? row.percent > 100 : true).sort((a, b) => /zu wenig arbeit/.test(value) ? a.percent - b.percent : b.percent - a.percent);
     const groupMode = /planungsgruppe/.test(value);
     const items = groupMode ? [...selected.reduce((groups, row) => { const key = row.planningGroup || "Ohne Planungsgruppe"; const current = groups.get(key) ?? { capacity: 0, planned: 0 }; current.capacity += row.capacity; current.planned += row.planned; groups.set(key, current); return groups; }, new Map<string, { capacity: number; planned: number }>())].map(([name, row]) => `${name}: ${row.planned.toFixed(1)} von ${row.capacity.toFixed(1)} Std. geplant (${row.capacity > 0 ? Math.round(row.planned / row.capacity * 100) : 0} %).`) : selected.map((row) => `${row.firstName} ${row.lastName}: ${row.planned.toFixed(1)} von ${row.capacity.toFixed(1)} Std. geplant (${Math.round(row.percent)} %)${row.planningGroup ? ` · ${row.planningGroup}` : ""}.`);
-    return { type: "answer", topicId: "management.operations.utilization", message: `Die Auslastung für ${range.label} wurde aus bestätigten, nicht gelöschten Planungen gegen die persönliche Wochenkapazität abzüglich genehmigter Abwesenheiten berechnet. ${selected.length} passende ${groupMode ? "Planungsgruppen" : "Mitarbeiter"} gefunden.`, structured: { title: `Auslastung · ${range.label}`, sections: [{ title: "Planungsstand", items: items.slice(0, 30), tone: selected.some((row) => row.percent > 100) ? "warning" : "neutral" }, { title: "Datenbasis", items: ["Bestätigte Planungen; Terminwünsche sind bis zur Freigabe nicht als feste Auslastung enthalten.", "Kapazität aus dem Mitarbeiterprofil; genehmigte Ganz- und Halbtagsabwesenheiten reduzieren sie."] }] }, deterministic: true };
+    return { type: "answer", topicId: "management.operations.utilization", message: `Die Auslastung für ${range.label} wurde für ${utilizationScopeLabel(input.accessProfile)} aus bestätigten, nicht gelöschten Planungen gegen die persönliche Wochenkapazität abzüglich genehmigter Abwesenheiten berechnet. ${selected.length} passende ${groupMode ? "Planungsgruppen" : "Mitarbeiter"} gefunden.`, structured: { title: `Auslastung · ${range.label}`, sections: [{ title: "Sichtbarer Bereich", items: [`Ausgewertet wird ausschließlich ${utilizationScopeLabel(input.accessProfile)}.`] }, { title: "Planungsstand", items: items.slice(0, 30), tone: selected.some((row) => row.percent > 100) ? "warning" : "neutral" }, { title: "Datenbasis", items: ["Bestätigte Planungen; Terminwünsche sind bis zur Freigabe nicht als feste Auslastung enthalten.", "Kapazität aus dem Mitarbeiterprofil; genehmigte Ganz- und Halbtagsabwesenheiten reduzieren sie."] }] }, deterministic: true };
   }
 
   if (intent === "unbilled_projects") {
