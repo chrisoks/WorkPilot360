@@ -56,7 +56,7 @@ describe("JARVIS system map", () => {
   });
 
   it("keeps every entry traceable and useful", () => {
-    expect(JARVIS_SYSTEM_AREAS).toHaveLength(90);
+    expect(JARVIS_SYSTEM_AREAS).toHaveLength(92);
     expect(new Set(JARVIS_SYSTEM_AREAS.map((item) => item.id)).size).toBe(JARVIS_SYSTEM_AREAS.length);
     JARVIS_SYSTEM_AREAS.forEach((item) => {
       expect(item.purpose.length).toBeGreaterThan(12);
@@ -81,6 +81,31 @@ describe("JARVIS system map", () => {
     });
     expect(result[0]?.area.target).toBeUndefined();
     expect(result[0]?.area.verification.sourceRefs).toContain("docs/STORAGE_ARCHITEKTUR.md");
+  });
+
+  it("maps the verified document-workflow integrity without pretending it is a public route", () => {
+    const result = findJarvisSystemAreas(
+      "Wie funktioniert die Tätigkeitsbericht Idempotenz?",
+      management
+    );
+    expect(result[0]?.area).toMatchObject({
+      id: "system.documentWorkflowIntegrity",
+      kind: "system_service",
+      verification: { status: "verified", checkedAt: "2026-08-03" },
+    });
+    expect(result[0]?.area.target).toBeUndefined();
+    expect(result[0]?.area.verification.sourceRefs).toContain(
+      "src/lib/document-mail/composite-dispatch.ts"
+    );
+  });
+
+  it("keeps known cleanup candidates behind a management decision", () => {
+    expect(
+      findJarvisSystemAreas("doppelte Kundennummer bereinigen", management)[0]?.area.id
+    ).toBe("system.manualDataQualityDecisions");
+    expect(
+      findJarvisSystemAreas("doppelte Kundennummer bereinigen", employee)
+    ).toEqual([]);
   });
 
   it("maps the protected online-request inbox only for sales roles", () => {

@@ -2,6 +2,40 @@
 
 Stand: 03.08.2026
 
+## Go-live-Hardening für Dokumente, Berichte und Datenentscheidungen
+
+- `system.documentWorkflowIntegrity` beschreibt den gemeinsamen Schutz der
+  produktiven Dokumentwege: Rechnung und zugehörige Lagerbewegungen werden
+  atomar verarbeitet; ein Fehler rollt beide Seiten gemeinsam zurück.
+- Der zusammengesetzte Versand von Rechnung und separatem Tätigkeitsbericht
+  besitzt je Teilsendung einen verknüpften Idempotenz-Dispatch. Nach sicher
+  versendeter Hauptmail wird bei einer Wiederholung nur ein noch fehlender
+  Bericht nachgesendet. Unklare Child-Zustände sperren fail-closed.
+- Allgemeine Tätigkeitsberichte verwenden deterministische Identität,
+  Serializable-Transaktion und Advisory Lock. Winterdienstberichte werden bei
+  einem nicht sicher ladbaren Pflichtbild nicht unvollständig erzeugt, sondern
+  kontrolliert mit `503` und `Retry-After` zur späteren Wiederholung abgelehnt.
+- Projektlogbuch-Anhänge werden beim Verschieben und Löschen über die
+  unveränderliche `storageFileId` identifiziert. Veraltete oder mehrdeutige
+  Auswahlen liefern `409`; Quellentfernung, Zielanlage und Audit entstehen
+  atomar.
+- XRechnung, KoSIT sowie ZUGFeRD/PDF-A-3 sind produktiv geprüft. JARVIS erklärt
+  Architektur und Prüfweg, kennt und nennt aber keine Server-Secrets,
+  Zugangsdaten oder Schlüssel.
+- `system.manualDataQualityDecisions` trennt bekannte Datenauffälligkeiten von
+  Systemfehlern. Die Kundennummern `7000049` und `7000052` sind jeweils doppelt
+  vergeben; außerdem bestehen 53 aktive, leere, aktuell unreferenzierte Pakete.
+  Ohne bewusste fachliche Entscheidung erfolgt keine automatische
+  Umnummerierung, Deaktivierung oder Löschung.
+- Angebotspreis-Kostensnapshots sind weniger strikt historisch eingefroren als
+  Rechnungssnapshots. Das bleibt ein späteres P2-Hardening und ist kein
+  aktueller Go-live-Blocker.
+- Verbindlicher Fachrelease: `ef1fcf4fb3abc7286bde67e317ca72a19de549d7`,
+  Backup
+  `/var/backups/workpilot360/20260803T183100Z-before-go-live-hardening`,
+  206/206 Testdateien mit 1.980/1.980 Tests, leerer Prisma-Live-Diff,
+  90/90-Seiten-Build und fehlerfreie produktive Oberflächenabnahme.
+
 ## Einführungsbereinigung und finaler Nulltreffervertrag
 
 - Der freigegebene Klaus-Testmann-Testverbund wurde nach verifiziertem

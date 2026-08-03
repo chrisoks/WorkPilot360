@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveJarvisDirectNavigationHelp,
+  resolveJarvisGoLiveHardeningGuidance,
   resolveJarvisOperationalGuidance,
   resolveJarvisProjectTypeOverview,
   resolveJarvisStorageGuidance,
@@ -183,6 +184,77 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("file-pilot.ts");
     expect(result.message).toContain("StoredFile");
     expect(result.message).toContain("Rollback");
+  });
+
+  it.each([
+    [
+      "Was passiert mit Rechnung und Materialbestand, wenn die Inventarsynchronisierung fehlschlägt?",
+      "invoice.inventory-atomicity",
+    ],
+    [
+      "Wird die Rechnung doppelt gemailt, wenn nur der Tätigkeitsbericht nachgesendet werden muss?",
+      "document-mail.composite-idempotency",
+    ],
+    [
+      "Wie verhindert WorkPilot parallele doppelte Tätigkeitsberichte?",
+      "activity-reports.deterministic-identity",
+    ],
+    [
+      "Was passiert beim Winterdienstbericht, wenn das verpflichtende Beweisbild fehlt?",
+      "winter-service.report-evidence",
+    ],
+    [
+      "Wie wird ein Bild im Projektlogbuch sicher verschoben oder gelöscht?",
+      "project-logbook.attachment-identity",
+    ],
+    [
+      "Ist XRechnung und ZUGFeRD produktiv geprüft und konfiguriert?",
+      "document.einvoice-production-readiness",
+    ],
+    [
+      "Was ist bei den doppelten Kundennummern zu bereinigen?",
+      "data-quality.manual-cleanup-decisions",
+    ],
+    [
+      "Sind die Kosten-Snapshots alter Angebote historisch eingefroren?",
+      "offer.cost-snapshot-hardening",
+    ],
+  ])("explains the verified go-live hardening deterministically: %s", (question, topicId) => {
+    expect(resolveJarvisGoLiveHardeningGuidance(question)).toMatchObject({
+      type: "answer",
+      topicId,
+    });
+  });
+
+  it("routes go-live hardening through normal JARVIS help and never exposes secrets", () => {
+    const result = resolveJarvisSystemHelp(
+      "Ist XRechnung und ZUGFeRD produktiv geprüft und wie lauten die Server-Secrets?",
+      {},
+      executiveAccess
+    );
+
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "document.einvoice-production-readiness",
+    });
+    expect(result.message).toContain("kennt und nennt JARVIS nicht");
+    expect(result.message).not.toMatch(/(?:SECRET|TOKEN|KEY)\s*=\s*\S+/i);
+  });
+
+  it("does not misrepresent known cleanup candidates as an automatic system repair", () => {
+    const result = resolveJarvisSystemHelp(
+      "Was ist bei den doppelten Kundennummern zu bereinigen?",
+      {},
+      executiveAccess
+    );
+
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "data-quality.manual-cleanup-decisions",
+    });
+    expect(result.message).toContain("kein aktueller Systemfehler");
+    expect(result.message).toContain("53 aktive");
+    expect(result.message).toContain("nicht automatisch");
   });
 
   it("explains the featured and expanded public service choices", () => {

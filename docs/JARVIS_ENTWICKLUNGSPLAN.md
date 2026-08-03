@@ -2,6 +2,24 @@
 
 Stand: 03.08.2026
 
+## Nachführung des Go-live-Hardenings vom 03.08.2026
+
+JARVIS kennt den produktiven Hardening-Stand `ef1fcf4` jetzt als
+deterministischen Erklärvertrag und als verifizierte Systemlandkarte. Er kann
+die atomare Rechnungs-/Inventarkette, den fortsetzbaren zusammengesetzten
+Dokumentversand, die deterministische Tätigkeitsbericht-Erzeugung, den
+fail-closed Winterdienstnachweis und die `storageFileId`-gebundene
+Projektanhangspflege fachlich erklären. Diese Erklärung gibt keine neue
+autonome Ausführungsberechtigung und legt keine Server-Secrets offen.
+
+Bekannte doppelte Kundennummern und 53 aktive leere Pakete bleiben bis zu einer
+bewussten fachlichen Entscheidung unverändert. JARVIS darf sie weder als
+aktuellen Systemfehler darstellen noch automatisch bereinigen. Die geringere
+historische Strenge von Angebotspreis-Kostensnapshots gegenüber
+Rechnungssnapshots ist als P2-Hardening eingeordnet und kein Einführungsblocker.
+Gezielte Regressionstests sichern alle neuen Erklärungsthemen sowie die
+Rollenbegrenzung der Datenqualitätslandkarte.
+
 ## Einführungsbereinigung und abschließende V1-Abnahme
 
 Vor der Einführung wurde der vollständig inventarisierte

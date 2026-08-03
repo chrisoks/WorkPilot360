@@ -326,6 +326,72 @@ const CUSTOMER_FILE_AREAS = CUSTOMER_FILE_DEFINITIONS.map(([id, label, purpose])
 
 const SYSTEM_SERVICE_AREAS: JarvisSystemArea[] = [
   area({
+    id: "system.documentWorkflowIntegrity",
+    label: "Dokument- und Berichtsintegrität",
+    kind: "system_service",
+    keywords: [
+      "Rechnung und Bestand",
+      "zusammengesetzter Dokumentversand",
+      "Tätigkeitsbericht Idempotenz",
+      "Winterdienst Nachweisbild",
+      "Projektlogbuch Anhang verschieben",
+      "XRechnung Produktionsprüfung",
+      "ZUGFeRD PDF-A-3",
+    ],
+    purpose:
+      "Transaktions-, Idempotenz- und Nachweisschutz für Rechnungen, Dokumentversand, Tätigkeitsberichte, Winterdienstberichte und Projektanhänge.",
+    workflows: [
+      "Rechnung und Bestandsbewegung gemeinsam transaktional verarbeiten",
+      "kombinierten Mailversand je Teilsendung sicher fortsetzen",
+      "Berichte deterministisch und ohne unvollständige Nachweise erzeugen",
+      "Projektanhänge über ihre unveränderliche storageFileId ändern",
+    ],
+    roles: REPORT_NAVIGATION_ROLES,
+    verification: {
+      status: "verified",
+      checkedAt: "2026-08-03",
+      sourceRefs: [
+        "src/app/api/invoices/route.ts",
+        "src/lib/document-mail/composite-dispatch.ts",
+        "src/lib/activity-reports/report-identity.ts",
+        "src/app/api/winter-service-runs/route.ts",
+        "src/lib/project-logbook/attachment-identity.ts",
+        "docs/xrechnung-validation.md",
+      ],
+    },
+  }),
+  area({
+    id: "system.manualDataQualityDecisions",
+    label: "Bewusste Datenqualitätsentscheidungen",
+    kind: "system_service",
+    keywords: [
+      "doppelte Kundennummer",
+      "Kundennummer Duplikat",
+      "leere Pakete",
+      "Datenbereinigung",
+      "Angebot Kostensnapshot",
+    ],
+    purpose:
+      "Bekannte historische Datenauffälligkeiten von technischen Systemfehlern trennen und ausschließlich nach fachlicher Entscheidung bereinigen.",
+    workflows: [
+      "betroffene Datensätze eindeutig benennen",
+      "Referenzen und fachlich richtigen Zielstand prüfen",
+      "keine automatische Umnummerierung, Deaktivierung oder Löschung auslösen",
+      "Angebots- und Rechnungssnapshots in ihrer tatsächlichen Historientiefe unterscheiden",
+    ],
+    roles: FINANCE_ROLES,
+    verification: {
+      status: "verified",
+      checkedAt: "2026-08-03",
+      sourceRefs: [
+        "src/app/api/contacts/route.ts",
+        "src/app/api/catalog/packages/route.ts",
+        "src/app/api/offers/route.ts",
+        "src/app/api/invoices/route.ts",
+      ],
+    },
+  }),
+  area({
     id: "system.objectStorage",
     label: "Datei- und Objektspeicher",
     kind: "system_service",

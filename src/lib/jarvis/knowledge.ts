@@ -249,6 +249,124 @@ export function resolveJarvisStorageGuidance(
   };
 }
 
+export function resolveJarvisGoLiveHardeningGuidance(
+  question: string
+): JarvisHelpResult | undefined {
+  const normalized = normalizeJarvisIntentText(question);
+
+  if (
+    /\b(?:rechnung\w*|faktura\w*)\b/.test(normalized) &&
+    /\b(?:bestand\w*|inventar\w*|lagerbeweg\w*|materialbestand\w*|atomar\w*|transaktion\w*|rollback\w*|zuruckroll\w*)\b/.test(
+      normalized
+    )
+  ) {
+    return {
+      type: "answer",
+      topicId: "invoice.inventory-atomicity",
+      message:
+        "Rechnungsanlage, -aktualisierung und -finalisierung sowie die dadurch ausgelöste Bestands- und Inventarsynchronisierung werden in WorkPilot360 gemeinsam in derselben Datenbanktransaktion verarbeitet. Schlägt ein Teil fehl, werden Rechnung und Bestandsänderung zusammen zurückgerollt. Dadurch bleibt weder eine halbfertige Faktura noch ein davon abweichender Materialbestand bestehen. Das bedeutet weiterhin nicht, dass eine Rechnungsmenge einen tatsächlich physischen Baustellenverbrauch beweist.",
+    };
+  }
+
+  if (
+    /\b(?:tatigkeitsbericht\w*|bericht\w*)\b/.test(normalized) &&
+    /\b(?:rechnung\w*|mail\w*|e mail\w*|versand\w*|nachsend\w*|resume\w*|idempotenz\w*)\b/.test(
+      normalized
+    )
+  ) {
+    return {
+      type: "answer",
+      topicId: "document-mail.composite-idempotency",
+      message:
+        "Bei einer kombinierten Rechnungsmail mit separatem Tätigkeitsbericht besitzt jede Sendung einen eigenen, miteinander verknüpften Idempotenz-Nachweis. Ist die Rechnungsmail bereits sicher versendet und nur der Bericht fehlt, sendet eine Wiederholung ausschließlich den Tätigkeitsbericht nach; die Rechnung wird nicht doppelt verschickt. Ist der Zustand eines verknüpften Versandnachweises unklar oder widersprüchlich, bricht WorkPilot360 fail-closed ab, statt einen möglichen Doppelversand zu riskieren.",
+    };
+  }
+
+  if (
+    /\b(?:tatigkeitsbericht\w*|aktivitatsbericht\w*)\b/.test(normalized) &&
+    /\b(?:doppelt\w*|parallel\w*|gleichzeitig\w*|identitat\w*|erzeug\w*|generier\w*|speicher\w*|konsistent\w*)\b/.test(
+      normalized
+    )
+  ) {
+    return {
+      type: "answer",
+      topicId: "activity-reports.deterministic-identity",
+      message:
+        "Allgemeine Tätigkeitsberichte erhalten eine deterministische fachliche Identität. Eine serialisierbare Transaktion, ein organisations- und berichtsgebundener Advisory Lock sowie die gemeinsame Persistenz von Datei und Fachdaten verhindern parallele Doppelgenerierungen. Berichtsbilder werden über die geprüfte zentrale Bildauswahl und den privaten Dateipfad aufgelöst; bei einem Fehler wird kein zweiter oder nur teilweise gespeicherter Bericht als erfolgreich ausgegeben.",
+    };
+  }
+
+  if (
+    /\bwinterdienst\w*\b/.test(normalized) &&
+    /\b(?:bericht\w*|nachweis\w*|beweisbild\w*|pflichtbild\w*|bild\w*|503|retry\w*|wiederhol\w*)\b/.test(
+      normalized
+    )
+  ) {
+    return {
+      type: "answer",
+      topicId: "winter-service.report-evidence",
+      message:
+        "Ein verpflichtendes Winterdienst-Nachweisbild darf nicht still fehlen. Kann WorkPilot360 ein erforderliches Beweisbild nicht sicher laden und in den Bericht einbetten, wird kein unvollständiger Bericht erzeugt. Der Fachweg antwortet kontrolliert mit HTTP 503 und einem Retry-After-Hinweis, damit die Erzeugung später sicher wiederholt werden kann.",
+    };
+  }
+
+  if (
+    /\b(?:projektlogbuch\w*|logbuch\w*|projektanhang\w*|anhang\w*|bild\w*)\b/.test(normalized) &&
+    /\b(?:verschieb\w*|verschob\w*|losch\w*|gelosch\w*|entfern\w*|storage file id|storagefileid|dateiname\w*|listenindex\w*|mehrdeutig\w*|veraltet\w*)\b/.test(
+      normalized
+    )
+  ) {
+    return {
+      type: "answer",
+      topicId: "project-logbook.attachment-identity",
+      message:
+        "Beim Verschieben oder Löschen eines Projektlogbuch-Anhangs verwendet WorkPilot360 primär die unveränderliche `storageFileId`, nicht einen Listenindex oder einen möglicherweise mehrfach vorkommenden Dateinamen. Auswahl, Quellentfernung, Zielanlage und Audit-Historie laufen unter Projekt-Lock in einer serialisierbaren Transaktion gemeinsam oder gar nicht. Eine veraltete oder mehrdeutige Auswahl wird mit HTTP 409 abgelehnt und muss aus dem aktuellen Stand neu gewählt werden.",
+    };
+  }
+
+  if (
+    /\b(?:xrechnung\w*|zugferd\w*|pdf a ?3\w*|kosit\w*|verapdf\w*)\b/.test(normalized) &&
+    /\b(?:produktiv\w*|konfigur\w*|pruf\w*|validier\w*|versand\w*|bereit\w*|secret\w*|schlussel\w*|zugangsdaten\w*)\b/.test(
+      normalized
+    )
+  ) {
+    return {
+      type: "answer",
+      topicId: "document.einvoice-production-readiness",
+      message:
+        "Der produktive E-Rechnungsweg ist für XRechnung sowie ZUGFeRD/PDF-A-3 technisch geprüft. XRechnungen werden fachlich und mit KoSIT validiert; ZUGFeRD wird als PDF mit eingebetteter E-Rechnung erzeugt und über die PDF-A-3-Werkzeugkette geprüft. Versand und Archivierung verwenden die serverseitig erzeugten, verifizierten Artefakte. Konkrete Zugangsdaten, Schlüssel, Tokens, Bucket-Werte oder andere Server-Secrets kennt und nennt JARVIS nicht.",
+    };
+  }
+
+  if (
+    /\b(?:doppelt\w*|duplikat\w*|datenbereinigung\w*|bereinig\w*|datenqualitat\w*|leer\w*)\b/.test(normalized) &&
+    /\b(?:kundennummer\w*|paket\w*)\b/.test(normalized)
+  ) {
+    return {
+      type: "answer",
+      topicId: "data-quality.manual-cleanup-decisions",
+      message:
+        "Die bekannten doppelten Kundennummern 7000049 bei Max Mustermann und Tobias Kreis sowie 7000052 bei Eva Hilbert und Christian Eid sind bewusste Datenbereinigungspunkte, kein aktueller Systemfehler. Außerdem bestehen 53 aktive, leere und derzeit unreferenzierte Pakete. WorkPilot360 und JARVIS nummerieren, deaktivieren oder löschen diese Datensätze nicht automatisch; dafür braucht es eine fachliche Entscheidung mit anschließender kontrollierter Änderung.",
+    };
+  }
+
+  if (
+    /\bangebot\w*\b/.test(normalized) &&
+    /\b(?:kostensnapshot\w*|kosten snapshot\w*|historisch\w*|eingefroren\w*|preisstand\w*)\b/.test(
+      normalized
+    )
+  ) {
+    return {
+      type: "answer",
+      topicId: "offer.cost-snapshot-hardening",
+      message:
+        "Angebotspreis-Kostensnapshots sind derzeit weniger strikt historisch eingefroren als die entsprechenden Rechnungssnapshots. Das ist als späteres P2-Hardening dokumentiert und kein aktueller Go-live-Blocker. JARVIS darf deshalb bei einem alten Angebot keinen vollständig unveränderlichen historischen Kostenstand behaupten, sondern muss den damaligen Angebotsstand und die aktuelle Kalkulationsbasis sichtbar auseinanderhalten.",
+    };
+  }
+
+  return undefined;
+}
+
 export function resolveJarvisOperationalGuidance(
   question: string,
   accessProfile?: JarvisAccessProfile
@@ -260,6 +378,8 @@ export function resolveJarvisOperationalGuidance(
     .replace(/[?!.,;:()/_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  const hardeningGuidance = resolveJarvisGoLiveHardeningGuidance(question);
+  if (hardeningGuidance) return hardeningGuidance;
   const storageGuidance = resolveJarvisStorageGuidance(question);
   if (storageGuidance) return storageGuidance;
   const asks =
@@ -1784,6 +1904,8 @@ export function resolveJarvisSystemHelp(
       message: getJarvisRefusalMessage(authorization, cleaned),
     };
   }
+  const hardeningGuidance = resolveJarvisGoLiveHardeningGuidance(cleaned);
+  if (hardeningGuidance) return hardeningGuidance;
   const storageGuidance = resolveJarvisStorageGuidance(cleaned);
   if (storageGuidance) return storageGuidance;
   const matchedTopicId = findJarvisExactHelpTopicId(cleaned, context);
