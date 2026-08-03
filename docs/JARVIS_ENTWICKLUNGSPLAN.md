@@ -1,6 +1,39 @@
 # JARVIS Entwicklungsplan
 
-Stand: 01.08.2026
+Stand: 03.08.2026
+
+## Aktueller Release: organisationsweite operative Live-Auswertungen
+
+JARVIS beantwortet organisationsweite Fragen zu aktiven
+Rechnungsentwürfen, Mitarbeiter- und Planungsgruppenauslastung, offenen
+Angeboten ohne belegte WorkPilot-Aktivität, unberechneten Projektzeiten,
+fehlender Angebots- oder alternativer Abrechnungsbasis, Öffnungs- und
+Annahmequoten sowie Netto-Umsatz nun deterministisch aus organisationsgebundenen
+Live-Daten. Rollen werden vor dem Laden der Daten geprüft; die Auswertungen
+sind rein lesend und führen keine Aktion aus.
+
+Risikoprojekte werden ausschließlich mit sichtbaren Ursachen ausgegeben:
+fehlende Angebots-/Abrechnungsbasis, erfasste Zeiten ohne Rechnungszuordnung
+oder tatsächlich überfällige und unbezahlte Rechnungen. Eine Aussage zu
+Unwirtschaftlichkeit, Marge oder Verlust wird ohne vollständige Kosten- und
+Erlösbasis ausdrücklich nicht behauptet. Auslastung berücksichtigt nur
+bestätigte, nicht gelöschte Planungen, persönliche Kapazität und genehmigte
+Abwesenheiten; offene Terminwünsche zählen noch nicht als feste Auslastung.
+Nulltreffer werden verständlich formuliert.
+
+Der Client-Domainrouter führt diese Fragen immer über den sicheren
+JARVIS-Live-Datenweg und nicht über den optionalen allgemeinen
+Management-KI-Endpunkt. Lokal bestanden 190 Testdateien mit 1.892 Tests,
+TypeScript, Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff,
+90-Seiten-Build, 110/110 feste Fragen und echte Klicktests. Produktiv
+abgenommen auf Runtime-Commit `ee9d1bd7784231daa59320f987856944af7868ae` mit
+verifiziertem Backup
+`/var/backups/workpilot360/20260803T094948Z-before-jarvis-org-operations`,
+110/110 Fragen, null ausgeführten Aktionen und null Rückständen. Dashboard und
+öffentliches Formular antworteten mit HTTP 200, der Browserfehlerlauf war leer;
+WorkPilot PID `879931`, KlinikNavigator unverändert PID `398228`. Keine
+Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
+Online-Anfragen-Invarianten blieben erhalten.
 
 ## Vision und lebendiger Prinzipienkompass
 

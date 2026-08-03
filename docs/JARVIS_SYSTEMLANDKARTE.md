@@ -1,6 +1,30 @@
 # JARVIS Systemlandkarte
 
-Stand: 01.08.2026
+Stand: 03.08.2026
+
+## Organisationsweite operative Live-Auswertungen
+
+- Deterministische, organisationsgebundene Lesefunktionen für
+  Rechnungsentwürfe, Auslastung, offene Angebote ohne Aktivität, unberechnete
+  Projektzeiten, fehlende Angebots-/Abrechnungsbasis, Angebotsquoten, Umsatz und
+  kaufmännische Risikosignale.
+- Rollenprüfung erfolgt vor dem Laden. Auslastung basiert auf bestätigter
+  Planung, persönlicher Kapazität und genehmigten Abwesenheiten; Terminwünsche
+  sind bis zur Freigabe nicht fest eingeplant.
+- „Kritisch“ wird nur mit konkretem Signal ausgegeben. Überfällige Rechnungen
+  zählen nur, wenn sie finanziell aktiv, tatsächlich fällig und nicht bezahlt
+  sind. Ohne vollständige Kosten-/Erlösbasis behauptet JARVIS weder Verlust
+  noch Unwirtschaftlichkeit.
+- Der leichte Intent-Klassifizierer hält diese Fragen im sicheren
+  JARVIS-Endpunkt; damit umgeht eine Umsatzformulierung nicht mehr versehentlich
+  den Live-Datenadapter zugunsten des optionalen Management-KI-Endpunkts.
+- Produktivabnahme Runtime `ee9d1bd7784231daa59320f987856944af7868ae`,
+  Backup
+  `/var/backups/workpilot360/20260803T094948Z-before-jarvis-org-operations`,
+  190/190 Testdateien mit 1.892/1.892 Tests, 90-Seiten-Build, lokale und
+  produktive 110/110 Fragen, echte lokale und produktive Klicktests, null
+  ausgeführte Aktionen/Rückstände, leerer Prisma-Diff und keine Browserfehler.
+  WorkPilot PID `879931`, KlinikNavigator unverändert PID `398228`.
 
 ## Zweck
 
