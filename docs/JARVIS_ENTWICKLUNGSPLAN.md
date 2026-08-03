@@ -2,7 +2,40 @@
 
 Stand: 03.08.2026
 
-## Aktueller Release: organisationsweite operative Live-Auswertungen
+## Aktueller Release: rollenbegrenzte Auslastungsanalyse
+
+Die operative Auslastungsanalyse ist jetzt nicht nur organisationsgebunden,
+sondern innerhalb der Organisation strikt nach Verantwortung begrenzt:
+Geschäftsführung und Administration sehen die Organisation, Führungskräfte
+sehen ausschließlich sich selbst sowie Personen, denen sie als direkte oder
+stellvertretende Führungskraft zugeordnet sind, und Mitarbeitende sehen nur
+die eigene Auslastung. Bei Vertretung oder Impersonation wird die Schnittmenge
+beider Berechtigungsprofile verwendet; die Sicht kann dadurch niemals
+erweitert werden.
+
+Der Live-Datenadapter lädt abhängig von der erkannten Fragengruppe nur die
+benötigten Tabellen und bei Auslastungsfragen nur die erlaubten Benutzer,
+Planungen und Abwesenheiten. Vor der Antwort wird die Ergebnismenge zusätzlich
+noch einmal auf den zulässigen Personenkreis begrenzt. JARVIS nennt den
+angewendeten Sichtbereich in der Antwort. Das neue Leserecht
+`planning.analysis.read` erlaubt aktiven internen Nutzern ausschließlich diese
+rollenbegrenzte Analyse und gewährt keinen allgemeinen Personalzugriff.
+
+Produktiv abgenommen auf Runtime-Commit
+`d45ffca04b060f40c6788aac84ef757d6c0a815f` mit verifiziertem Backup
+`/var/backups/workpilot360/20260803T100734Z-before-jarvis-utilization-scope`.
+Lokal bestanden 190/190 Testdateien mit 1.893/1.893 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff,
+90-Seiten-Build und 110/110 feste Fragen. Die isolierte Rollen-QA und die
+produktive Rollen-QA bestanden für Geschäftsführung, Führungskraft und
+Mitarbeiter mit null Testnutzer-/Sitzungsrückständen. Produktiv bestanden
+außerdem 110/110 Fragen mit 33 vorbereiteten, null ausgeführten Aktionen und
+null Rückständen; Live-Prisma-Diff leer, Dashboard und öffentliches Formular
+HTTP 200. WorkPilot PID `881927`, KlinikNavigator unverändert PID `398228`.
+Keine Prisma-Schemaänderung; `StoredFile`, privater S3-Speicher und alle
+Online-Anfragen-Invarianten blieben erhalten.
+
+## Vorheriger Release: organisationsweite operative Live-Auswertungen
 
 JARVIS beantwortet organisationsweite Fragen zu aktiven
 Rechnungsentwürfen, Mitarbeiter- und Planungsgruppenauslastung, offenen

@@ -2,6 +2,28 @@
 
 Stand: 03.08.2026
 
+## Rollenbegrenzte Auslastungsanalyse
+
+- Die Auslastungssicht ist innerhalb der Organisation fachlich begrenzt:
+  Geschäftsführung/Administration sehen alle, Führungskräfte sich selbst plus
+  direkt oder stellvertretend zugeordnete Personen, Mitarbeitende nur sich
+  selbst. Bei Impersonation gilt die Schnittmenge beider Profile.
+- `planning.analysis.read` erlaubt aktiven internen Nutzern ausschließlich
+  diese begrenzte Lesefunktion. Es ersetzt hier den zu breiten allgemeinen
+  Personalzugriff.
+- Der Live-Adapter lädt je Intent nur benötigte Tabellen. Für Auslastung werden
+  Benutzer, bestätigte Planungen und genehmigte Abwesenheiten bereits beim
+  Laden auf den zulässigen Personenkreis begrenzt und vor der Antwort erneut
+  gefiltert. Die Antwort nennt den angewendeten Sichtbereich.
+- Produktivabnahme Runtime `d45ffca04b060f40c6788aac84ef757d6c0a815f`,
+  Backup
+  `/var/backups/workpilot360/20260803T100734Z-before-jarvis-utilization-scope`,
+  190/190 Testdateien mit 1.893/1.893 Tests, 90-Seiten-Build, lokale und
+  produktive Rollen-QA, lokal/produktiv 110/110 Fragen, produktiv 33
+  vorbereitete und null ausgeführte Aktionen, null Rückstände, leerer
+  Prisma-Diff sowie Dashboard/Formular HTTP 200. WorkPilot PID `881927`,
+  KlinikNavigator unverändert PID `398228`.
+
 ## Organisationsweite operative Live-Auswertungen
 
 - Deterministische, organisationsgebundene Lesefunktionen für
