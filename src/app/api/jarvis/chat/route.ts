@@ -46,6 +46,7 @@ import {
   resolveJarvisProjectReviewInventoryIntent,
   resolveJarvisProjectReviewInventoryRequest,
 } from "@/lib/jarvis/organization-project-review-analysis";
+import { resolveJarvisOrganizationOperationsRequest } from "@/lib/jarvis/organization-operations-analysis";
 import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
 import {
   authorizeJarvisQuestion,
@@ -4089,6 +4090,15 @@ export async function POST(req: Request) {
   const operationalGuidance = resolveJarvisOperationalGuidance(message);
   if (operationalGuidance) {
     return respond(operationalGuidance, "system");
+  }
+  const organizationOperationsResponse =
+    await resolveJarvisOrganizationOperationsRequest({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+    });
+  if (organizationOperationsResponse) {
+    return respond(organizationOperationsResponse, "management");
   }
   const projectReviewInventoryIntent =
     resolveJarvisProjectReviewInventoryIntent(message);

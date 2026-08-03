@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisPersonSummaryRequest: vi.fn(),
   resolveJarvisProjectReviewInventoryIntent: vi.fn(),
   resolveJarvisProjectReviewInventoryRequest: vi.fn(),
+  resolveJarvisOrganizationOperationsIntent: vi.fn(),
+  resolveJarvisOrganizationOperationsRequest: vi.fn(),
   resolveJarvisOrganizationMaterialIntent: vi.fn(),
   resolveJarvisOrganizationMaterialRequest: vi.fn(),
   resolveJarvisOrganizationServiceRateRequest: vi.fn(),
@@ -267,6 +269,13 @@ vi.mock("@/lib/jarvis/organization-project-review-analysis", () => ({
     mocks.resolveJarvisProjectReviewInventoryIntent,
   resolveJarvisProjectReviewInventoryRequest:
     mocks.resolveJarvisProjectReviewInventoryRequest,
+}));
+
+vi.mock("@/lib/jarvis/organization-operations-analysis", () => ({
+  resolveJarvisOrganizationOperationsIntent:
+    mocks.resolveJarvisOrganizationOperationsIntent,
+  resolveJarvisOrganizationOperationsRequest:
+    mocks.resolveJarvisOrganizationOperationsRequest,
 }));
 
 vi.mock("@/lib/jarvis/intent-decision", () => ({
@@ -603,6 +612,8 @@ describe("POST /api/jarvis/chat", () => {
       undefined
     );
     mocks.resolveJarvisProjectReviewInventoryIntent.mockReturnValue(undefined);
+    mocks.resolveJarvisOrganizationOperationsIntent.mockReturnValue(undefined);
+    mocks.resolveJarvisOrganizationOperationsRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue(
       undefined
     );
@@ -4948,7 +4959,7 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
   });
 
-  it("keeps an organization capability gap ahead of the open project context", async () => {
+  it("keeps the organization operations adapter ahead of the open project context", async () => {
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
       module: "Projekte",
       recordType: "project",
@@ -4957,6 +4968,12 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisProjectDialogIntent.mockReturnValue(
       "explainProjectType"
     );
+    mocks.resolveJarvisOrganizationOperationsRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.operations.missing-offer-projects",
+      message: "Zwei aktive Projekte haben keine gültige Angebotsbasis.",
+      deterministic: true,
+    });
 
     const response = await POST(
       new Request("http://localhost/api/jarvis/chat", {
@@ -4970,8 +4987,13 @@ describe("POST /api/jarvis/chat", () => {
     );
 
     expect((await response.json()).topicId).toBe(
-      "capability.analysis-adapter-missing"
+      "management.operations.missing-offer-projects"
     );
+    expect(mocks.resolveJarvisOrganizationOperationsRequest).toHaveBeenCalledWith({
+      question: "Welche Projekte haben kein gültiges Angebot?",
+      organizationId: "organization-1",
+      accessProfile: expect.anything(),
+    });
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
   });
 

@@ -44,9 +44,7 @@ describe("JARVIS intent orchestrator V3 regressions", () => {
     "Welche Kunden haben seit 30 Tagen keine Aktivität?",
     "Welche Projekte haben Zeiten, aber noch keine Rechnung?",
     "Welche Projekte sind aktuell kritisch?",
-  ])("never turns an unsupported analysis into a false zero result: %s", (question) => {
-    const result = resolveJarvisCapabilityGap(question);
-    expect(result?.type).toBe("unknown");
-    expect(result?.message).toContain("keine Treffer");
+  ])("routes the now-supported organization analyses away from the legacy gap: %s", (question) => {
+    expect(resolveJarvisCapabilityGap(question)).toBeUndefined();
   });
 });

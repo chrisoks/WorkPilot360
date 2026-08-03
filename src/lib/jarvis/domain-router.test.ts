@@ -21,6 +21,12 @@ describe("JARVIS domain router", () => {
     expect(resolveJarvisDomain("Wie entwickelt sich unser Umsatz?")).toBe("management");
   });
 
+  it("keeps deterministic organization operations on the secure system route", () => {
+    expect(resolveJarvisDomain("Wie hoch ist unser Umsatz?")).toBe("system");
+    expect(resolveJarvisDomain("Welche Mitarbeiter haben im August zu wenig Arbeit?")).toBe("system");
+    expect(resolveJarvisDomain("Wie hoch ist unsere Öffnungsquote und Annahmequote?")).toBe("system");
+  });
+
   it("keeps person and customer questions in the deterministic system path", () => {
     expect(resolveJarvisDomain("Sag mir alles über Klaus Testmann")).toBe("system");
     expect(resolveJarvisDomain("Welche Projekte hat Klaus Testmann?")).toBe("system");

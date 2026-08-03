@@ -1,5 +1,6 @@
 import { extractJarvisProjectReferences } from "@/lib/jarvis/dialog-state";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
+import { resolveJarvisOrganizationOperationsIntent } from "@/lib/jarvis/organization-operations-analysis";
 import type { JarvisReadResponse } from "@/lib/jarvis/read-model";
 
 const ORGANIZATION_ANALYSIS_PATTERNS = [
@@ -21,6 +22,7 @@ export function resolveJarvisCapabilityGap(
   question: string
 ): JarvisReadResponse | undefined {
   if (extractJarvisProjectReferences(question).length > 0) return undefined;
+  if (resolveJarvisOrganizationOperationsIntent(question)) return undefined;
   const value = normalizeJarvisIntentText(question);
   if (!ORGANIZATION_ANALYSIS_PATTERNS.some((pattern) => pattern.test(value))) {
     return undefined;
