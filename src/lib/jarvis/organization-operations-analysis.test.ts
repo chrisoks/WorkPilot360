@@ -67,6 +67,7 @@ describe("organization-wide JARVIS operations analysis", () => {
     ["Welche Projekte laufen ohne gültiges Angebot?", "missing_offer_projects"],
     ["Analysiere alle kritischen Projekte und nenne mir die Ursache.", "critical_projects"],
     ["Wie hoch ist unsere Öffnungsquote und Annahmequote?", "offer_rates"],
+    ["Welche Kunden machen den meisten Umsatz?", "customer_revenue"],
     ["Wie hoch ist unser Umsatz?", "revenue"],
   ])("recognizes %s", (question, expected) => {
     expect(resolveJarvisOrganizationOperationsIntent(question)).toBe(expected);
@@ -85,6 +86,19 @@ describe("organization-wide JARVIS operations analysis", () => {
     expect(revenue).toMatchObject({ topicId: "management.operations.revenue" });
     expect(revenue?.message).toContain("800,00");
     expect(revenue?.message).toContain("einer finanziell aktiven Rechnung");
+  });
+
+  it("ranks customers by financially active all-time net revenue", async () => {
+    const response = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Kunden machen den meisten Umsatz?", organizationId: "org-1", accessProfile: management, source: source() });
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "management.operations.customer-revenue",
+      records: [{ title: "1. Kunde Neu", subtitle: "7002" }],
+    });
+    expect(response?.message).toContain("finanziell aktiven Rechnungen");
+    expect(response?.structured?.sections?.[0].items).toEqual([
+      "1. Kunde Neu: 800,00 € netto aus 1 Rechnung.",
+    ]);
   });
 
   it("finds unbilled time, missing offer foundations and explains critical causes", async () => {
@@ -132,7 +146,7 @@ describe("organization-wide JARVIS operations analysis", () => {
     const data = snapshot();
     data.contacts[0] = { ...data.contacts[0], updatedAt: new Date("2026-08-02T00:00:00.000Z") };
     const response = await resolveJarvisOrganizationOperationsRequest({ question: "Welche Kunden haben offene Angebote, aber seit 30 Tagen keine Aktivität?", organizationId: "org-1", accessProfile: management, now: new Date("2026-08-03T10:00:00.000Z"), source: source(data) });
-    expect(response).toMatchObject({ type: "unknown", structured: undefined });
+    expect(response).toMatchObject({ type: "answer", structured: undefined });
     expect(response?.message).toContain("keinen Kunden");
   });
 

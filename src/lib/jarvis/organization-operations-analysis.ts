@@ -66,6 +66,14 @@ const liveSource: OrganizationOperationsSource = {
       const invoices = await prisma.invoice.findMany({ where: { organizationId }, select: { id: true, projectId: true, invoiceNumber: true, status: true, customerName: true, netTotal: true, serviceDate: true, plannedExecutionMonth: true, dueDate: true, isPaid: true, createdAt: true, updatedAt: true } });
       return { ...base, invoices };
     }
+    if (intent === "customer_revenue") {
+      const [projects, contacts, invoices] = await Promise.all([
+        prisma.workPilotProject.findMany({ where: { organizationId }, select: { id: true, projectNumber: true, title: true, customer: true, contactId: true, status: true, projectType: true, projectKind: true, recurringBillingMode: true, timeBudgetEnabled: true, autoBillingEnabled: true, updatedAt: true } }),
+        prisma.contact.findMany({ where: { organizationId }, select: { id: true, customerNumber: true, companyName: true, firstName: true, lastName: true, updatedAt: true } }),
+        prisma.invoice.findMany({ where: { organizationId }, select: { id: true, projectId: true, invoiceNumber: true, status: true, customerName: true, netTotal: true, serviceDate: true, plannedExecutionMonth: true, dueDate: true, isPaid: true, createdAt: true, updatedAt: true } }),
+      ]);
+      return { ...base, projects, contacts, invoices };
+    }
     if (intent === "offer_rates") {
       const offerAcceptanceRequests = await prisma.offerAcceptanceRequest.findMany({ where: { organizationId }, select: { offerId: true, sentAt: true, firstViewedAt: true, acceptedAt: true, revokedAt: true } });
       return { ...base, offerAcceptanceRequests };
@@ -95,7 +103,7 @@ function normalize(value: string | null | undefined) {
 }
 
 function actionFor(intent: JarvisOrganizationOperationsIntent) {
-  if (intent === "invoice_drafts" || intent === "revenue") return "invoice.read";
+  if (intent === "invoice_drafts" || intent === "revenue" || intent === "customer_revenue") return "invoice.read";
   if (intent === "offer_rates") return "offer.read";
   if (intent === "inactive_customers") return "contact.read";
   if (intent === "utilization") return "planning.analysis.read";
@@ -225,7 +233,7 @@ export async function resolveJarvisOrganizationOperationsRequest(input: { questi
   if (intent === "invoice_drafts") {
     const drafts = snapshot.invoices.filter((invoice) => normalize(invoice.status) === "entwurf").sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
     const records: JarvisRecordResult[] = drafts.slice(0, 20).map((invoice) => ({ id: `invoice-draft-${invoice.id}`, kind: "invoice", title: invoice.invoiceNumber, subtitle: invoice.customerName || "Ohne Kunde", summary: `${money(invoice.netTotal)} netto`, status: "Entwurf", target: { kind: "invoice", id: invoice.id, projectId: invoice.projectId } }));
-    return { type: drafts.length ? "answer" : "unknown", topicId: "management.operations.invoice-drafts", message: drafts.length ? `${drafts.length === 1 ? "Ein aktiver Rechnungsentwurf ist" : `${drafts.length} aktive Rechnungsentwürfe sind`} organisationsweit vorhanden.${drafts.length > 20 ? " Die 20 zuletzt geladenen Treffer werden angezeigt." : ""}` : "Aktuell sind organisationsweit keine aktiven Rechnungsentwürfe vorhanden.", records, structured: { title: "Rechnungsentwürfe · Unternehmen", facts: [{ label: "Aktive Entwürfe", value: String(drafts.length), tone: drafts.length ? "warning" : "positive" }, { label: "Netto gesamt", value: money(drafts.reduce((sum, item) => sum + item.netTotal, 0)) }] }, deterministic: true };
+    return { type: "answer", topicId: "management.operations.invoice-drafts", message: drafts.length ? `${drafts.length === 1 ? "Ein aktiver Rechnungsentwurf ist" : `${drafts.length} aktive Rechnungsentwürfe sind`} organisationsweit vorhanden.${drafts.length > 20 ? " Die 20 zuletzt geladenen Treffer werden angezeigt." : ""}` : "Aktuell sind organisationsweit keine aktiven Rechnungsentwürfe vorhanden.", records, structured: { title: "Rechnungsentwürfe · Unternehmen", facts: [{ label: "Aktive Entwürfe", value: String(drafts.length), tone: drafts.length ? "warning" : "positive" }, { label: "Netto gesamt", value: money(drafts.reduce((sum, item) => sum + item.netTotal, 0)) }] }, deterministic: true };
   }
 
   if (intent === "utilization") {
@@ -250,12 +258,12 @@ export async function resolveJarvisOrganizationOperationsRequest(input: { questi
   if (intent === "unbilled_projects") {
     const projects = activeProjects.filter((project) => (unbilledByProject.get(project.id)?.length ?? 0) > 0);
     const records = projects.slice(0, 20).map((project) => { const entries = unbilledByProject.get(project.id) ?? []; const hours = entries.reduce((sum, entry) => sum + Number(entry.durationMs) / 3_600_000, 0); return projectRecord(project, "Abrechnung prüfen", `${entries.length} unberechnete Zeiteinträge · ${hours.toFixed(2)} Std.`); });
-    return { type: projects.length ? "answer" : "unknown", topicId: "management.operations.unbilled-projects", message: projects.length ? `${projects.length} aktive Projekte enthalten erfasste, nicht gelöschte Zeiten ohne Rechnungszuordnung.` : "Aktuell wurden keine aktiven Projekte mit erfassten Zeiten ohne Rechnungszuordnung gefunden.", records, deterministic: true };
+    return { type: "answer", topicId: "management.operations.unbilled-projects", message: projects.length ? `${projects.length} aktive Projekte enthalten erfasste, nicht gelöschte Zeiten ohne Rechnungszuordnung.` : "Aktuell wurden keine aktiven Projekte mit erfassten Zeiten ohne Rechnungszuordnung gefunden.", records, deterministic: true };
   }
 
   if (intent === "missing_offer_projects") {
     const projects = operationalProjects.filter((project) => !project.timeBudgetEnabled && !project.autoBillingEnabled && !(offersByProject.get(project.id) ?? []).some((offer) => isValidOffer(offer.status)));
-    return { type: projects.length ? "answer" : "unknown", topicId: "management.operations.missing-offer-projects", message: projects.length ? `${projects.length} aktive Projekte haben weder ein gültiges Angebot noch eine dokumentierte Zeitbudget- oder Autoabrechnungsbasis.` : "Aktuell wurden keine aktiven Projekte ohne gültige Angebots- oder dokumentierte Abrechnungsbasis gefunden.", records: projects.slice(0, 20).map((project) => projectRecord(project, "Angebotsbasis fehlt", "Kein gültiges Angebot; kein Zeitbudget und keine Autoabrechnung hinterlegt.")), deterministic: true };
+    return { type: "answer", topicId: "management.operations.missing-offer-projects", message: projects.length ? `${projects.length} aktive Projekte haben weder ein gültiges Angebot noch eine dokumentierte Zeitbudget- oder Autoabrechnungsbasis.` : "Aktuell wurden keine aktiven Projekte ohne gültige Angebots- oder dokumentierte Abrechnungsbasis gefunden.", records: projects.slice(0, 20).map((project) => projectRecord(project, "Angebotsbasis fehlt", "Kein gültiges Angebot; kein Zeitbudget und keine Autoabrechnung hinterlegt.")), deterministic: true };
   }
 
   if (intent === "inactive_customers") {
@@ -272,7 +280,7 @@ export async function resolveJarvisOrganizationOperationsRequest(input: { questi
     const openOfferContactIds = new Set(snapshot.offers.filter((offer) => isOpenOffer(offer.status)).map((offer) => projectById.get(offer.projectId)?.contactId).filter(Boolean));
     const contacts = snapshot.contacts.filter((contact) => openOfferContactIds.has(contact.id) && (contactActivity.get(contact.id) ?? new Date(0)) < threshold).sort((a, b) => (contactActivity.get(a.id)?.getTime() ?? 0) - (contactActivity.get(b.id)?.getTime() ?? 0));
     const records: JarvisRecordResult[] = contacts.slice(0, 20).map((contact) => ({ id: `inactive-customer-${contact.id}`, kind: "customer", title: contactName(contact), subtitle: contact.customerNumber, summary: `Letzte belegte WorkPilot-Aktivität: ${dateKey(contactActivity.get(contact.id) ?? new Date(0))}`, status: "Offenes Angebot · >30 Tage ohne Aktivität", target: { kind: "customer", id: contact.id } }));
-    return { type: contacts.length ? "answer" : "unknown", topicId: "management.operations.inactive-customers", message: contacts.length ? `${contacts.length} Kunden haben mindestens ein offenes Angebot, aber seit mehr als 30 Tagen keine belegte WorkPilot-Aktivität.` : "Aktuell gibt es keinen Kunden mit offenem Angebot und mehr als 30 Tagen ohne belegte WorkPilot-Aktivität.", records, structured: contacts.length ? { title: "Offene Angebote ohne Aktivität", sections: [{ title: "Berücksichtigte Aktivität", items: ["Kontakt- und Projektänderungen, Angebote, Rechnungen, Projektzeiten, Aufgaben sowie Kunden- und Projektlogbuch.", "Die Aussage bezieht sich auf WorkPilot-Aktivität; externe Telefonate oder E-Mails ohne Protokoll sind nicht ableitbar."] }] } : undefined, deterministic: true };
+    return { type: "answer", topicId: "management.operations.inactive-customers", message: contacts.length ? `${contacts.length} Kunden haben mindestens ein offenes Angebot, aber seit mehr als 30 Tagen keine belegte WorkPilot-Aktivität.` : "Aktuell gibt es keinen Kunden mit offenem Angebot und mehr als 30 Tagen ohne belegte WorkPilot-Aktivität.", records, structured: contacts.length ? { title: "Offene Angebote ohne Aktivität", sections: [{ title: "Berücksichtigte Aktivität", items: ["Kontakt- und Projektänderungen, Angebote, Rechnungen, Projektzeiten, Aufgaben sowie Kunden- und Projektlogbuch.", "Die Aussage bezieht sich auf WorkPilot-Aktivität; externe Telefonate oder E-Mails ohne Protokoll sind nicht ableitbar."] }] } : undefined, deterministic: true };
   }
 
   if (intent === "offer_rates") {
@@ -280,7 +288,26 @@ export async function resolveJarvisOrganizationOperationsRequest(input: { questi
     const viewed = sent.filter((request) => request.firstViewedAt || request.acceptedAt);
     const accepted = sent.filter((request) => request.acceptedAt);
     const percent = (count: number) => sent.length ? `${(count / sent.length * 100).toFixed(1)} %` : "nicht berechenbar";
-    return { type: sent.length ? "answer" : "unknown", topicId: "management.operations.offer-rates", message: sent.length ? `Von ${sent.length} aktiven versendeten Angebotsfreigaben wurden ${viewed.length} geöffnet und ${accepted.length} angenommen.` : "Es sind keine aktiven versendeten Angebotsfreigaben vorhanden; Öffnungs- und Annahmequote sind deshalb nicht belastbar berechenbar.", structured: { title: "Angebotsquoten", facts: [{ label: "Versendet", value: String(sent.length) }, { label: "Öffnungsquote", value: percent(viewed.length) }, { label: "Annahmequote", value: percent(accepted.length) }], sections: [{ title: "Datenbasis", items: ["Nur über den WorkPilot-Angebotsfreigabelink versendete, nicht widerrufene Vorgänge sind enthalten."] }] }, deterministic: true };
+    return { type: "answer", topicId: "management.operations.offer-rates", message: sent.length ? `Von ${sent.length} aktiven versendeten Angebotsfreigaben wurden ${viewed.length} geöffnet und ${accepted.length} angenommen.` : "Es sind keine aktiven versendeten Angebotsfreigaben vorhanden; Öffnungs- und Annahmequote sind deshalb nicht belastbar berechenbar.", structured: { title: "Angebotsquoten", facts: [{ label: "Versendet", value: String(sent.length) }, { label: "Öffnungsquote", value: percent(viewed.length) }, { label: "Annahmequote", value: percent(accepted.length) }], sections: [{ title: "Datenbasis", items: ["Nur über den WorkPilot-Angebotsfreigabelink versendete, nicht widerrufene Vorgänge sind enthalten."] }] }, deterministic: true };
+  }
+
+  if (intent === "customer_revenue") {
+    const projectById = new Map(snapshot.projects.map((project) => [project.id, project]));
+    const contactById = new Map(snapshot.contacts.map((contact) => [contact.id, contact]));
+    const rows = new Map<string, { name: string; contactId: string | null; customerNumber: string; netTotal: number; invoiceCount: number }>();
+    snapshot.invoices.filter((invoice) => isFinancialInvoice(invoice.status)).forEach((invoice) => {
+      const contactId = projectById.get(invoice.projectId)?.contactId ?? null;
+      const contact = contactId ? contactById.get(contactId) : undefined;
+      const fallbackName = invoice.customerName.trim() || "Kunde ohne Bezeichnung";
+      const key = contact ? `contact:${contact.id}` : `name:${normalize(fallbackName)}`;
+      const current = rows.get(key) ?? { name: contact ? contactName(contact) : fallbackName, contactId: contact?.id ?? null, customerNumber: contact?.customerNumber ?? "Ohne Kundennummer", netTotal: 0, invoiceCount: 0 };
+      current.netTotal += invoice.netTotal;
+      current.invoiceCount += 1;
+      rows.set(key, current);
+    });
+    const ranking = [...rows.values()].sort((a, b) => b.netTotal - a.netTotal || a.name.localeCompare(b.name, "de"));
+    const records: JarvisRecordResult[] = ranking.filter((row) => row.contactId).slice(0, 20).map((row, index) => ({ id: `customer-revenue-${row.contactId}`, kind: "customer", title: `${index + 1}. ${row.name}`, subtitle: row.customerNumber, summary: `${money(row.netTotal)} netto aus ${row.invoiceCount} finanziell aktiven ${row.invoiceCount === 1 ? "Rechnung" : "Rechnungen"}`, status: "Umsatz · Gesamt", target: { kind: "customer", id: row.contactId! } }));
+    return { type: "answer", topicId: "management.operations.customer-revenue", message: ranking.length ? `Die umsatzstärksten Kunden wurden aus allen finanziell aktiven Rechnungen organisationsweit ermittelt. ${ranking.length} Kunden mit ${snapshot.invoices.filter((invoice) => isFinancialInvoice(invoice.status)).length} berücksichtigten Rechnungen sind enthalten; Entwürfe, gelöschte und stornierte Belege sind ausgeschlossen.` : "Es sind aktuell keine finanziell aktiven Rechnungen vorhanden; deshalb gibt es keine belastbare Kunden-Umsatzrangfolge.", records, structured: { title: "Kundenumsatz · Gesamt", sections: [{ title: "Rangfolge", items: ranking.slice(0, 20).map((row, index) => `${index + 1}. ${row.name}: ${money(row.netTotal)} netto aus ${row.invoiceCount} ${row.invoiceCount === 1 ? "Rechnung" : "Rechnungen"}.`) }, { title: "Datenbasis", items: ["Alle finanziell aktiven Rechnungen; Entwürfe, gelöschte und stornierte Belege sind ausgeschlossen.", "Die Rangfolge ist nach Netto-Umsatz absteigend sortiert und verwendet die stabile Projekt-Kunden-Zuordnung, soweit vorhanden."] }] }, deterministic: true };
   }
 
   if (intent === "revenue") {
@@ -300,5 +327,5 @@ export async function resolveJarvisOrganizationOperationsRequest(input: { questi
     if ((invoicesByProject.get(project.id) ?? []).some((invoice) => isFinancialInvoice(invoice.status) && !invoice.isPaid && Boolean(invoice.dueDate) && invoice.dueDate < dateKey(now))) reasons.push("überfällige offene Rechnung");
     return { project, reasons };
   }).filter((item) => item.reasons.length > 0).sort((a, b) => b.reasons.length - a.reasons.length);
-  return { type: critical.length ? "answer" : "unknown", topicId: "management.operations.critical-projects", message: critical.length ? `${critical.length} aktive Projekte haben mindestens einen belastbaren kaufmännischen oder abrechnungsbezogenen Risikohinweis. Die Ursachen werden je Projekt genannt.` : "Aktuell wurden anhand der angebundenen Angebots-, Rechnungs- und Zeitprüfungen keine kritischen aktiven Projekte gefunden.", records: critical.slice(0, 20).map(({ project, reasons }) => projectRecord(project, `${reasons.length} Risikohinweis${reasons.length === 1 ? "" : "e"}`, reasons.join(" · "))), structured: { title: "Kritische Projekte · belegte Prüfsignale", sections: [{ title: "Abgrenzung", items: ["Kritisch bedeutet hier: fehlende Angebots-/Abrechnungsbasis, unberechnete Zeiten oder eine überfällige offene Rechnung.", "Eine automatische Behauptung zu Wirtschaftlichkeit oder Verlust erfolgt ohne vollständige Kosten- und Erlösbasis ausdrücklich nicht."] }] }, deterministic: true };
+  return { type: "answer", topicId: "management.operations.critical-projects", message: critical.length ? `${critical.length} aktive Projekte haben mindestens einen belastbaren kaufmännischen oder abrechnungsbezogenen Risikohinweis. Die Ursachen werden je Projekt genannt.` : "Aktuell wurden anhand der angebundenen Angebots-, Rechnungs- und Zeitprüfungen keine kritischen aktiven Projekte gefunden.", records: critical.slice(0, 20).map(({ project, reasons }) => projectRecord(project, `${reasons.length} Risikohinweis${reasons.length === 1 ? "" : "e"}`, reasons.join(" · "))), structured: { title: "Kritische Projekte · belegte Prüfsignale", sections: [{ title: "Abgrenzung", items: ["Kritisch bedeutet hier: fehlende Angebots-/Abrechnungsbasis, unberechnete Zeiten oder eine überfällige offene Rechnung.", "Eine automatische Behauptung zu Wirtschaftlichkeit oder Verlust erfolgt ohne vollständige Kosten- und Erlösbasis ausdrücklich nicht."] }] }, deterministic: true };
 }

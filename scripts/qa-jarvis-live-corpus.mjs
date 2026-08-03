@@ -596,6 +596,26 @@ async function main() {
             });
           }
         }
+        if (item.question === "Welche Kunden machen den meisten Umsatz?") {
+          if (
+            payload.topicId !== "management.operations.customer-revenue" ||
+            !payload.message.includes("finanziell aktiven Rechnungen") ||
+            !payload.structured?.sections?.some(
+              (section) =>
+                section.title === "Datenbasis" &&
+                section.items?.some((entry) =>
+                  entry.includes("Entwürfe, gelöschte und stornierte Belege")
+                )
+            )
+          ) {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error:
+                "Die Kunden-Umsatzfrage liefert keine belastbare, belegstatusbereinigte Rangfolge.",
+            });
+          }
+        }
         if (isPaymentCase && paymentInvoice) {
           if (payload.actionDraft?.actionId !== "invoice.mark-paid") {
             failures.push({

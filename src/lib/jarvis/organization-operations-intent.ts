@@ -9,6 +9,7 @@ export type JarvisOrganizationOperationsIntent =
   | "missing_offer_projects"
   | "critical_projects"
   | "offer_rates"
+  | "customer_revenue"
   | "revenue";
 
 export function resolveJarvisOrganizationOperationsIntent(
@@ -23,6 +24,7 @@ export function resolveJarvisOrganizationOperationsIntent(
   if (/\bwelche projekte\b.*\b(?:ohne|kein\w*)\b.*\b(?:gultig\w*\s+)?angebot\b/.test(value)) return "missing_offer_projects";
   if (/\bwelche projekte\b.*\b(?:auffallig|unwirtschaftlich|verlust|marge|kritisch|risiko|gefahrdet)\b|\b(?:analysier|pruf|untersuch)\w*\b.*\b(?:alle\s+)?kritisch\w*\s+projekte\b/.test(value)) return "critical_projects";
   if (/\b(?:wie|welche)\b.*\b(?:annahmequote|offnungsquote)\b/.test(value)) return "offer_rates";
+  if (/\bwelche kunden\b.*\b(?:meisten|hochsten|großten)\b.*\bumsatz\b|\bumsatzstark\w*\s+kunden\b/.test(value)) return "customer_revenue";
   if (/\b(?:wie viel|wie hoch)\b.*\bumsatz\b/.test(value)) return "revenue";
   return undefined;
 }
