@@ -2,6 +2,35 @@
 
 Stand: 03.08.2026
 
+## Einführungsbereinigung und abschließende V1-Abnahme
+
+Vor der Einführung wurde der vollständig inventarisierte
+Klaus-Testmann-Testverbund nach ausdrücklicher Freigabe bereinigt. Ein eigenes
+Vollbackup mit Datenbank, Repository, Konfiguration, Runtime und
+Prüfsummen liegt unter
+`/var/backups/workpilot360/20260803T142611Z-before-klaus-testmann-cleanup`.
+Digest-gebunden und serialisierbar wurden 1.056 ausschließlich zugeordnete
+Testdatensätze aus 36 Modellen entfernt, darunter sechs Testprojekte, die
+Test-Online-Anfrage `OKI-20260730-C51C4F`, 15 Angebote, 23 aktuelle und 20
+importierte Testrechnungen sowie verknüpfte Planung, Zeiten, Aufgaben,
+Historien und Dateien. 69 private S3-Objekte wurden ohne Providerfehler
+entfernt. Die Kontakte Klaus Testmann (`1006`) und Bernd Hemberger (`7000067`)
+waren als Schutzinvariante gebunden und blieben vollständig erhalten.
+
+Die anschließende Volltext- und Referenzprüfung fand außerhalb des bewusst
+erhaltenen Kontakts keine Testmann-Reste. JARVIS zeigt für Klaus Testmann
+verständlich null Angebote, null Rechnungen und null Projekte. Natürliche
+Projektzuordnungsfragen mit „gehören“ oder „gehören zu“ extrahieren nur noch
+den Kundennamen. Runtime-Commit
+`666e00e5b3ec1deea85643a1a556f73cee7b3225` ist produktiv. Lokal bestanden
+203/203 Testdateien mit 1.970/1.970 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer lokaler Schema-Diff
+und der 90-Seiten-Build. Nach der Datenbereinigung bestand der produktive
+Korpus erneut 110/110 mit 32 vorbereiteten, null ausgeführten Aktionen und
+null Rückständen. Produktive Klicktests, Dashboard und öffentliches Formular
+sind grün; Prisma-Live-Diff leer. WorkPilot PID `913766`, KlinikNavigator
+unverändert PID `398228`.
+
 ## Aktueller Release: fachlich verbindliche 110 Fragen und gezielte Rückfragen
 
 Der permanente 110er-Korpus prüft jetzt für jede bekannte Frage nicht nur,

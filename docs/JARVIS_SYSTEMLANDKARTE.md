@@ -2,6 +2,27 @@
 
 Stand: 03.08.2026
 
+## Einführungsbereinigung und finaler Nulltreffervertrag
+
+- Der freigegebene Klaus-Testmann-Testverbund wurde nach verifiziertem
+  Vollbackup digest-gebunden und serialisierbar entfernt: 1.056 Datensätze in
+  36 Modellen und 69 private Speicherobjekte ohne Löschfehler.
+- Klaus Testmann und Bernd Hemberger blieben als explizit geschützte Kontakte
+  bestehen. Sechs Testprojekte, `OKI-20260730-C51C4F` sowie ausschließlich
+  zugehörige Beleg-, Planungs-, Zeit-, Aufgaben-, Historien- und Dateidaten
+  stehen nach unabhängiger Prüfung auf null.
+- JARVIS beantwortet Angebots-, Rechnungs- und Projektfragen zu Klaus Testmann
+  als verständlichen belegten Nulltreffer. `read-intent.ts` entfernt bei
+  natürlichen Projektzuordnungsfragen die Beziehungswörter „gehören“ und
+  „zu“, sodass ausschließlich der echte Kundenname gesucht wird.
+- Abschlussstand Runtime
+  `666e00e5b3ec1deea85643a1a556f73cee7b3225`, Backup
+  `/var/backups/workpilot360/20260803T142611Z-before-klaus-testmann-cleanup`,
+  203/203 Testdateien mit 1.970/1.970 Tests, 90-Seiten-Build, produktiv
+  110/110 Fragen mit 32 Vorschauen, null Ausführungen und null Rückständen,
+  produktive UI-Klicktests, leerer Prisma-Live-Diff sowie Dashboard/Formular
+  HTTP 200. WorkPilot PID `913766`, KlinikNavigator PID `398228`.
+
 ## Fachlich verbindlicher 110er-Korpus und kontextsichere Dialoge
 
 - Jede der exakt 110 bekannten Fragen besitzt jetzt einen fachlichen
