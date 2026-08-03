@@ -22,6 +22,10 @@ import {
 describe("JARVIS invoice intake", () => {
   it("recognizes safe draft creation but excludes reads and critical actions", () => {
     expect(looksLikeInvoiceDraftRequest("Erstelle einen Rechnungsentwurf für Projekt GLR-449")).toBe(true);
+    expect(looksLikeInvoiceDraftRequest("JARVIS, schreib mir eine Rechnung.")).toBe(true);
+    expect(looksLikeInvoiceDraftRequest("Ich möchte eine Rechnung erstellen.")).toBe(true);
+    expect(looksLikeInvoiceDraftRequest("Kannst du mir beim Schreiben einer Rechnung helfen?")).toBe(true);
+    expect(looksLikeInvoiceDraftRequest("Wie schreibe ich eine Rechnung?")).toBe(false);
     expect(looksLikeInvoiceDraftRequest("Zeig mir offene Rechnungen")).toBe(false);
     expect(looksLikeInvoiceDraftRequest("Fakturiere und versende die Rechnung")).toBe(false);
     expect(looksLikeInvoiceDraftRequest("Storniere die Rechnung")).toBe(false);

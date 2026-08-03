@@ -1103,7 +1103,9 @@ vi.mock("@/lib/time/stamp-session-billing-service", () => ({ attachStampEntryToH
 vi.mock("@/lib/invoices/invoice-draft-service", () => ({
   evaluateInvoiceDraft: fake.evaluateInvoiceDraft,
   loadInvoiceDraftWorkspace: vi.fn(async () => ({
-    projectOptions: [], catalogOptions: [], offerOptions: [],
+    projectOptions: [{ id: "project-1", label: "MKG-209 · Marketing", customerLabel: "Musterkunde", projectKind: "Einmalprojekt", defaultCompany: "OK solutions", updatedAt: "2026-07-29T18:00:00.000Z" }],
+    catalogOptions: [{ id: "service-hourly", label: "GLR-STD · Glasreinigung Stunde", type: "service", unit: "Std.", description: "Glasflächen reinigen", salesPrice: 55, vatRate: 19, updatedAt: "2026-07-29T18:20:00.000Z" }],
+    offerOptions: [],
   })),
   createConfirmedInvoiceDraft: fake.createConfirmedInvoiceDraft,
   InvoiceDraftServiceError: class InvoiceDraftServiceError extends Error {
@@ -2757,6 +2759,8 @@ describe("persistent JARVIS invoice drafts", () => {
       },
     });
     expect(created.state).toBe("awaiting_input");
+    expect(created.editor.projectOptions).toEqual([]);
+    expect(created.editor.catalogOptions).toEqual([]);
 
     const ready = await completeJarvisInvoiceDraft(created.previewId, binding(), {
       revision: created.revision,
@@ -2774,6 +2778,8 @@ describe("persistent JARVIS invoice drafts", () => {
     }, baseNow);
     expect(ready.state).toBe("awaiting_confirmation");
     expect(ready.calculation).toMatchObject({ netTotal: 110, grossTotal: 130.9 });
+    expect(ready.editor.projectOptions.map((option) => option.id)).toEqual(["project-1"]);
+    expect(ready.editor.catalogOptions.map((option) => option.id)).toEqual(["service-hourly"]);
 
     const first = await confirmJarvisInvoiceDraft(ready.previewId, binding(), ready.revision, baseNow);
     const replay = await confirmJarvisInvoiceDraft(ready.previewId, binding(), ready.revision, baseNow);

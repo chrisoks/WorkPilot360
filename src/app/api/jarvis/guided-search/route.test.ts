@@ -41,6 +41,17 @@ describe("GET /api/jarvis/guided-search", () => {
     });
   });
 
+  it("allows the same bound search foundation for invoice preparation", async () => {
+    const response = await GET(new Request("http://localhost/api/jarvis/guided-search?actorId=user-1&scope=invoice&kind=project&query=GLR"));
+    expect(response.status).toBe(200);
+    expect(mocks.searchJarvisGuidedOptions).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      kind: "project",
+      query: "GLR",
+      customer: "",
+    });
+  });
+
   it("rejects unknown search kinds before touching business data", async () => {
     const response = await GET(new Request("http://localhost/api/jarvis/guided-search?kind=secret"));
     expect(response.status).toBe(400);

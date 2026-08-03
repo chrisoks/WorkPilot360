@@ -388,8 +388,9 @@ async function buildJarvisInvoiceDraft(input: {
     return {
       type: "answer" as const,
       topicId: "action.draft.invoice",
-      message:
-        "Ich habe einen sicheren Rechnungsentwurf mit Fakturavorprüfung vorbereitet. Prüfe Projekt, Leistungsdatum, Angebot, Positionen, Nachlass, Umsatzsteuer, Zahlungsziel und alle Warnungen. Erst deine ausdrückliche Bestätigung legt genau einen Entwurf an; JARVIS fakturiert oder versendet ihn nicht.",
+      message: explicitProject?.id
+        ? "Ich habe das Projekt erkannt. Prüfe jetzt Leistungsdatum, Bezugsangebot, Positionen und Zahlungsziel. Erst deine ausdrückliche Bestätigung legt genau einen Rechnungsentwurf an; JARVIS fakturiert oder versendet ihn nicht."
+        : "Gerne. Für welchen Kunden soll ich die Rechnung erstellen? Suche den Kunden unten; danach zeige ich dir ausschließlich seine offenen Projekte zur Auswahl.",
       actionDraft,
     };
   } catch (error) {

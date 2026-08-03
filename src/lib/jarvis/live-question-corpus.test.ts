@@ -10,7 +10,7 @@ describe("JARVIS permanent 110-question regression corpus", () => {
 
   it("permanently covers invoice drafts, calculators, online requests and safety", () => {
     const text = JARVIS_LIVE_QUESTION_CORPUS.map((item) => item.question).join("\n");
-    expect(text).toContain("Erstelle einen Rechnungsentwurf");
+    expect(text).toContain("JARVIS, schreib mir eine Rechnung");
     expect(text).toContain("JARVIS, schreib mir ein Angebot für Projekt GLR-449");
     expect(text).toContain("Fakturiere Rechnungsentwurf");
     expect(text).toContain("Sende Rechnung RE-10124 kontrolliert");

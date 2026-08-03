@@ -2,8 +2,12 @@ import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 
 export function looksLikeInvoiceDraftRequest(question: string) {
   const value = normalizeJarvisIntentText(question);
+  const directCreation =
+    /^(?:(?:hey|hallo)\s+)?(?:jarvis\s+)?(?:bitte\s+)?(?:erstell|erstelle|leg|lege|bereit|mach|schreib)\w*\b/.test(value) ||
+    /\b(?:kannst|konntest|wurdest|sollst|mochtest|willst)\b[^?!.]*\b(?:erstell|mach|schreib|bereit)\w*\b/.test(value) ||
+    /\bich\s+(?:mochte|will|brauch)\w*\b[^?!.]*\b(?:rechnung|rechnungsentwurf)\w*\b/.test(value);
   return (
-    /^\s*(?:erstell|erstelle|leg|lege|bereit|mach)\w*\b/.test(value) &&
+    directCreation &&
     /\b(?:rechnung|rechnungsentwurf)\w*\b/.test(value) &&
     !/\b(?:mahn|storn|bezahlt|zahlungsstatus|versend|send|schick|losch|archivier|fakturier)\w*\b/.test(value) &&
     !/\b(?:such|zeig|liste|offen|alt|status|warum|wieso|pruf|pruef)\w*\b/.test(value)

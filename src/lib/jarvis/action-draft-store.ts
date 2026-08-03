@@ -10154,8 +10154,12 @@ export async function toJarvisInvoiceDraftView(draft: JarvisActionDraft, binding
     preflight: evaluated.preflight,
     editor: {
       ...evaluated.input,
-      projectOptions: workspace.projectOptions,
-      catalogOptions: workspace.catalogOptions,
+      projectOptions: workspace.projectOptions.filter(
+        (project) => project.id === evaluated.input.projectId
+      ),
+      catalogOptions: workspace.catalogOptions.filter((item) =>
+        evaluated.input.lines.some((line) => line.catalogItemId === item.id)
+      ),
       offerOptions: workspace.offerOptions.filter((offer) => !evaluated.input.projectId || offer.projectId === evaluated.input.projectId),
     },
     calculation: evaluated.totals,

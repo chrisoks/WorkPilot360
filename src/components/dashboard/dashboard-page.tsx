@@ -3394,7 +3394,7 @@ function JarvisOfferDraftCard({
     const timer = window.setTimeout(async () => {
       setIsSearching(true);
       try {
-        const params = new URLSearchParams({ actorId, kind: guidedStep === "positions" ? "catalog" : guidedStep });
+        const params = new URLSearchParams({ actorId, scope: "offer", kind: guidedStep === "positions" ? "catalog" : guidedStep });
         if (searchQuery.trim()) params.set("query", searchQuery.trim());
         if (guidedStep === "project" && selectedCustomer) params.set("customer", selectedCustomer);
         const response = await fetch(`/api/jarvis/guided-search?${params.toString()}`, {
@@ -4077,11 +4077,52 @@ function JarvisInvoiceDraftCard({
   const [editor, setEditor] = useState(draft.editor);
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState("");
+  const [guidedStep, setGuidedStep] = useState<
+    "customer" | "project" | "basics" | "positions" | "review"
+  >(draft.editor.projectId ? "basics" : "customer");
+  const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<JarvisGuidedSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const isOpen = draft.state === "awaiting_input" || draft.state === "awaiting_confirmation";
 
   useEffect(() => {
     setEditor(draft.editor);
     setError("");
   }, [draft.previewId, draft.revision, draft.state, draft.editor]);
+
+  useEffect(() => {
+    if (!isOpen || (guidedStep !== "customer" && guidedStep !== "project" && guidedStep !== "positions")) {
+      setSearchResults([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const params = new URLSearchParams({ actorId, scope: "invoice", kind: guidedStep === "positions" ? "catalog" : guidedStep });
+        if (searchQuery.trim()) params.set("query", searchQuery.trim());
+        if (guidedStep === "project" && selectedCustomer) params.set("customer", selectedCustomer);
+        const response = await fetch(`/api/jarvis/guided-search?${params.toString()}`, { signal: controller.signal });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !Array.isArray(data?.results)) {
+          setError(data?.error ?? "Die Auswahl konnte nicht geladen werden.");
+          setSearchResults([]);
+          return;
+        }
+        setSearchResults(data.results as JarvisGuidedSearchResult[]);
+      } catch (searchError) {
+        if ((searchError as { name?: string }).name !== "AbortError") setError("Die Volltextsuche ist gerade nicht erreichbar.");
+      } finally {
+        if (!controller.signal.aborted) setIsSearching(false);
+      }
+    }, 220);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [actorId, guidedStep, isOpen, searchQuery, selectedCustomer]);
 
   const linesPayload = (lines: typeof editor.lines) =>
     lines.map((line) => ({
@@ -4118,10 +4159,9 @@ function JarvisInvoiceDraftCard({
     lines: linesPayload(draft.editor.lines),
   };
   const isDirty = JSON.stringify(payload) !== JSON.stringify(persistedPayload);
-  const isOpen = draft.state === "awaiting_input" || draft.state === "awaiting_confirmation";
   const money = (value: number) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value);
 
-  const request = async (method: "PATCH" | "POST", body: Record<string, unknown>) => {
+  const request = async (method: "PATCH" | "POST", body: Record<string, unknown>): Promise<JarvisInvoiceDraftView | undefined> => {
     setIsWorking(true);
     setError("");
     try {
@@ -4134,14 +4174,16 @@ function JarvisInvoiceDraftCard({
       const next = parseJarvisInvoiceDraft(data?.actionDraft);
       if (!response.ok || !next) {
         setError(data?.error ?? "Der Rechnungsentwurf konnte nicht sicher verarbeitet werden.");
-        return;
+        return undefined;
       }
       onChange(next, typeof data?.message === "string" ? data.message : undefined);
+      return next;
     } catch {
       setError("Das Action Center ist gerade nicht erreichbar. Es wurde keine Rechnung angelegt.");
     } finally {
       setIsWorking(false);
     }
+    return undefined;
   };
 
   const updateLine = (index: number, patch: Partial<JarvisInvoiceDraftView["editor"]["lines"][number]>) =>
@@ -4155,7 +4197,82 @@ function JarvisInvoiceDraftCard({
       <header><div><span>Action Center</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
       <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
       {isOpen ? (
-        <div className={styles.jarvisActionDraftEditor}>
+        <div className={styles.jarvisActionDraftEditor} data-guide-step={guidedStep} data-show-details={showDetails}>
+          <div className={styles.jarvisGuidedOffer}>
+            <strong>
+              {guidedStep === "customer"
+                ? "Für welchen Kunden soll ich die Rechnung erstellen?"
+                : guidedStep === "project"
+                  ? `Welches offene Projekt von ${selectedCustomer || "diesem Kunden"} soll abgerechnet werden?`
+                  : guidedStep === "basics"
+                    ? "Projekt ausgewählt – jetzt klären wir Leistungsdatum, Bezugsangebot und Zahlungsziel."
+                    : guidedStep === "positions"
+                      ? "Welche Leistungen sollen abgerechnet werden?"
+                      : "Die Rechnung ist vollständig geprüft und bereit für deine bewusste Bestätigung."}
+            </strong>
+            {guidedStep === "customer" || guidedStep === "project" ? (
+              <>
+                <p>{guidedStep === "customer" ? "Suche nach Firmenname oder Ansprechpartner. Angezeigt werden nur Kunden mit offenen Projekten." : "Suche zusätzlich nach Projektnummer, Projekttitel, Gewerk oder Projektart."}</p>
+                <label>
+                  <span>{guidedStep === "customer" ? "Kunde suchen" : "Projekt suchen"}</span>
+                  <input type="search" autoComplete="off" value={searchQuery} placeholder={guidedStep === "customer" ? "z. B. Klaus Testmann oder OKW" : "Projektnummer, Titel oder Gewerk"} disabled={disabled || isWorking} onChange={(event) => setSearchQuery(event.target.value)} />
+                </label>
+                <div className={styles.jarvisGuidedSearchResults} aria-live="polite">
+                  {isSearching ? <small>JARVIS sucht …</small> : null}
+                  {!isSearching && searchResults.length === 0 ? <small>Keine passenden offenen Einträge gefunden.</small> : null}
+                  {searchResults.map((result) => (
+                    <button type="button" key={`${result.kind}-${result.id}`} disabled={disabled || isWorking} onClick={() => {
+                      if (result.kind === "customer") {
+                        setSelectedCustomer(result.label);
+                        setSearchQuery("");
+                        setGuidedStep("project");
+                        return;
+                      }
+                      if (result.kind !== "project") return;
+                      setEditor((current) => ({ ...current, projectId: result.id, company: result.defaultCompany, sourceOfferId: "" }));
+                      setSelectedCustomer(result.customerLabel);
+                      setSearchQuery("");
+                      setGuidedStep("basics");
+                      void request("PATCH", { ...payload, projectId: result.id, company: result.defaultCompany, sourceOfferId: "" });
+                    }}>
+                      <strong>{result.label}</strong>
+                      <span>{result.detail}</span>
+                    </button>
+                  ))}
+                </div>
+                {guidedStep === "project" ? <button type="button" onClick={() => { setSearchQuery(""); setGuidedStep("customer"); }}>Anderen Kunden wählen</button> : null}
+              </>
+            ) : (
+              <>
+                {guidedStep === "basics" ? <p>JARVIS übernimmt die Absenderfirma aus dem Projekt. Prüfe Leistungsdatum, Bezugsangebot und Zahlungsziel; die Fakturavorprüfung kontrolliert die Projektart und vorhandene Nachweise.</p> : null}
+                {guidedStep === "positions" ? (
+                  <div className={styles.jarvisGuidedOfferStep}>
+                    <p>Suche nach Nummer, Name, Beschreibung oder Leistungsart. Bereits gewählte Positionen bleiben gegen doppelte Auswahl gesperrt.</p>
+                    <label>
+                      <span>Leistung im Katalog suchen</span>
+                      <input type="search" autoComplete="off" value={searchQuery} placeholder="z. B. Glasreinigung oder OKI0305" disabled={disabled || isWorking} onChange={(event) => setSearchQuery(event.target.value)} />
+                    </label>
+                    <div className={styles.jarvisGuidedSearchResults} aria-live="polite">
+                      {isSearching ? <small>JARVIS sucht …</small> : null}
+                      {searchResults.filter((result) => result.kind === "catalog").map((result) => (
+                        <button type="button" key={result.id} disabled={disabled || isWorking || editor.lines.some((line) => line.catalogItemId === result.id)} onClick={() => setEditor((current) => ({ ...current, lines: [...current.lines, { catalogItemId: result.id, catalogType: result.catalogType, quantity: 1, unit: result.unit, title: result.label, description: result.description, unitPrice: result.salesPrice, discountPercent: 0, vatRate: result.vatRate, totalNet: result.salesPrice }] }))}>
+                          <strong>{result.label}</strong>
+                          <span>{result.detail} · {money(result.salesPrice)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <div className={styles.jarvisActionDraftActions}>
+                  <button type="button" onClick={() => { setSearchQuery(""); setGuidedStep("customer"); }}>Kunde oder Projekt ändern</button>
+                  {guidedStep === "basics" ? <button type="button" data-primary="true" disabled={!editor.projectId || !editor.serviceDate || isWorking} onClick={() => { setSearchQuery(""); setGuidedStep("positions"); }}>Weiter zu den Positionen</button> : null}
+                  {guidedStep === "positions" ? <button type="button" data-primary="true" disabled={editor.lines.length === 0 || isWorking} onClick={() => void request("PATCH", payload).then((next) => { if (next) setGuidedStep("review"); })}>Rechnung berechnen und prüfen</button> : null}
+                  {guidedStep === "review" ? <button type="button" onClick={() => setGuidedStep("positions")}>Positionen ändern</button> : null}
+                  {guidedStep === "positions" || guidedStep === "review" ? <button type="button" onClick={() => setShowDetails((current) => !current)}>{showDetails ? "Detailbearbeitung schließen" : "Alle Details bearbeiten"}</button> : null}
+                </div>
+              </>
+            )}
+          </div>
           <label><span>Projekt</span><select value={editor.projectId} disabled={disabled || isWorking} onChange={(event) => {
             const project = editor.projectOptions.find((option) => option.id === event.target.value);
             setEditor((current) => ({ ...current, projectId: event.target.value, sourceOfferId: "", ...(project ? { company: project.defaultCompany } : {}) }));

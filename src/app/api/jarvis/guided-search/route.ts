@@ -3,7 +3,7 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { getDemoContext } from "@/lib/demo/context";
 import { searchJarvisGuidedOptions, type JarvisGuidedSearchKind } from "@/lib/jarvis/guided-search";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
-import { canManageOffers } from "@/lib/permissions";
+import { canManageInvoices, canManageOffers } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +19,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Angemeldeter Benutzer konnte nicht bestimmt werden." }, { status: 401 });
   }
   const profile = createJarvisAccessProfile(sessionActor, actorResult.actor);
-  if (!canManageOffers(profile.sessionActor) || !canManageOffers(profile.effectiveActor)) {
-    return NextResponse.json({ error: "Diese Rollenkombination darf keine Angebotsdaten durchsuchen." }, { status: 403 });
+  const scope = url.searchParams.get("scope") === "invoice" ? "invoice" : "offer";
+  const canSearch = scope === "invoice" ? canManageInvoices : canManageOffers;
+  if (!canSearch(profile.sessionActor) || !canSearch(profile.effectiveActor)) {
+    return NextResponse.json({ error: `Diese Rollenkombination darf keine ${scope === "invoice" ? "Rechnungs" : "Angebots"}daten durchsuchen.` }, { status: 403 });
   }
   const rawKind = url.searchParams.get("kind") ?? "";
   if (!KINDS.has(rawKind as JarvisGuidedSearchKind)) {

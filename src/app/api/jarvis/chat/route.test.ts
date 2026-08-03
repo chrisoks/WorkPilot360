@@ -3956,6 +3956,29 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.createPersistedJarvisOfferDraft).not.toHaveBeenCalled();
   });
 
+  it("starts a guided invoice conversation from a natural request without a project", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({ recordType: "dashboard" });
+
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "JARVIS, schreib mir eine Rechnung." }),
+    }));
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.invoice",
+      actionDraft: { actionId: "invoice.prepare", editor: { projectId: "" } },
+    });
+    expect(payload.message).toContain("Für welchen Kunden");
+    expect(mocks.createPersistedJarvisInvoiceDraft).toHaveBeenCalledWith(expect.objectContaining({
+      preview: expect.objectContaining({ payload: {} }),
+    }));
+  });
+
   it("prepares controlled invoice draft deletion without executing it", async () => {
     const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
     mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
