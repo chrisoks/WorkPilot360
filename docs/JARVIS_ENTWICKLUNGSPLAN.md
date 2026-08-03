@@ -2,7 +2,41 @@
 
 Stand: 03.08.2026
 
-## Aktueller Release: rollenbegrenzte Auslastungsanalyse
+## Aktueller Release: wahrheitsgemäße rollenbezogene Fähigkeitenauskunft
+
+JARVIS beantwortet die Frage nach seinen aktuell ausführbaren Fähigkeiten
+nicht mehr mit einem veralteten Festtext. Die Antwort wird bei jeder Anfrage
+aus dem echten Action-Katalog sowie der Schnittmenge aus Sitzungs- und
+Effektivrolle erzeugt. Dadurch nennt JARVIS ausschließlich kontrollierte
+Arbeitsabläufe, die für die aktuelle Person tatsächlich freigegeben und
+implementiert sind. Mitarbeitende erhalten beispielsweise eigene
+Terminwünsche, Stempelung, Zeiteinträge und Rechner, aber keine Rechnungs-
+oder Personalverwaltung; berechtigte Rollen sehen die jeweils verfügbaren
+Angebots-, Rechnungs-, Projekt-, Personal- und Automationswege.
+
+Die Antwort trennt ausdrücklich kontrollierte Ausführung von Autonomie: Jede
+Datenänderung benötigt weiterhin Datensatz-, Sitzungs-, Rollen- und
+Fachstandbindung sowie die vorgesehene Vorschau und bewusste Bestätigung.
+Teilzahlungen und Fahrzeugvermietung werden als nicht zum produktiven
+V1-Umfang gehörend benannt. Die Fähigkeitenauskunft ist nun selbst Bestandteil
+des exakt 110 Fragen umfassenden permanenten Korpus und wird dort inhaltlich
+auf die aktuellen Angebots-, Rechnungs- und Bestätigungsfähigkeiten geprüft.
+
+Produktiv abgenommen auf Runtime-Commit
+`33ca6a2335e60bd53629d54b6ddc8fd0a2822b8b` mit verifiziertem Backup
+`/var/backups/workpilot360/20260803T102900Z-before-jarvis-capability-truth`.
+Lokal bestanden 190/190 Testdateien mit 1.894/1.894 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Schema-Diff und der
+90-Seiten-Build. Lokal und produktiv bestanden 110/110 Fragen; produktiv
+wurden 33 Aktionen vorbereitet, keine ausgeführt und keine QA-Rückstände
+hinterlassen. Die isolierte Rollen-QA für Geschäftsführung, Führungskraft und
+Mitarbeiter bestand einschließlich Fähigkeitenauskunft. Live-Prisma-Diff leer,
+Dashboard und öffentliches Formular HTTP 200. WorkPilot PID `886260`,
+KlinikNavigator unverändert PID `398228`. Keine Prisma-Schemaänderung;
+`StoredFile`, privater S3-Speicher und Online-Anfragen-Invarianten blieben
+erhalten.
+
+## Vorheriger Release: rollenbegrenzte Auslastungsanalyse
 
 Die operative Auslastungsanalyse ist jetzt nicht nur organisationsgebunden,
 sondern innerhalb der Organisation strikt nach Verantwortung begrenzt:

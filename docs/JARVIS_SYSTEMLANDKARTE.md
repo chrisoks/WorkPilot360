@@ -2,6 +2,27 @@
 
 Stand: 03.08.2026
 
+## Rollenbezogene Fähigkeitenauskunft
+
+- Die Antwort auf „Welche Aktionen kannst du wirklich ausführen?“ entsteht
+  aus dem produktiven Action-Katalog und der Schnittmenge von Sitzungs- und
+  Effektivrolle; ein veralteter statischer Fähigkeitsstand ist entfernt.
+- Aufgeführt werden nur für die konkrete Rolle erlaubte und implementierte
+  Arbeitsabläufe. Vorschau, Bestätigung, Datensatz-, Sitzungs-, Rollen- und
+  Fachstandbindung bleiben davon unberührt; „verfügbar“ bedeutet niemals
+  autonome Ausführung.
+- Teilzahlungen und Fahrzeugvermietung bleiben sichtbar außerhalb des
+  produktiven V1-Umfangs. Die Fähigkeitenauskunft ist als inhaltlich geprüfte
+  Frage in den exakten 110er-Korpus aufgenommen.
+- Produktivabnahme Runtime `33ca6a2335e60bd53629d54b6ddc8fd0a2822b8b`,
+  Backup
+  `/var/backups/workpilot360/20260803T102900Z-before-jarvis-capability-truth`,
+  190/190 Testdateien mit 1.894/1.894 Tests, 90-Seiten-Build, lokale und
+  produktive Rollen-QA, lokal/produktiv 110/110 Fragen, produktiv 33
+  vorbereitete und null ausgeführte Aktionen, null Rückstände, leerer
+  Prisma-Diff sowie Dashboard/Formular HTTP 200. WorkPilot PID `886260`,
+  KlinikNavigator unverändert PID `398228`.
+
 ## Rollenbegrenzte Auslastungsanalyse
 
 - Die Auslastungssicht ist innerhalb der Organisation fachlich begrenzt:
