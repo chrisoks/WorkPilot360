@@ -26524,29 +26524,120 @@
 
 .packageCalculationPanel {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   margin-inline: 0;
-  padding: 8px 0 12px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 12px 0 16px;
 }
 
 .packageCalculationPanel h3 {
-  color: #334155;
-  font-size: 22px;
-  font-weight: 500;
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 750;
   margin: 0;
 }
 
+.packageCalculationPanel p {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.packageOverviewCard,
+.packageDetailCard {
+  background: #ffffff;
+  border: 1px solid #d8e3e8;
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(15, 52, 61, 0.06);
+  max-width: 100%;
+  min-width: 0;
+  padding: 18px;
+}
+
+.packageOverviewCard {
+  background: linear-gradient(135deg, #f1faf8 0%, #ffffff 72%);
+  border-color: #b8ddd8;
+}
+
+.packageOverviewHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.packageEyebrow {
+  color: #0f8b83;
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.packagePositionBadge {
+  background: #dff4f0;
+  border: 1px solid #b8ddd8;
+  border-radius: 999px;
+  color: #0d6f69;
+  font-size: 13px;
+  font-weight: 750;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.packageOverviewGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.packageOverviewGrid article {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #d8e3e8;
+  border-radius: 13px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.packageOverviewGrid article span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.packageOverviewGrid article strong {
+  color: #102a33;
+  display: block;
+  font-size: 19px;
+  margin-top: 7px;
+}
+
 .packageCalculationHeader {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 6px;
+  margin-bottom: 14px;
+}
+
+.packageTableScroll {
+  border: 1px solid #dbe3ee;
+  border-radius: 13px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  width: 100%;
 }
 
 .packageCalculationTable,
 .packageSummaryTable {
   border-collapse: collapse;
+  min-width: 920px;
   width: 100%;
 }
 
@@ -26554,7 +26645,7 @@
 .packageCalculationTable td,
 .packageSummaryTable th,
 .packageSummaryTable td {
-  border: 1px solid #dbe3ee;
+  border-bottom: 1px solid #e3e9ef;
   padding: 6px 8px;
   text-align: left;
   vertical-align: middle;
@@ -26562,7 +26653,8 @@
 
 .packageCalculationTable th,
 .packageSummaryTable th {
-  color: #334155;
+  background: #0f444e;
+  color: #ffffff;
   font-size: 13px;
   font-weight: 600;
 }
@@ -26591,13 +26683,14 @@
 }
 
 .packageSummaryTable tbody th {
-  background: #ffffff;
+  background: #edf7f5;
+  color: #173943;
   width: 260px;
 }
 
 .packageTotalGrid {
   display: grid;
-  grid-template-columns: minmax(160px, 1.25fr) minmax(110px, 0.8fr) minmax(130px, 1fr) minmax(150px, 1fr) minmax(130px, 1fr);
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
   gap: 12px;
   margin-top: 6px;
 }
@@ -26615,8 +26708,44 @@
 .packageTotalGrid article {
   border: 1px solid #dbe3ee;
   border-radius: 11px;
-  background: #f8fafc;
-  padding: 7px 10px;
+  background: #f5f9fa;
+  padding: 10px 12px;
+}
+
+@media (max-width: 1180px) {
+  .packageOverviewGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .packageOverviewCard,
+  .packageDetailCard {
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  .packageOverviewHeader,
+  .packageCalculationHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .packagePositionBadge {
+    align-self: flex-start;
+  }
+
+  .packageOverviewGrid,
+  .packageTotalGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .packageOverviewGrid,
+  .packageTotalGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .packageTotalGrid article span {

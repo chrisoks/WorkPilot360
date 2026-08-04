@@ -65277,13 +65277,19 @@ await addProjectLogbookEntry(
           : catalogDraft.purchasePrice;
     const effectiveSalesPrice = catalogDraft.type === "package" ? packageSalesTotal : catalogDraft.salesPrice;
     const margin = effectiveSalesPrice > 0 ? ((effectiveSalesPrice - effectivePurchasePrice) / effectiveSalesPrice) * 100 : 0;
+    const markup = effectivePurchasePrice > 0 ? ((effectiveSalesPrice - effectivePurchasePrice) / effectivePurchasePrice) * 100 : 0;
     const packageNetSalesPrice = packageSalesTotal;
     const packageGrossSalesPrice = packageNetSalesPrice * (1 + catalogDraft.vatRate / 100);
     const packageMargin = packageNetSalesPrice > 0
       ? ((packageNetSalesPrice - packagePurchaseTotal) / packageNetSalesPrice) * 100
       : 0;
+    const packageMarkup = packagePurchaseTotal > 0
+      ? ((packageNetSalesPrice - packagePurchaseTotal) / packagePurchaseTotal) * 100
+      : 0;
     const getPackageMarginPercent = (purchasePrice: number, salesPrice: number) =>
       salesPrice > 0 ? ((salesPrice - purchasePrice) / salesPrice) * 100 : 0;
+    const getPackageMarkupPercent = (purchasePrice: number, salesPrice: number) =>
+      purchasePrice > 0 ? ((salesPrice - purchasePrice) / purchasePrice) * 100 : 0;
     const planningGroups = catalogDraft.defaultPlanningBoard === "OK immocare" ? ["VZK", "TZK"] : ["Marketing", "Arb.Sich.", "HR"];
     const laborCostRateOptions = getLaborCostRateOptions();
     const selectedLaborCostRateKey =
@@ -65648,16 +65654,52 @@ await addProjectLogbookEntry(
           ) : null}
           {catalogFormTab === "calculation" && catalogDraft.type === "package" ? (
             <div className={styles.packageCalculationPanel}>
-              <section>
+              <section className={styles.packageOverviewCard}>
+                <div className={styles.packageOverviewHeader}>
+                  <div>
+                    <span className={styles.packageEyebrow}>Paketkalkulation</span>
+                    <h3>Gesamtübersicht</h3>
+                    <p>Alle Werte werden live aus den unten hinterlegten Bestandteilen berechnet.</p>
+                  </div>
+                  <span className={styles.packagePositionBadge}>{catalogDraft.packageItems.length} Positionen</span>
+                </div>
+                <div className={styles.packageOverviewGrid}>
+                  <article><span>EK gesamt</span><strong>{formatMoney(packagePurchaseTotal)}</strong></article>
+                  <article><span>VK netto</span><strong>{formatMoney(packageSalesTotal)}</strong></article>
+                  <article><span>Deckungsbeitrag</span><strong>{formatMoney(packageSalesTotal - packagePurchaseTotal)}</strong></article>
+                  <article>
+                    <span className={styles.catalogLabelText}>
+                      Marge vom VK
+                      {renderCatalogHelp("Anteil des Deckungsbeitrags am Netto-Verkaufspreis.")}
+                    </span>
+                    <strong>{formatHours(packageMargin)}%</strong>
+                  </article>
+                  <article>
+                    <span className={styles.catalogLabelText}>
+                      Aufschlag auf EK
+                      {renderCatalogHelp("Prozentualer Aufschlag auf die gesamten Einkaufskosten des Pakets.")}
+                    </span>
+                    <strong>{formatHours(packageMarkup)}%</strong>
+                  </article>
+                  <article><span>Planungszeit</span><strong>{formatMinutes(Math.round(packagePlanningMinutes))}</strong></article>
+                </div>
+              </section>
+
+              <section className={styles.packageDetailCard}>
                 <div className={styles.packageCalculationHeader}>
-                  <h3>Material</h3>
+                  <div>
+                    <span className={styles.packageEyebrow}>Bestandteile</span>
+                    <h3>Material</h3>
+                    <p>Artikel, Mengen und individuelle Verkaufspreise.</p>
+                  </div>
                   <button
-                    className={styles.tableTextLink}
+                    className={styles.secondaryButton}
                     onClick={() => addCatalogPackageItem(catalogItems.find((item) => item.type === "article" && item.isActive)?.id)}
                   >
-                    + Hinzufügen
+                    + Material hinzufügen
                   </button>
                 </div>
+                <div className={styles.packageTableScroll}>
                 <table className={styles.packageCalculationTable}>
                   <thead>
                     <tr>
@@ -65676,7 +65718,7 @@ await addProjectLogbookEntry(
                           {renderCatalogHelp("Verkaufspreis je Einheit innerhalb dieses Pakets. Kann vom Stammdatenpreis abweichen.")}
                         </span>
                       </th>
-                      <th>Marge %</th>
+                      <th>Marge vom VK</th>
                       <th>VK Netto</th>
                       <th />
                     </tr>
@@ -65732,18 +65774,24 @@ await addProjectLogbookEntry(
                     )}
                   </tbody>
                 </table>
+                </div>
               </section>
 
-              <section>
+              <section className={styles.packageDetailCard}>
                 <div className={styles.packageCalculationHeader}>
-                  <h3>Lohn / Maschinenkosten</h3>
+                  <div>
+                    <span className={styles.packageEyebrow}>Bestandteile</span>
+                    <h3>Leistungen &amp; Maschinen</h3>
+                    <p>Zeitansätze, interne Kosten und Stundensätze.</p>
+                  </div>
                   <button
-                    className={styles.tableTextLink}
+                    className={styles.secondaryButton}
                     onClick={() => addCatalogPackageItem(catalogItems.find((item) => item.type === "service" && item.isActive)?.id)}
                   >
-                    + Hinzufügen
+                    + Leistung hinzufügen
                   </button>
                 </div>
+                <div className={styles.packageTableScroll}>
                 <table className={styles.packageCalculationTable}>
                   <thead>
                     <tr>
@@ -65763,7 +65811,7 @@ await addProjectLogbookEntry(
                           {renderCatalogHelp("Verkaufspreis pro Stunde innerhalb des Pakets. Der VK Netto wird aus diesem Stundensatz und den Minuten berechnet.")}
                         </span>
                       </th>
-                      <th>Marge %</th>
+                      <th>Marge vom VK</th>
                       <th>VK Netto</th>
                       <th />
                     </tr>
@@ -65831,10 +65879,18 @@ await addProjectLogbookEntry(
                     )}
                   </tbody>
                 </table>
+                </div>
               </section>
 
-              <section>
-                <h3>Netto</h3>
+              <section className={styles.packageDetailCard}>
+                <div className={styles.packageCalculationHeader}>
+                  <div>
+                    <span className={styles.packageEyebrow}>Kontrolle</span>
+                    <h3>Kalkulation nach Kostenart</h3>
+                    <p>Material und Leistungen getrennt gegenübergestellt.</p>
+                  </div>
+                </div>
+                <div className={styles.packageTableScroll}>
                 <table className={styles.packageSummaryTable}>
                   <thead>
                     <tr>
@@ -65842,7 +65898,8 @@ await addProjectLogbookEntry(
                       <th>EK</th>
                       <th>VK Netto</th>
                       <th>Gewinn</th>
-                      <th>Marge %</th>
+                      <th>Marge vom VK</th>
+                      <th>Aufschlag auf EK</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -65852,6 +65909,7 @@ await addProjectLogbookEntry(
                       <td>{formatMoney(materialSalesTotal)}</td>
                       <td>{formatMoney(materialSalesTotal - materialPurchaseTotal)}</td>
                       <td>{formatHours(getPackageMarginPercent(materialPurchaseTotal, materialSalesTotal))}</td>
+                      <td>{formatHours(getPackageMarkupPercent(materialPurchaseTotal, materialSalesTotal))}</td>
                     </tr>
                     <tr>
                       <th>Lohn / Maschinenkosten</th>
@@ -65859,6 +65917,7 @@ await addProjectLogbookEntry(
                       <td>{formatMoney(laborSalesTotal)}</td>
                       <td>{formatMoney(laborSalesTotal - laborPurchaseTotal)}</td>
                       <td>{formatHours(getPackageMarginPercent(laborPurchaseTotal, laborSalesTotal))}</td>
+                      <td>{formatHours(getPackageMarkupPercent(laborPurchaseTotal, laborSalesTotal))}</td>
                     </tr>
                     <tr>
                       <th>Gesamtsumme</th>
@@ -65866,13 +65925,21 @@ await addProjectLogbookEntry(
                       <td>{formatMoney(packageSalesTotal)}</td>
                       <td>{formatMoney(packageSalesTotal - packagePurchaseTotal)}</td>
                       <td>{formatHours(packageMargin)}</td>
+                      <td>{formatHours(packageMarkup)}</td>
                     </tr>
                   </tbody>
                 </table>
+                </div>
               </section>
 
-              <section>
-                <h3>Gesamt</h3>
+              <section className={styles.packageDetailCard}>
+                <div className={styles.packageCalculationHeader}>
+                  <div>
+                    <span className={styles.packageEyebrow}>Abrechnung</span>
+                    <h3>Steuer &amp; Endbetrag</h3>
+                    <p>Mehrwertsteuer und Brutto-Verkaufspreis des vollständigen Pakets.</p>
+                  </div>
+                </div>
                 <div className={styles.packageTotalGrid}>
                   <article>
                     <span className={styles.catalogLabelText}>
@@ -65886,16 +65953,8 @@ await addProjectLogbookEntry(
                     <input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} />
                   </label>
                   <article>
-                    <span>Marge</span>
-                    <strong>{formatHours(packageMargin)}%</strong>
-                  </article>
-                  <article>
                     <span>Gesamt VK Brutto</span>
                     <strong>{formatMoney(packageGrossSalesPrice)}</strong>
-                  </article>
-                  <article>
-                    <span>Planungszeit</span>
-                    <strong>{formatMinutes(Math.round(packagePlanningMinutes))}</strong>
                   </article>
                 </div>
                   {catalogDraft.scheduledSalesPrice && catalogDraft.scheduledSalesPriceValidFrom ? (
@@ -66019,7 +66078,20 @@ await addProjectLogbookEntry(
                   <strong>{formatMoney(servicePurchaseTotal)}</strong>
                 </article>
               ) : null}
-              <article className={styles.catalogMetric}><span>Marge</span><strong>{formatHours(margin)}%</strong></article>
+              <article className={styles.catalogMetric}>
+                <span className={styles.catalogLabelText}>
+                  Marge vom VK
+                  {renderCatalogHelp("Anteil des Deckungsbeitrags am Netto-Verkaufspreis.")}
+                </span>
+                <strong>{formatHours(margin)}%</strong>
+              </article>
+              <article className={styles.catalogMetric}>
+                <span className={styles.catalogLabelText}>
+                  Aufschlag auf EK
+                  {renderCatalogHelp("Prozentualer Aufschlag auf den Einkaufspreis beziehungsweise kalkulatorischen EK.")}
+                </span>
+                <strong>{formatHours(markup)}%</strong>
+              </article>
               <label>
                 <span className={styles.catalogLabelText}>
                   Planungszeit je Einheit (Min.)
