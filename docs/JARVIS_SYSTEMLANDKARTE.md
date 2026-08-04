@@ -1,6 +1,29 @@
 # JARVIS Systemlandkarte
 
-Stand: 03.08.2026
+Stand: 04.08.2026
+
+## Unternehmensanalysen, Szenarien und proaktive Vertriebsimpulse
+
+- `system.enterpriseInsights` beantwortet freie, organisationsweite Fragen zu
+  Umsatzentwicklung, Kostenabdeckung und Teildeckungsbeitrag,
+  Kundenkonzentration, Vertriebspipeline und Umsatzzielen.
+- Zeiträume, Vorjahresvergleich, ausgeschlossene Rechnungs- und
+  Angebotsentwürfe beziehungsweise Stornos, verwendete Fachdatensätze und
+  die Abdeckung historischer Rechnungskosten-Snapshots werden in jeder
+  finanziellen Aussage sichtbar. Fehlende Kosten werden nicht geschätzt.
+- Angebotsannahme- und Preiserhöhungsszenarien sind deterministische,
+  ausdrücklich als Annahme gekennzeichnete Dry-Runs. Sie verändern weder
+  Angebot, Rechnung noch Katalogpreis und behaupten keinen sicheren Forecast.
+- Proaktive Vertriebsimpulse priorisieren offene beziehungsweise digital
+  angesehene Angebote und aktive Verkaufschancen nach belegtem Status,
+  Fälligkeit, Alter und finanziellem Gewicht. Es wird ohne weitere bewusste
+  Aktion keine Aufgabe erzeugt und keine Nachricht versendet.
+- Geschäftsführung und berechtigte Finanzrollen dürfen die vollständigen
+  Unternehmenszahlen sehen. Vertrieb erhält die freigegebenen Pipeline- und
+  Vertriebsansichten; normale Mitarbeitende erhalten keine organisationsweite
+  Finanzanalyse.
+- Technische Quelle ist `src/lib/jarvis/enterprise-insights.ts`; der Adapter
+  liest ausschließlich organisationsgebundene strukturierte WorkPilot-Daten.
 
 ## Go-live-Hardening für Dokumente, Berichte und Datenentscheidungen
 

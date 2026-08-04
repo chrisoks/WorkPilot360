@@ -47,6 +47,7 @@ import {
   resolveJarvisProjectReviewInventoryRequest,
 } from "@/lib/jarvis/organization-project-review-analysis";
 import { resolveJarvisOrganizationOperationsRequest } from "@/lib/jarvis/organization-operations-analysis";
+import { resolveJarvisEnterpriseInsightRequest } from "@/lib/jarvis/enterprise-insights";
 import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
 import {
   authorizeJarvisQuestion,
@@ -4125,6 +4126,14 @@ export async function POST(req: Request) {
     });
   if (organizationOperationsResponse) {
     return respond(organizationOperationsResponse, "management");
+  }
+  const enterpriseInsightResponse = await resolveJarvisEnterpriseInsightRequest({
+    question: message,
+    organizationId: organization.id,
+    accessProfile,
+  });
+  if (enterpriseInsightResponse) {
+    return respond(enterpriseInsightResponse, "management");
   }
   const projectReviewInventoryIntent =
     resolveJarvisProjectReviewInventoryIntent(message);

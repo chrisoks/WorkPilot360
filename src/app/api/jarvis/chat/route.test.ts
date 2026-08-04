@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisProjectReviewInventoryRequest: vi.fn(),
   resolveJarvisOrganizationOperationsIntent: vi.fn(),
   resolveJarvisOrganizationOperationsRequest: vi.fn(),
+  resolveJarvisEnterpriseInsightRequest: vi.fn(),
   resolveJarvisOrganizationMaterialIntent: vi.fn(),
   resolveJarvisOrganizationMaterialRequest: vi.fn(),
   resolveJarvisOrganizationServiceRateRequest: vi.fn(),
@@ -276,6 +277,11 @@ vi.mock("@/lib/jarvis/organization-operations-analysis", () => ({
     mocks.resolveJarvisOrganizationOperationsIntent,
   resolveJarvisOrganizationOperationsRequest:
     mocks.resolveJarvisOrganizationOperationsRequest,
+}));
+
+vi.mock("@/lib/jarvis/enterprise-insights", () => ({
+  resolveJarvisEnterpriseInsightRequest:
+    mocks.resolveJarvisEnterpriseInsightRequest,
 }));
 
 vi.mock("@/lib/jarvis/intent-decision", () => ({
@@ -614,6 +620,7 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisProjectReviewInventoryIntent.mockReturnValue(undefined);
     mocks.resolveJarvisOrganizationOperationsIntent.mockReturnValue(undefined);
     mocks.resolveJarvisOrganizationOperationsRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisEnterpriseInsightRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue(
       undefined
     );
@@ -5015,6 +5022,39 @@ describe("POST /api/jarvis/chat", () => {
     );
     expect(mocks.resolveJarvisOrganizationOperationsRequest).toHaveBeenCalledWith({
       question: "Welche Projekte haben kein gültiges Angebot?",
+      organizationId: "organization-1",
+      accessProfile: expect.anything(),
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
+
+  it("routes free enterprise scenarios before generic capability gaps", async () => {
+    mocks.resolveJarvisEnterpriseInsightRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "enterprise.offer-conversion-scenario",
+      message:
+        "Bei 50 % Annahme entstehen rechnerisch 10.000,00 € zusätzliches Netto-Auftragsvolumen.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Was wäre, wenn 50 Prozent der offenen Angebote angenommen werden?",
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe(
+      "enterprise.offer-conversion-scenario"
+    );
+    expect(mocks.resolveJarvisEnterpriseInsightRequest).toHaveBeenCalledWith({
+      question:
+        "Was wäre, wenn 50 Prozent der offenen Angebote angenommen werden?",
       organizationId: "organization-1",
       accessProfile: expect.anything(),
     });

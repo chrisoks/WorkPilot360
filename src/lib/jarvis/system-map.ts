@@ -326,6 +326,41 @@ const CUSTOMER_FILE_AREAS = CUSTOMER_FILE_DEFINITIONS.map(([id, label, purpose])
 
 const SYSTEM_SERVICE_AREAS: JarvisSystemArea[] = [
   area({
+    id: "system.enterpriseInsights",
+    label: "Unternehmensanalysen und Vertriebsimpulse",
+    kind: "system_service",
+    keywords: [
+      "Unternehmensanalyse",
+      "BWL Analyse",
+      "Umsatztrend",
+      "Margentrend",
+      "Kundenkonzentration",
+      "Vertriebspipeline",
+      "Vertriebsimpulse",
+      "Angebotsszenario",
+      "Preisszenario",
+      "Umsatzziel Lücke",
+    ],
+    purpose:
+      "Rollen- und organisationsgebundene Unternehmens-, Trend- und Szenarioanalysen sowie priorisierte Vertriebsimpulse aus belegten WorkPilot-Daten.",
+    workflows: [
+      "freie Unternehmensfrage fachlich einordnen",
+      "Zeitraum, Datenbasis und Kostenabdeckung sichtbar ausweisen",
+      "deterministische Trends und lineare Szenarien berechnen",
+      "Vertriebsimpulse als Dry-Run priorisieren, ohne Aufgabe oder Nachricht auszulösen",
+    ],
+    roles: FINANCE_ROLES.concat(Role.VERTRIEB),
+    verification: {
+      status: "verified",
+      checkedAt: "2026-08-04",
+      sourceRefs: [
+        "src/lib/jarvis/enterprise-insights.ts",
+        "src/lib/jarvis/enterprise-insights.test.ts",
+        "src/app/api/jarvis/chat/route.ts",
+      ],
+    },
+  }),
+  area({
     id: "system.documentWorkflowIntegrity",
     label: "Dokument- und Berichtsintegrität",
     kind: "system_service",

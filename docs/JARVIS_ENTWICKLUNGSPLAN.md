@@ -1,6 +1,33 @@
 # JARVIS Entwicklungsplan
 
-Stand: 03.08.2026
+Stand: 04.08.2026
+
+## Unternehmensanalyse und Vertriebsimpulse vom 04.08.2026
+
+Der bisherige generische Sicherheits-Fallback für freie Unternehmensfragen
+wird durch `src/lib/jarvis/enterprise-insights.ts` geschlossen. Der neue
+Vertikalschnitt liefert rollen- und organisationsgebunden:
+
+- Umsatztrends für drei bis 24 Monate mit Monatswerten, Vormonats- und
+  passendem Vorjahresvergleich,
+- Margen-/Teildeckungsbeitragsanalysen mit sichtbarer Kosten-Snapshot-Abdeckung,
+- Kundenkonzentration und Top-Kunden-Anteile,
+- aktive Vertriebspipeline, offenen Angebotswert, gewichteten Chancenwert und
+  fällige beziehungsweise fehlende nächste Aktionen,
+- Umsatzziel-Iststand und verbleibende Ziellücke,
+- lineare Angebotsannahme- und Preiserhöhungsszenarien mit vollständig
+  ausgewiesenen Annahmen,
+- priorisierte Vertriebsimpulse aus angesehenen/offenen Angeboten und aktiven
+  Verkaufschancen.
+
+Alle Rechenwerte entstehen deterministisch aus den vorhandenen WorkPilot-Daten.
+Das Sprachmodell darf keine Kennzahl ergänzen oder verändern. Entwürfe,
+Stornos und gelöschte Rechnungen zählen nicht als fakturierter Umsatz;
+Angebotsentwürfe zählen nicht zum offenen Angebotsvolumen.
+Szenarien schreiben nichts und sind kein Forecast. Vertriebsimpulse bleiben
+ein Dry-Run, bis ein Nutzer eine vorhandene kontrollierte Folgeaktion bewusst
+startet. Der feste 110er-Korpus bleibt unverändert und wird bei der
+Releaseabnahme vollständig wiederholt.
 
 ## Nachführung des Go-live-Hardenings vom 03.08.2026
 

@@ -56,7 +56,7 @@ describe("JARVIS system map", () => {
   });
 
   it("keeps every entry traceable and useful", () => {
-    expect(JARVIS_SYSTEM_AREAS).toHaveLength(92);
+    expect(JARVIS_SYSTEM_AREAS).toHaveLength(93);
     expect(new Set(JARVIS_SYSTEM_AREAS.map((item) => item.id)).size).toBe(JARVIS_SYSTEM_AREAS.length);
     JARVIS_SYSTEM_AREAS.forEach((item) => {
       expect(item.purpose.length).toBeGreaterThan(12);
@@ -97,6 +97,16 @@ describe("JARVIS system map", () => {
     expect(result[0]?.area.verification.sourceRefs).toContain(
       "src/lib/document-mail/composite-dispatch.ts"
     );
+  });
+
+  it("maps enterprise trends and sales impulses as a verified system service", () => {
+    const result = findJarvisSystemAreas("Umsatztrend und Vertriebsimpulse", management);
+    expect(result[0]?.area).toMatchObject({
+      id: "system.enterpriseInsights",
+      kind: "system_service",
+      verification: { status: "verified", checkedAt: "2026-08-04" },
+    });
+    expect(result[0]?.area.target).toBeUndefined();
   });
 
   it("keeps known cleanup candidates behind a management decision", () => {
