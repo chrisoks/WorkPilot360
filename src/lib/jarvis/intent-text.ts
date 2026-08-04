@@ -57,6 +57,47 @@ function baseNormalize(value: string) {
     .trim();
 }
 
+const COLLOQUIAL_PHRASE_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/^(?:(?:hey|hallo|moin)\s+jarvis|jarvis|sag\s+mal(?:\s+jarvis)?)\s+/g, ""],
+  [/\bwie\s+sieht['’]?s\b/g, "wie sieht es"],
+  [/\bwie\s+schaut['’]?s\b/g, "wie schaut es"],
+  [/\bwie\s+steht['’]?s\b/g, "wie steht es"],
+  [/\bwie\s+geht['’]?s\b/g, "wie geht es"],
+  [/\bwie\s+lauft['’]?s\b/g, "wie lauft es"],
+  [/\bwas\s+gibt['’]?s\b/g, "was gibt es"],
+  [/\bwo\s+klemmt['’]?s\b/g, "wo klemmt es"],
+  [/\bwie\s+war['’]?s\b/g, "wie war es"],
+  [/\bwies\b/g, "wie es"],
+  [/\bsieht['’]?s\b/g, "sieht es"],
+  [/\bschaut['’]?s\b/g, "schaut es"],
+  [/\bsteht['’]?s\b/g, "steht es"],
+  [/\bgeht['’]?s\b/g, "geht es"],
+  [/\blauft['’]?s\b/g, "lauft es"],
+  [/\bgibt['’]?s\b/g, "gibt es"],
+  [/\bklemmt['’]?s\b/g, "klemmt es"],
+  [/\bbraucht['’]?s\b/g, "braucht es"],
+  [/\bist['’]?s\b/g, "ist es"],
+  [/\bisses\b/g, "ist es"],
+  [/\bhat['’]?s\b/g, "hat es"],
+  [/\bkann['’]?s\b/g, "kann es"],
+  [/\bwar['’]?s\b/g, "war es"],
+  [/\bkannste\b/g, "kannst du"],
+  [/\bhaste\b/g, "hast du"],
+  [/\bwillste\b/g, "willst du"],
+  [/\bsolln\b/g, "sollen"],
+  [/\bham\s+wir\b/g, "haben wir"],
+  [/\bwasn\b/g, "was denn"],
+  [/\bzeig\s+ma\b/g, "zeige mal"],
+  [/\bggu\b/g, "gegenuber"],
+];
+
+function expandColloquialJarvisPhrases(value: string) {
+  return COLLOQUIAL_PHRASE_REPLACEMENTS.reduce(
+    (current, [pattern, replacement]) => current.replace(pattern, replacement),
+    value
+  );
+}
+
 function damerauLevenshtein(left: string, right: string) {
   const rows = left.length + 1;
   const columns = right.length + 1;
@@ -99,9 +140,14 @@ function correctionThreshold(term: string) {
 }
 
 export function correctJarvisIntentToken(token: string) {
+  const isRegularKnownInflection = KNOWN_JARVIS_INTENT_TERMS.some((term) => {
+    if (!token.startsWith(term) || token === term) return false;
+    return /^(?:e|en|er|es|em|n|s)$/.test(token.slice(term.length));
+  });
   if (
     token.length < 4 ||
     /[\d@/_\\-]/.test(token) ||
+    isRegularKnownInflection ||
     KNOWN_JARVIS_INTENT_TERMS.includes(
       token as (typeof KNOWN_JARVIS_INTENT_TERMS)[number]
     )
@@ -124,7 +170,7 @@ export function correctJarvisIntentToken(token: string) {
 }
 
 export function normalizeJarvisIntentText(value: string) {
-  return baseNormalize(value)
+  return expandColloquialJarvisPhrases(baseNormalize(value))
     .split(" ")
     .map(correctJarvisIntentToken)
     .join(" ");

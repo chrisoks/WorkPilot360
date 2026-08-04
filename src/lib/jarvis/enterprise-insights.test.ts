@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Role } from "@prisma/client";
 import {
   resolveJarvisEnterpriseInsightIntent,
+  resolveJarvisEnterpriseFollowUpQuestion,
   resolveJarvisEnterpriseInsightRequest,
   type JarvisEnterpriseInsightSnapshot,
   type JarvisEnterpriseInsightSource,
@@ -175,14 +176,30 @@ async function ask(question: string) {
 
 describe("JARVIS enterprise insights", () => {
   it.each([
+    ["Und nur die letzten 6 Monate?", "enterprise.revenue-trend", "Zeige den Umsatztrend"],
+    ["Und gegenüber dem Vorjahr?", "enterprise.margin-trend", "Zeige den Margentrend"],
+    ["Dann mit 60 Prozent", "enterprise.offer-conversion-scenario", "Simuliere die Annahmequote"],
+  ])("carries a safe enterprise topic into the follow-up %s", (question, topicId, expected) => {
+    expect(resolveJarvisEnterpriseFollowUpQuestion(question, { topicId })).toContain(expected);
+  });
+
+  it("does not carry an enterprise topic into an unrelated new question", () => {
+    expect(resolveJarvisEnterpriseFollowUpQuestion("Zeige meine Aufgaben", { topicId: "enterprise.revenue-trend" })).toBe("Zeige meine Aufgaben");
+  });
+
+  it.each([
     ["Analysiere unser Unternehmen vollständig", "overview"],
+    ["Wie läufts bei uns?", "overview"],
     ["Gib mir eine BWA-ähnliche Übersicht der wichtigsten Zahlen", "overview"],
     ["Wie entwickelt sich unser Umsatz im Vorjahr und aktuell?", "revenue_trend"],
     ["Wie hat sich unser Umsatz entwickelt?", "revenue_trend"],
+    ["Wie siehts mitm Umsatz aus?", "revenue_trend"],
     ["Zeige mir den Margentrend", "margin_trend"],
     ["Wie hat sich unsere Marge entwickelt?", "margin_trend"],
+    ["Wie schauts bei der Marge aus?", "margin_trend"],
     ["Wie hoch ist unsere Kundenkonzentration?", "customer_concentration"],
     ["Analysiere unsere Vertriebspipeline", "sales_pipeline"],
+    ["Wie siehts bei den Angeboten aus?", "sales_pipeline"],
     ["Gib mir proaktive Vertriebsimpulse", "proactive_sales"],
     ["Welche Kunden soll ich heute angehen?", "proactive_sales"],
     ["Was wäre, wenn 50 Prozent der offenen Angebote angenommen werden?", "offer_conversion_scenario"],

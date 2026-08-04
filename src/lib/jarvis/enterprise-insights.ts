@@ -4,6 +4,7 @@ import { createJarvisDialogChoice } from "@/lib/jarvis/dialog";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import type { JarvisReadResponse, JarvisRecordResult } from "@/lib/jarvis/read-model";
 import type { JarvisAccessProfile } from "@/lib/jarvis/security";
+import type { JarvisDialogState } from "@/lib/jarvis/dialog-state";
 
 export type JarvisEnterpriseInsightIntent =
   | "overview"
@@ -92,7 +93,7 @@ export type JarvisEnterpriseInsightSource = {
   load(input: { organizationId: string }): Promise<JarvisEnterpriseInsightSnapshot>;
 };
 
-const liveSource: JarvisEnterpriseInsightSource = {
+export const jarvisEnterpriseInsightLiveSource: JarvisEnterpriseInsightSource = {
   async load({ organizationId }) {
     const [invoices, offerRows, acceptanceRequests, opportunities, targets] = await Promise.all([
       prisma.invoice.findMany({
@@ -329,13 +330,39 @@ export function resolveJarvisEnterpriseInsightIntent(
   if (/\b(?:was ware wenn|was passiert wenn|szenario|simulier)\w*\b.*(?:\bangebot\w*\b.*\b(?:angenommen|gewonnen|abschluss|quote)\w*\b|\b(?:annahme|abschluss|conversion)\w*\b.*\bangebot\w*\b)|\bangebot\w*\b.*\b(?:annahme|abschluss|conversion)\w*\b.*\b(?:szenario|prozent)\w*\b/.test(value)) return "offer_conversion_scenario";
   if (/\b(?:was ware wenn|was passiert wenn|szenario|simulier)\w*\b.*\b(?:preis|preise|preiserhohung)\w*\b|\b(?:preis|preise)\w*\b.*\b(?:erhoh|steiger)\w*\b.*\b(?:szenario|prozent|umsatz|marge|deckungsbeitrag)\w*\b/.test(value)) return "price_increase_scenario";
   if (/\b(?:umsatzziel|vertriebsziel|zielumsatz|zielerreichung|ziel lucke|ziel fehlt|bis zum ziel)\w*\b/.test(value)) return "target_gap";
-  if (/\b(?:proaktiv\w*.*vertrieb|vertriebsimpuls\w*|vertriebsprioritat\w*|was soll\w*.*vertrieb|welche kunden.*(?:anrufen|kontaktieren|angehen)|wen sollen wir.*(?:anrufen|kontaktieren|angehen)|nachste vertriebsaktion\w*)\b/.test(value)) return "proactive_sales";
-  if (/\b(?:pipeline|vertriebspipeline|vertriebstrichter|vertriebsbestand)\w*\b.*\b(?:analys|trend|entwicklung|status|wert|chance)\w*\b|\b(?:analys|trend)\w*\b.*\b(?:pipeline|vertriebspipeline|vertriebstrichter)\w*\b/.test(value)) return "sales_pipeline";
+  if (/\b(?:proaktiv\w*.*vertrieb|vertriebsimpuls\w*|vertriebsprioritat\w*|was soll\w*.*vertrieb|was muss\w*.*vertrieb|welche kunden.*(?:anrufen|kontaktieren|angehen)|wen sollen wir.*(?:anrufen|kontaktieren|angehen)|nachste vertriebsaktion\w*)\b/.test(value)) return "proactive_sales";
+  if (/\b(?:pipeline|vertriebspipeline|vertriebstrichter|vertriebsbestand)\w*\b.*\b(?:analys|trend|entwicklung|status|wert|chance)\w*\b|\b(?:analys|trend|wert)\w*\b.*\b(?:pipeline|vertriebspipeline|vertriebstrichter)\w*\b|\bwie (?:sieht|schaut) es\b.*\bangebot\w*\b|\bwie lauft es\b.*\bvertrieb\w*\b/.test(value)) return "sales_pipeline";
   if (/\b(?:kundenkonzentration|umsatzkonzentration|kundenanteil|abhangig\w*.*kunde|top kunden.*umsatz|umsatz.*top kunden)\b/.test(value)) return "customer_concentration";
-  if (/\b(?:margenentwicklung|margentrend|marge\w*.*entwick\w*|deckungsbeitrag\w*.*trend|trend\w*.*(?:marge|deckungsbeitrag)|rentabilitat\w*.*entwicklung)\b/.test(value)) return "margin_trend";
-  if (/\b(?:umsatzentwicklung|umsatztrend|umsatz\w*.*entwick\w*|trend\w*.*umsatz|umsatz\w*.*trend|vorjahr\w*.*umsatz|umsatz\w*.*vorjahr)\b/.test(value)) return "revenue_trend";
-  if (/\b(?:unternehmensanalyse|unternehmenskennzahl\w*|bwa(?:\s+ahnlich\w*)?|bwl analyse|geschaftsanalyse|wichtigste\w* zahlen|gesamtbild|analysier\w*.*(?:unternehmen|firma|betrieb)|wie steht\w*.*(?:unternehmen|firma|betrieb)|wirtschaftlich\w*.*(?:unternehmen|firma|betrieb)|gesamtanalyse)\b/.test(value)) return "overview";
+  if (/\b(?:margenentwicklung|margentrend|marge\w*.*entwick\w*|deckungsbeitrag\w*.*trend|trend\w*.*(?:marge|deckungsbeitrag)|rentabilitat\w*.*entwicklung|wie (?:sieht|schaut) es\b.*\bmarge\w*)\b/.test(value)) return "margin_trend";
+  if (/\b(?:umsatzentwicklung|umsatztrend|umsatz\w*.*entwick\w*|trend\w*.*umsatz|umsatz\w*.*trend|vorjahr\w*.*umsatz|umsatz\w*.*vorjahr|wie (?:sieht|schaut) es\b.*\bumsatz\w*)\b/.test(value)) return "revenue_trend";
+  if (/\b(?:unternehmensanalyse|unternehmenskennzahl\w*|bwa(?:\s+ahnlich\w*)?|bwl analyse|geschaftsanalyse|wichtigste\w* zahlen|gesamtbild|analysier\w*.*(?:unternehmen|firma|betrieb)|wie steht\w*.*(?:unternehmen|firma|betrieb)|wie lauft es\b.*(?:bei uns|unternehmen|firma|betrieb)|wirtschaftlich\w*.*(?:unternehmen|firma|betrieb)|gesamtanalyse)\b/.test(value)) return "overview";
   return undefined;
+}
+
+const ENTERPRISE_FOLLOW_UP_TOPICS: Record<string, string> = {
+  "enterprise.overview": "Analysiere unser Unternehmen",
+  "enterprise.revenue-trend": "Zeige den Umsatztrend",
+  "enterprise.margin-trend": "Zeige den Margentrend",
+  "enterprise.customer-concentration": "Analysiere die Kundenkonzentration",
+  "enterprise.sales-pipeline": "Analysiere die Vertriebspipeline",
+  "enterprise.proactive-sales": "Gib mir proaktive Vertriebsimpulse",
+  "enterprise.offer-conversion-scenario": "Simuliere die Annahmequote der offenen Angebote",
+  "enterprise.price-increase-scenario": "Simuliere eine Preiserhöhung",
+  "enterprise.target-gap": "Zeige die Lücke bis zum Umsatzziel",
+};
+
+export function resolveJarvisEnterpriseFollowUpQuestion(
+  question: string,
+  previousState?: Pick<JarvisDialogState, "topicId">
+) {
+  if (resolveJarvisEnterpriseInsightIntent(question)) return question;
+  const canonical = previousState?.topicId ? ENTERPRISE_FOLLOW_UP_TOPICS[previousState.topicId] : undefined;
+  if (!canonical) return question;
+  const value = normalize(question);
+  const looksLikeFollowUp =
+    /^(?:und|davon|dann|jetzt|nur|auch|im|fur|gegenuber)\b/.test(value)
+    || /\b(?:vorjahr|letztes jahr|monat\w*|prozent|genauer|warum)\b/.test(value);
+  return looksLikeFollowUp ? `${canonical}. Ergänzung des Nutzers: ${question}` : question;
 }
 
 function invoiceRecord(invoice: InsightInvoice, summary: string, status: string): JarvisRecordResult {
@@ -432,7 +459,7 @@ export async function resolveJarvisEnterpriseInsightRequest(input: {
     };
   }
 
-  const snapshot = await (input.source ?? liveSource).load({ organizationId: input.organizationId });
+  const snapshot = await (input.source ?? jarvisEnterpriseInsightLiveSource).load({ organizationId: input.organizationId });
   const now = input.now ?? new Date();
   const currentMonth = berlinDateKey(now).slice(0, 7);
   const months = parseMonths(input.question);

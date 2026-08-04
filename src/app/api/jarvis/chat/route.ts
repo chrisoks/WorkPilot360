@@ -47,7 +47,10 @@ import {
   resolveJarvisProjectReviewInventoryRequest,
 } from "@/lib/jarvis/organization-project-review-analysis";
 import { resolveJarvisOrganizationOperationsRequest } from "@/lib/jarvis/organization-operations-analysis";
-import { resolveJarvisEnterpriseInsightRequest } from "@/lib/jarvis/enterprise-insights";
+import { resolveJarvisEnterpriseFollowUpQuestion, resolveJarvisEnterpriseInsightRequest } from "@/lib/jarvis/enterprise-insights";
+import { resolveJarvisTeamSlotRequest } from "@/lib/jarvis/team-slot-finder";
+import { resolveJarvisNaturalEntryRequest } from "@/lib/jarvis/natural-entry";
+import { resolveJarvisManagementCompositeRequest } from "@/lib/jarvis/management-composite";
 import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
 import {
   authorizeJarvisQuestion,
@@ -4118,6 +4121,30 @@ export async function POST(req: Request) {
   if (operationalGuidance) {
     return respond(operationalGuidance, "system");
   }
+  const naturalEntryResponse = resolveJarvisNaturalEntryRequest({
+    question: message,
+    accessProfile,
+    context: conversationContext ?? context,
+  });
+  if (naturalEntryResponse) {
+    return respond(naturalEntryResponse, "system");
+  }
+  const managementCompositeResponse = await resolveJarvisManagementCompositeRequest({
+    question: message,
+    organizationId: organization.id,
+    accessProfile,
+  });
+  if (managementCompositeResponse) {
+    return respond(managementCompositeResponse, "management");
+  }
+  const teamSlotResponse = await resolveJarvisTeamSlotRequest({
+    question: message,
+    organizationId: organization.id,
+    accessProfile,
+  });
+  if (teamSlotResponse) {
+    return respond(teamSlotResponse, "management");
+  }
   const organizationOperationsResponse =
     await resolveJarvisOrganizationOperationsRequest({
       question: message,
@@ -4127,8 +4154,9 @@ export async function POST(req: Request) {
   if (organizationOperationsResponse) {
     return respond(organizationOperationsResponse, "management");
   }
+  const enterpriseQuestion = resolveJarvisEnterpriseFollowUpQuestion(message, previousDialogState);
   const enterpriseInsightResponse = await resolveJarvisEnterpriseInsightRequest({
-    question: message,
+    question: enterpriseQuestion,
     organizationId: organization.id,
     accessProfile,
   });

@@ -104,6 +104,9 @@ const CUSTOMER_PATTERNS = [
   /\bkuzu\b/i,
 ];
 
+const TEAM_AVAILABILITY_PLANNING_PATTERN =
+  /\b(?:wann|termin\w*|zeit\w*|frei\w*|verf[üu]gbar\w*|plan\w*)\b.*\b(?:jungs|mitarbeiter\w*|kolleg\w*|team|leute|personen)\b|\b(?:jungs|mitarbeiter\w*|kolleg\w*|team|leute|personen)\b.*\b(?:wann|termin\w*|zeit\w*|frei\w*|verf[üu]gbar\w*|plan\w*)\b/i;
+
 export function createJarvisAccessProfile(
   sessionActor: JarvisActor,
   effectiveActor: JarvisActor = sessionActor
@@ -154,6 +157,9 @@ export function classifyJarvisQuestion(question: string): JarvisDataClass {
   if (PERSONNEL_PATTERNS.some((pattern) => pattern.test(question))) return "personnel";
   if (FINANCIAL_PATTERNS.some((pattern) => pattern.test(question))) return "financial";
   if (/\b(?:vom kunden aus|kundenperspektive|kundensicht)\b/i.test(question)) {
+    return "internal";
+  }
+  if (TEAM_AVAILABILITY_PLANNING_PATTERN.test(question)) {
     return "internal";
   }
   if (CUSTOMER_PATTERNS.some((pattern) => pattern.test(question))) return "customer";

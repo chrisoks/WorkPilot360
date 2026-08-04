@@ -2,6 +2,27 @@
 
 Stand: 04.08.2026
 
+## Natürliche Sprache und gemeinsame Einsatzverfügbarkeit
+
+- `system.naturalLanguageOrchestration` versteht zentrale umgangssprachliche
+  Kurzformen, direkte JARVIS-Anreden und breite menschliche Einstiege. Eine
+  gezielte Rückfrage ersetzt bei echter Mehrdeutigkeit die vorschnelle
+  Ablehnung.
+- Mehrfachfragen zu Umsatz, Marge, Auslastung, Vertrieb,
+  Kundenkonzentration und Zielerreichung werden durch mehrere sichere Adapter
+  beantwortet. Die Sprachschicht selbst erfindet und berechnet keine
+  Fachkennzahl.
+- `system.teamSlotFinder` findet für eine gewünschte Mitarbeiteranzahl und
+  zusammenhängende Einsatzdauer früheste gemeinsame Arbeitsblöcke. Einbezogen
+  werden individuelle Arbeits- und Pausenfenster, genehmigte Abwesenheiten und
+  bestehende bestätigte beziehungsweise offene Planungen.
+- Normale Mitarbeitende sehen dabei ausschließlich ihr eigenes Team;
+  Führungskräfte ihren Führungs-/Vertretungsbereich und die Geschäftsführung
+  den organisationsweiten Planungsbereich.
+- Mangels freigegebener Qualifikationsmatrix und belastbarer Fahrzeitlogik
+  kennzeichnet JARVIS Eignung, Kunde, Projekt sowie Fahr-/Rüstzeit als vor der
+  Buchung zu prüfende Punkte. Der Slotsucher schreibt keine Planung.
+
 ## Unternehmensanalysen, Szenarien und proaktive Vertriebsimpulse
 
 - `system.enterpriseInsights` beantwortet freie, organisationsweite Fragen zu

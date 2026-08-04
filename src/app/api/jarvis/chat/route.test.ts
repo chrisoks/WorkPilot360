@@ -14,7 +14,11 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisProjectReviewInventoryRequest: vi.fn(),
   resolveJarvisOrganizationOperationsIntent: vi.fn(),
   resolveJarvisOrganizationOperationsRequest: vi.fn(),
+  resolveJarvisTeamSlotRequest: vi.fn(),
+  resolveJarvisNaturalEntryRequest: vi.fn(),
+  resolveJarvisManagementCompositeRequest: vi.fn(),
   resolveJarvisEnterpriseInsightRequest: vi.fn(),
+  resolveJarvisEnterpriseFollowUpQuestion: vi.fn(),
   resolveJarvisOrganizationMaterialIntent: vi.fn(),
   resolveJarvisOrganizationMaterialRequest: vi.fn(),
   resolveJarvisOrganizationServiceRateRequest: vi.fn(),
@@ -279,9 +283,23 @@ vi.mock("@/lib/jarvis/organization-operations-analysis", () => ({
     mocks.resolveJarvisOrganizationOperationsRequest,
 }));
 
+vi.mock("@/lib/jarvis/team-slot-finder", () => ({
+  resolveJarvisTeamSlotRequest: mocks.resolveJarvisTeamSlotRequest,
+}));
+
+vi.mock("@/lib/jarvis/natural-entry", () => ({
+  resolveJarvisNaturalEntryRequest: mocks.resolveJarvisNaturalEntryRequest,
+}));
+
+vi.mock("@/lib/jarvis/management-composite", () => ({
+  resolveJarvisManagementCompositeRequest: mocks.resolveJarvisManagementCompositeRequest,
+}));
+
 vi.mock("@/lib/jarvis/enterprise-insights", () => ({
   resolveJarvisEnterpriseInsightRequest:
     mocks.resolveJarvisEnterpriseInsightRequest,
+  resolveJarvisEnterpriseFollowUpQuestion:
+    mocks.resolveJarvisEnterpriseFollowUpQuestion,
 }));
 
 vi.mock("@/lib/jarvis/intent-decision", () => ({
@@ -620,7 +638,11 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisProjectReviewInventoryIntent.mockReturnValue(undefined);
     mocks.resolveJarvisOrganizationOperationsIntent.mockReturnValue(undefined);
     mocks.resolveJarvisOrganizationOperationsRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisTeamSlotRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisNaturalEntryRequest.mockReturnValue(undefined);
+    mocks.resolveJarvisManagementCompositeRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisEnterpriseInsightRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisEnterpriseFollowUpQuestion.mockImplementation((question) => question);
     mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue(
       undefined
     );
@@ -5026,6 +5048,76 @@ describe("POST /api/jarvis/chat", () => {
       accessProfile: expect.anything(),
     });
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
+
+  it("routes a natural shared team availability question to the deterministic slot finder", async () => {
+    mocks.resolveJarvisTeamSlotRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "planning.team-slot",
+      message: "Der nächstmögliche gemeinsame Termin ist Donnerstag von 08:00 bis 12:00 Uhr.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wann ist der nächstmögliche Termin wo 2 von den Jungs bei einem Kunden 4h Rasen mähen können?",
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("planning.team-slot");
+    expect(mocks.resolveJarvisTeamSlotRequest).toHaveBeenCalledWith({
+      question: "Wann ist der nächstmögliche Termin wo 2 von den Jungs bei einem Kunden 4h Rasen mähen können?",
+      organizationId: "organization-1",
+      accessProfile: expect.anything(),
+    });
+    expect(mocks.resolveJarvisOrganizationOperationsRequest).not.toHaveBeenCalled();
+  });
+
+  it("combines multiple management perspectives before focused adapters", async () => {
+    mocks.resolveJarvisManagementCompositeRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.composite-analysis",
+      message: "Umsatz, Marge und Auslastung wurden gemeinsam ausgewertet.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: "user-1", message: "Analysiere Umsatz, Marge und Auslastung" }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("management.composite-analysis");
+    expect(mocks.resolveJarvisTeamSlotRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisOrganizationOperationsRequest).not.toHaveBeenCalled();
+  });
+
+  it("asks a useful scope question for a broad human entry before the generic fallback", async () => {
+    mocks.resolveJarvisNaturalEntryRequest.mockReturnValue({
+      type: "clarification",
+      topicId: "intent.natural-entry.scope-required",
+      message: "Meinst du deinen Tag, Projekte, Vertrieb oder das Unternehmen?",
+      choices: [],
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: "user-1", message: "Wie siehts aus?" }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("intent.natural-entry.scope-required");
+    expect(mocks.resolveJarvisTeamSlotRequest).not.toHaveBeenCalled();
   });
 
   it("routes free enterprise scenarios before generic capability gaps", async () => {

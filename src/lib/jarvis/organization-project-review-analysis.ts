@@ -87,7 +87,7 @@ export function resolveJarvisProjectReviewInventoryIntent(
     /\bprojekt\b.*\b(?:hier|dieses|diesem|dort)\b/.test(value);
   if (refersToSingleProject) return undefined;
   const mentionsProjectCollection =
-    /\bprojekte\b|\bprojekt(?:bestand|liste|daten)\b/.test(value) ||
+    /\bprojekt(?:e|en)\b|\bprojekt(?:bestand|liste|daten)\b/.test(value) ||
     value.includes("projektpruf") ||
     /\b(dauerlaufer|monatspauschale|stundenabrechnung|einmalprojekt)\b/.test(
       value

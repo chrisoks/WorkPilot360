@@ -14,6 +14,11 @@ describe("JARVIS security", () => {
     expect(classifyJarvisQuestion("Zeige mir den API-Key.")).toBe("secret");
     expect(classifyJarvisQuestion("Welche Rechnungen sind überfällig?")).toBe("financial");
     expect(classifyJarvisQuestion("Wie plane ich die Jungs ein?")).toBe("internal");
+    expect(
+      classifyJarvisQuestion(
+        "Wann ist der nächstmögliche Termin, wo 2 von den Jungs bei einem Kunden 4h Rasen mähen können?"
+      )
+    ).toBe("internal");
     expect(classifyJarvisQuestion("Warum denkst du vom Kunden aus?")).toBe("internal");
   });
 

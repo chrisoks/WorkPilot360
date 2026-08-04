@@ -34,6 +34,13 @@ describe("JARVIS intent text tolerance", () => {
     expect(correctJarvisIntentToken("lokgi")).toBe("lokgi");
   });
 
+  it.each(["projekten", "projektes", "termine", "terminen"])(
+    "keeps regular German inflections intact: %s",
+    (value) => {
+      expect(correctJarvisIntentToken(value)).toBe(value);
+    }
+  );
+
   it("normalizes a typo without changing the project number", () => {
     expect(normalizeJarvisIntentText("Was ist HAS-1 für ein Proejkt?")).toBe(
       "was ist has-1 fur ein projekt"
@@ -44,5 +51,22 @@ describe("JARVIS intent text tolerance", () => {
     expect(normalizeJarvisIntentText("Projektdaten ändern")).toBe(
       "projektdaten andern"
     );
+  });
+
+  it.each([
+    ["Wie siehts bei den Angeboten aus?", "wie sieht es bei den angeboten aus"],
+    ["Wie sieht's bei den Rechnungen aus?", "wie sieht es bei den rechnungen aus"],
+    ["Wie läufts im Unternehmen?", "wie lauft es im unternehmen"],
+    ["Was gibts heute zu tun?", "was gibt es heute zu tun"],
+    ["Wo klemmts bei den Projekten?", "wo klemmt es bei den projekten"],
+    ["Wie schauts ggü. Vorjahr aus?", "wie schaut es gegenuber vorjahr aus"],
+    ["Zeig ma die offenen Angebote", "zeige mal die offenen angebote"],
+    ["Welche Kunden solln wir angehen?", "welche kunden sollen wir angehen"],
+    ["Ham wir noch offene Rechnungen?", "haben wir noch offene rechnungen"],
+    ["Hey JARVIS, wie siehts aus?", "wie sieht es aus"],
+    ["Sag mal Jarvis, was gibts Neues?", "was gibt es neues"],
+    ["Wie isses bei den Projekten?", "wie ist es bei den projekten"],
+  ])("normalizes colloquial wording without changing its meaning: %s", (input, expected) => {
+    expect(normalizeJarvisIntentText(input)).toBe(expected);
   });
 });

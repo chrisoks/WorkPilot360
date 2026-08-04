@@ -2,6 +2,35 @@
 
 Stand: 04.08.2026
 
+## Menschliche Sprache, Mehrfachanalysen und gemeinsamer Einsatzslot vom 04.08.2026
+
+JARVIS normalisiert Umgangssprache und verkürzte Formulierungen jetzt zentral,
+unter anderem `wie siehts`, `wie läufts`, `was gibts`, `wo klemmts`, `zeig ma`,
+`solln`, `ggü.` sowie direkte Anreden wie `Hey Jarvis`. Die Originaleingabe
+bleibt für Fachwerte und Datensatzsuche unverändert; nur die Intent-Erkennung
+arbeitet mit der normalisierten Lesart.
+
+Sehr breite Einstiege wie „Wie siehts aus?“ führen ohne eindeutigen
+Datensatzkontext zu einer rollenbezogenen Auswahl zwischen eigenem Tag,
+Projekten, Vertrieb und Unternehmenslage. Fragen mit mehreren BWL-Zielen
+kombinieren die bestehenden sicheren Adapter, statt nur den ersten genannten
+Aspekt zu beantworten. Ein zusätzlicher versionierter Vertrag prüft 156
+menschliche Sprachvarianten; der permanente 110er-Korpus bleibt daneben
+unverändert bestehen.
+
+`src/lib/jarvis/team-slot-finder.ts` beantwortet freie Einsatzfragen wie
+„Wann ist der nächstmögliche Termin, an dem zwei von den Jungs vier Stunden
+Rasen mähen können?“. Der Dry-Run schneidet persönliche Arbeits- und
+Pausenfenster, genehmigte Abwesenheiten sowie bestätigte und offene Planungen
+und zeigt früheste gemeinsame Slots. Sichtbarkeit bleibt auf den zulässigen
+Führungs- oder Mitarbeiter-Team-Bereich begrenzt. Es wird nichts gebucht.
+
+Offene fachliche Ausbaulücken werden ausdrücklich angezeigt: Eine formale
+Mitarbeiter-Qualifikationsmatrix und belastbare Fahr-/Rüstzeiten zum konkreten
+Kundenobjekt sind noch nicht als freigegebene Planungsdaten vorhanden. Deshalb
+müssen Eignung, Kunde, Projekt und Fahrzeit vor der Terminvorbereitung
+bestätigt werden.
+
 ## Unternehmensanalyse und Vertriebsimpulse vom 04.08.2026
 
 Der bisherige generische Sicherheits-Fallback für freie Unternehmensfragen

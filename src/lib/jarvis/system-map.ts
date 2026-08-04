@@ -326,6 +326,53 @@ const CUSTOMER_FILE_AREAS = CUSTOMER_FILE_DEFINITIONS.map(([id, label, purpose])
 
 const SYSTEM_SERVICE_AREAS: JarvisSystemArea[] = [
   area({
+    id: "system.naturalLanguageOrchestration",
+    label: "Natürliche Sprache und Mehrfachanliegen",
+    kind: "system_service",
+    keywords: ["Umgangssprache", "wie siehts aus", "wie läufts", "Mehrfachanalyse", "Rückfrage", "menschliche Fragen"],
+    purpose: "Menschliche Kurzformen, Umgangssprache, sichere Folgefragen und mehrere Analyseziele kontrolliert auf bestehende JARVIS-Fachadapter abbilden.",
+    workflows: [
+      "sprachliche Kurzformen zentral normalisieren",
+      "breite Einstiege mit einer gezielten Auswahl klären",
+      "mehrere Analyseperspektiven gemeinsam auswerten",
+      "Fachwerte ausschließlich aus den zuständigen sicheren Adaptern übernehmen",
+    ],
+    roles: REPORT_NAVIGATION_ROLES,
+    verification: {
+      status: "verified",
+      checkedAt: "2026-08-04",
+      sourceRefs: [
+        "src/lib/jarvis/intent-text.ts",
+        "src/lib/jarvis/natural-entry.ts",
+        "src/lib/jarvis/management-composite.ts",
+        "src/lib/jarvis/human-language-corpus.ts",
+      ],
+    },
+  }),
+  area({
+    id: "system.teamSlotFinder",
+    label: "Gemeinsame Einsatzverfügbarkeit",
+    kind: "system_service",
+    keywords: ["Mitarbeiter gemeinsam frei", "nächstmöglicher Termin", "gemeinsamer Slot", "zwei Jungs", "Einsatzverfügbarkeit", "Rasen mähen"],
+    purpose: "Den frühesten zusammenhängenden Einsatzslot für mehrere rollenbezogen sichtbare Mitarbeitende aus Arbeitszeit, Pausen, Abwesenheit und Planung ermitteln.",
+    workflows: [
+      "Mitarbeiteranzahl, Einsatzdauer und Leistung aus natürlicher Sprache erkennen",
+      "gemeinsame freie Arbeitsblöcke ohne Überlappung berechnen",
+      "Qualifikations-, Kunden-, Projekt- und Fahrzeitlücken ausdrücklich benennen",
+      "ausgewählten Slot erst anschließend kontrolliert als Termin oder Terminwunsch vorbereiten",
+    ],
+    roles: OPERATIVE_ROLES,
+    verification: {
+      status: "verified",
+      checkedAt: "2026-08-04",
+      sourceRefs: [
+        "src/lib/jarvis/team-slot-finder.ts",
+        "src/lib/jarvis/team-slot-finder.test.ts",
+        "src/app/api/jarvis/chat/route.ts",
+      ],
+    },
+  }),
+  area({
     id: "system.enterpriseInsights",
     label: "Unternehmensanalysen und Vertriebsimpulse",
     kind: "system_service",

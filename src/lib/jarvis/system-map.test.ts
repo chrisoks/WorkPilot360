@@ -56,7 +56,7 @@ describe("JARVIS system map", () => {
   });
 
   it("keeps every entry traceable and useful", () => {
-    expect(JARVIS_SYSTEM_AREAS).toHaveLength(93);
+    expect(JARVIS_SYSTEM_AREAS).toHaveLength(95);
     expect(new Set(JARVIS_SYSTEM_AREAS.map((item) => item.id)).size).toBe(JARVIS_SYSTEM_AREAS.length);
     JARVIS_SYSTEM_AREAS.forEach((item) => {
       expect(item.purpose.length).toBeGreaterThan(12);
@@ -107,6 +107,11 @@ describe("JARVIS system map", () => {
       verification: { status: "verified", checkedAt: "2026-08-04" },
     });
     expect(result[0]?.area.target).toBeUndefined();
+  });
+
+  it("maps natural language and shared team-slot planning as verified services", () => {
+    expect(findJarvisSystemAreas("Wie siehts aus und wie verstehst du Umgangssprache?", management)[0]?.area.id).toBe("system.naturalLanguageOrchestration");
+    expect(findJarvisSystemAreas("Wann sind zwei Jungs gemeinsam frei?", employee)[0]?.area.id).toBe("system.teamSlotFinder");
   });
 
   it("keeps known cleanup candidates behind a management decision", () => {
