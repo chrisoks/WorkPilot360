@@ -308,8 +308,16 @@ export function canManageContacts(user: RoleCarrier): boolean {
   return canSendDocumentMails(user);
 }
 
+export function canMarkContactsForDeletion(user: RoleCarrier): boolean {
+  return (
+    user.role === Role.GESCHAEFTSFUEHRER ||
+    user.role === Role.FUEHRUNGSKRAFT ||
+    hasSalesAccess(user)
+  );
+}
+
 export function canDeleteContacts(user: RoleCarrier): boolean {
-  return user.role === Role.ADMIN || user.role === Role.GESCHAEFTSFUEHRER;
+  return user.role === Role.GESCHAEFTSFUEHRER;
 }
 
 export function canCreateNotifications(user: RoleCarrier): boolean {

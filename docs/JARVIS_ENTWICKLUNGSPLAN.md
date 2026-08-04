@@ -418,8 +418,8 @@ betroffenen Menschen.
   `/var/backups/workpilot360/20260802T015913Z-before-jarvis-contact-management`.
 - `contact.delete` ist als eigener irreversibler Vertikalschnitt produktiv
   abgenommen. Eine eindeutige organisationsgebundene Kundennummer, ein
-  dokumentierter Grund und die exakte Phrase `KONTAKT ENDGÜLTIG LÖSCHEN
-  <Kundennummer>` sind Pflicht. JARVIS und normale Kontaktmaske verwenden
+  dokumentierter Grund, vorherige Löschmarkierung und eine normale Bestätigung
+  ohne Eingabecode sind Pflicht. JARVIS und normale Kontaktmaske verwenden
   denselben Fachservice und prüfen vor der Löschung vollständig 17
   Referenzfamilien einschließlich Projekten, Unterkontakten, Objektadressen,
   Online-Anfragen, Kundenlogbuch und -hinweisen, Sales-/Feedbackdaten,

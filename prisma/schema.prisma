@@ -1633,10 +1633,14 @@ model Contact {
   mainContactName              String?
   isMainContact                Boolean   @default(false)
   legalForm                    String?
+  deletionMarkedAt             DateTime?
+  deletionMarkedById           String?
+  deletionMarkedByName         String?
 
   @@index([organizationId, phoneNormalized])
   @@index([organizationId, mobileNormalized])
   @@index([organizationId, faxNormalized])
+  @@index([organizationId, deletionMarkedAt])
 }
 
 model ObjectAddress {

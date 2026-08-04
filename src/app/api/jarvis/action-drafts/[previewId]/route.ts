@@ -1152,7 +1152,7 @@ export async function POST(
             : isContactManagement
             ? "Der Kontakt wurde nach deiner exakten Bestätigung genau einmal angelegt oder geändert. Dublettenprüfung, Integrationsereignis und Audit wurden gemeinsam geschrieben; Projekte und Objektadressen wurden nicht automatisch zugeordnet."
             : isContactDeletion
-            ? "Der vollständig unverknüpfte Kontakt wurde nach deiner exakten kritischen Bestätigung genau einmal endgültig gelöscht. Integrationsereignis, Aktionshistorie und Auditnachweis bleiben erhalten."
+            ? "Der zuvor löschmarkierte und vollständig unverknüpfte Kontakt wurde nach deiner Bestätigung genau einmal endgültig gelöscht. Integrationsereignis, Aktionshistorie und Auditnachweis bleiben erhalten."
             : isCatalogManagement
             ? "Die Katalogposition wurde nach deiner exakten Bestätigung genau einmal angelegt oder geändert. Preiswirkung, Planung und Verwendungen wurden geprüft; Paket-Snapshots blieben unverändert."
             : isPersonnelManagement

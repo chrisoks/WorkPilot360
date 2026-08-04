@@ -105,6 +105,21 @@ describe("catalog item package safeguards", () => {
     mocks.tx.catalogItem.findMany.mockResolvedValue([]);
   });
 
+  it("requires explicit confirmation before saving an article below cost", async () => {
+    const response = await POST(request("POST", {
+      actorId: "user-1",
+      type: "article",
+      name: "Verlustartikel",
+      purchasePrice: 100,
+      salesPrice: 90,
+      planningMinutesPerUnit: 0,
+    }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "below_cost_confirmation_required" });
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("validates a new package inside the transaction before inserting its header", async () => {
     const response = await POST(request("POST", {
       actorId: "user-1",

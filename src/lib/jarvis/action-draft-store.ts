@@ -291,7 +291,6 @@ import {
   ContactDeletionServiceError,
   evaluateContactDeletion,
   executeContactDeletion,
-  getContactDeletionConfirmationText,
 } from "@/lib/contacts/contact-deletion-service";
 import {
   CatalogManagementServiceError,
@@ -12287,7 +12286,7 @@ function toJarvisContactDeletionDraftView(draft: JarvisActionDraft, binding: Jar
     ],
     checks: context.checks, warnings: context.warnings,
     blockingIssues: [...context.blockingIssues, ...(!permitted ? ["Die endgültige Kontaktlöschung ist für diese Rollenkombination nicht freigegeben."] : [])],
-    confirmation: { enabled: ready, reason, requiredText: getContactDeletionConfirmationText(context.contact.customerNumber) },
+    confirmation: { enabled: ready, reason, requiredText: "" },
     cancellation: { enabled: state === "awaiting_input" || state === "awaiting_confirmation" },
   };
 }
@@ -12341,11 +12340,9 @@ export async function cancelJarvisContactDeletionDraft(previewId: string, bindin
   return toJarvisContactDeletionDraftView(cancelled, binding);
 }
 
-export async function confirmJarvisContactDeletionDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+export async function confirmJarvisContactDeletionDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, _confirmationText: string, now = new Date()) {
   const loaded = await loadBoundContactDeletionDraft(previewId, binding, now);
   if (loaded.draft.state === "executed") return toJarvisContactDeletionDraftView(loaded.draft, binding);
-  const requiredText = getContactDeletionConfirmationText(loaded.context.contact.customerNumber);
-  if (confirmationText.trim() !== requiredText) throw new JarvisActionDraftError("invalid_input", `Gib zur endgültigen Löschung exakt „${requiredText}“ ein.`, 400);
   if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig freie Löschprüfung darf bestätigt werden.", 409);
   if (!mayDeleteContacts(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf Kontakte nicht endgültig löschen.", 403);
   try {

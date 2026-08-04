@@ -42,6 +42,7 @@ import {
 import { getOfferAcceptanceFunnel } from "@/lib/offer-acceptance/analytics";
 import { calculateWeightedLaborCostRate } from "@/lib/employee-costs/labor-cost-rate";
 import type { CatalogReviewStatus } from "@/lib/catalog/review-status";
+import { getEffectiveCatalogPurchasePrice, isCatalogSalesPriceBelowCost } from "@/lib/catalog/pricing";
 import type { ProjectReviewStatus } from "@/lib/projects/review-status";
 import {
   type WinterServiceOfferTransfer,
@@ -4563,10 +4564,9 @@ function JarvisOfferFinalizationCard({
         <div className={styles.jarvisPlanningChecks}><strong>Aktuelle Löschprüfung</strong>{draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}</div>
         {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Irreversibler Prüfhinweis</strong><span>{warning}</span></div>)}
         {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Endgültige Kontaktlöschung ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
-        {draft.confirmation.enabled && isOpen ? <div className={styles.jarvisActionDraftEditor}><label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label></div> : null}
         {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
         <div className={styles.jarvisActionDraftActions}>
-          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>Kontakt jetzt endgültig löschen</button> : null}
+          {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => void request("confirm")}>Kontakt jetzt endgültig löschen</button> : null}
           {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Kontaktlöschung abbrechen</button> : null}
         </div>
         <footer>{footer}</footer>
@@ -10070,6 +10070,9 @@ type ContactItem = {
   category: string;
   type: "person" | "company" | "private";
   legalForm: string;
+  deletionMarkedAt: string;
+  deletionMarkedById: string;
+  deletionMarkedByName: string;
   customerNumber: string;
   salutation: string;
   additionalSalutation: string;
@@ -12089,6 +12092,9 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   category: "Kunde",
   type: "company",
   legalForm: "",
+  deletionMarkedAt: "",
+  deletionMarkedById: "",
+  deletionMarkedByName: "",
   customerNumber: "",
   salutation: "",
   additionalSalutation: "",
@@ -12788,6 +12794,56 @@ function roundCurrencyValue(value: number) {
 
 function formatCurrencyInputValue(value: number) {
   return roundCurrencyValue(value).toFixed(2);
+}
+
+function CatalogCurrencyInput({
+  value,
+  onChange,
+  disabled = false,
+  title,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+  title?: string;
+}) {
+  const [draft, setDraft] = useState(() => formatCurrencyInputValue(value).replace(".", ","));
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) {
+      setDraft(formatCurrencyInputValue(value).replace(".", ","));
+    }
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft}
+      placeholder="0,00"
+      disabled={disabled}
+      title={title}
+      onFocus={(event) => {
+        focused.current = true;
+        if (roundCurrencyValue(value) === 0) {
+          setDraft("");
+        } else {
+          event.currentTarget.select();
+        }
+      }}
+      onChange={(event) => {
+        const nextDraft = event.target.value;
+        if (!/^\d*(?:[.,]\d{0,2})?$/.test(nextDraft)) return;
+        setDraft(nextDraft);
+        onChange(nextDraft ? roundCurrencyValue(Number(nextDraft.replace(",", "."))) : 0);
+      }}
+      onBlur={() => {
+        focused.current = false;
+        setDraft(formatCurrencyInputValue(value).replace(".", ","));
+      }}
+    />
+  );
 }
 
 const defaultEmployeeCostCalculation: EmployeeCostCalculation = {
@@ -14195,7 +14251,13 @@ function ContactsListView({
     const search = deferredSearchTerm.trim().toLowerCase();
 
     return contacts.filter((contact) => {
-      const matchesCategory = !categoryFilter || contact.category === categoryFilter;
+      const matchesDeletionState = categoryFilter === "__deletion_marked__"
+        ? Boolean(contact.deletionMarkedAt)
+        : !contact.deletionMarkedAt;
+      const matchesCategory =
+        !categoryFilter ||
+        categoryFilter === "__deletion_marked__" ||
+        contact.category === categoryFilter;
       const matchesSearch =
         !search ||
         contactColumns
@@ -14207,12 +14269,16 @@ function ContactsListView({
         return column.value(contact).toLowerCase().includes(filterValue);
       });
 
-      return matchesCategory && matchesSearch && matchesColumnFilters;
+      return matchesDeletionState && matchesCategory && matchesSearch && matchesColumnFilters;
     });
   }, [categoryFilter, columnFilters, contactColumns, contacts, deferredSearchTerm]);
   const categoryCounts = useMemo(
     () =>
       contacts.reduce<Record<string, number>>((counts, contact) => {
+        if (contact.deletionMarkedAt) {
+          counts.__deletion_marked__ = (counts.__deletion_marked__ ?? 0) + 1;
+          return counts;
+        }
         counts[contact.category] = (counts[contact.category] ?? 0) + 1;
         return counts;
       }, {}),
@@ -14424,7 +14490,7 @@ function ContactsListView({
 
       <section className={styles.contactSummaryGrid}>
         {[
-          { label: "Alle", value: "", count: contacts.length, tone: "neutral" },
+          { label: "Alle", value: "", count: contacts.filter((contact) => !contact.deletionMarkedAt).length, tone: "neutral" },
           { label: "Kunden", value: "Kunde", count: categoryCounts.Kunde ?? 0, tone: "blue" },
           {
             label: "Privatkunden",
@@ -14444,6 +14510,12 @@ function ContactsListView({
             value: "Ansprechpartner",
             count: categoryCounts.Ansprechpartner ?? 0,
             tone: "cyan",
+          },
+          {
+            label: "Löschmarkiert",
+            value: "__deletion_marked__",
+            count: categoryCounts.__deletion_marked__ ?? 0,
+            tone: "rose",
           },
         ].map((item) => (
           <button
@@ -14478,6 +14550,7 @@ function ContactsListView({
             <option value="Lieferant">Lieferanten</option>
             <option value="Partner">Partner</option>
             <option value="Ansprechpartner">Ansprechpartner</option>
+            <option value="__deletion_marked__">Löschmarkiert</option>
           </select>
         </label>
         <div className={styles.contactToolbarActions}>
@@ -14601,6 +14674,7 @@ function ContactsListView({
                   key={contact.id}
                   className={styles.clickableRow}
                   data-selected={selectedContactIds.includes(contact.id)}
+                  data-deletion-marked={Boolean(contact.deletionMarkedAt)}
                   onClick={(event) => handleRowClick(event, contact, pageIndex)}
                   onDoubleClick={() => onEditContact(contact)}
                 >
@@ -16085,6 +16159,11 @@ export function DashboardPage() {
     [activeUserId, users]
   );
   const activeUserHasSalesRole = activeUser?.role === "VERTRIEB" || activeUser?.salesRoleEnabled === true;
+  const activeUserCanMarkContacts =
+    activeUser?.role === "GESCHAEFTSFUEHRER" ||
+    activeUser?.role === "FUEHRUNGSKRAFT" ||
+    activeUserHasSalesRole;
+  const activeUserCanPurgeContacts = activeUser?.role === "GESCHAEFTSFUEHRER";
   const visibleNavigationTabs = useMemo(
     () => getVisibleNavigationTabs(activeUser?.role, activeUserHasSalesRole),
     [activeUser?.role, activeUserHasSalesRole]
@@ -21910,6 +21989,19 @@ export function DashboardPage() {
       scheduledSalesPriceUpdatePackages = plannedPriceChanged ? confirmed : scheduledSalesPriceUpdatePackages;
     }
 
+    const effectivePurchasePrice = getEffectiveCatalogPurchasePrice({
+      type: catalogDraft.type,
+      purchasePrice: catalogDraft.purchasePrice,
+      planningMinutesPerUnit: catalogDraft.planningMinutesPerUnit,
+    });
+    let confirmBelowCost = false;
+    if (isCatalogSalesPriceBelowCost(catalogDraft)) {
+      confirmBelowCost = window.confirm(
+        `Achtung: Der Verkaufspreis von ${formatMoney(catalogDraft.salesPrice)} liegt unter dem kalkulatorischen Einkaufspreis von ${formatMoney(effectivePurchasePrice)}.\n\nTrotzdem speichern?`
+      );
+      if (!confirmBelowCost) return;
+    }
+
     const res = await fetch("/api/catalog-items", {
       method: editingCatalogItemId ? "PATCH" : "POST",
       headers: {
@@ -21930,6 +22022,7 @@ export function DashboardPage() {
         expectedUpdatedAt: editingItem?.updatedAt || "",
         updatePackageSnapshots,
         scheduledSalesPriceUpdatePackages,
+        confirmBelowCost,
       }),
     });
 
@@ -22053,7 +22146,7 @@ export function DashboardPage() {
       ...emptyContact,
       category: target === "person" ? "Ansprechpartner" : emptyContact.category,
       type: target === "person" ? "person" : emptyContact.type,
-      customerNumber: String(nextNumber + 1),
+      customerNumber: target === "person" ? "" : String(nextNumber + 1),
     });
     setProjectContactTarget(target);
     setEditingContactId(null);
@@ -22097,6 +22190,7 @@ export function DashboardPage() {
                 : current.category),
       parentCompanyId: type === "person" ? current.parentCompanyId : "",
       parentCompanyName: type === "person" ? current.parentCompanyName : "",
+      customerNumber: type === "person" ? "" : current.customerNumber,
     }));
   }
 
@@ -22118,6 +22212,7 @@ export function DashboardPage() {
               : contactDraft.category,
       parentCompanyId: contactDraft.type === "person" ? contactDraft.parentCompanyId : "",
       parentCompanyName: contactDraft.type === "person" ? contactDraft.parentCompanyName : "",
+      customerNumber: contactDraft.type === "person" ? "" : contactDraft.customerNumber,
     };
     if (normalizedContactDraft.type === "company" && !normalizedContactDraft.companyName.trim()) {
       setErrorMessage("Bitte einen Firmennamen angeben.");
@@ -22191,48 +22286,51 @@ export function DashboardPage() {
     setErrorMessage("");
   }
 
-  async function deleteContact() {
+  async function changeContactDeletionState(action: "mark" | "restore" | "purge") {
     if (!editingContactId) return;
     if (!activeUserId) {
       setErrorMessage("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
       return;
     }
 
-    const reason = window.prompt(
-      "Warum soll dieser Kontakt endgültig gelöscht werden? Für normale Bereinigung bitte bevorzugt archivieren."
-    );
-    if (reason === null) return;
-    if (reason.trim().length < 3) {
-      setErrorMessage("Bitte einen nachvollziehbaren Löschgrund mit mindestens drei Zeichen angeben.");
-      return;
-    }
-    const requiredText = `KONTAKT ENDGÜLTIG LÖSCHEN ${contactDraft.customerNumber}`;
-    const confirmationText = window.prompt(
-      `Diese Löschung kann nicht wiederhergestellt werden. Gib zur Bestätigung exakt ein:\n${requiredText}`
-    );
-    if (confirmationText === null) return;
-    if (confirmationText.trim() !== requiredText) {
-      setErrorMessage(`Die Bestätigung stimmt nicht exakt. Erforderlich: ${requiredText}`);
-      return;
-    }
+    const currentContact = contacts.find((contact) => contact.id === editingContactId);
+    const confirmationMessage =
+      action === "mark"
+        ? "Kontakt wirklich löschmarkieren? Er bleibt zunächst erhalten und kann wiederhergestellt werden."
+        : action === "restore"
+          ? "Kontakt wiederherstellen und erneut aktiv verwenden?"
+          : "Kontakt endgültig löschen? Dieser Schritt kann nicht rückgängig gemacht werden und ist nur möglich, wenn keine Verknüpfungen mehr bestehen.";
+    if (!window.confirm(confirmationMessage)) return;
 
     const res = await fetch("/api/contacts", {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ id: editingContactId, actorId: activeUserId, reason: reason.trim(), confirmationText }),
+      body: JSON.stringify({
+        id: editingContactId,
+        actorId: activeUserId,
+        action,
+        expectedUpdatedAt: currentContact?.updatedAt || "",
+      }),
     });
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      setErrorMessage(data?.error ?? "Kontakt konnte nicht gelöscht werden.");
+      setErrorMessage(data?.error ?? "Kontaktstatus konnte nicht geändert werden.");
       return;
     }
 
-    setContacts((currentContacts) =>
-      currentContacts.filter((contact) => contact.id !== editingContactId)
-    );
+    if (action === "purge") {
+      setContacts((currentContacts) =>
+        currentContacts.filter((contact) => contact.id !== editingContactId)
+      );
+    } else {
+      const savedContact = (await res.json()) as ContactItem;
+      setContacts((currentContacts) =>
+        currentContacts.map((contact) => contact.id === savedContact.id ? savedContact : contact)
+      );
+    }
     setIsContactModalOpen(false);
     setEditingContactId(null);
     setErrorMessage("");
@@ -66002,13 +66100,11 @@ await addProjectLogbookEntry(
                       LK-Satz Wert (€ / Std.)
                       {renderCatalogHelp("Der tatsächlich verwendete interne Stundensatz für diese Leistung. Manuell änderbar nur durch die Geschäftsführung.")}
                     </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formatCurrencyInputValue(catalogDraft.purchasePrice)}
+                    <CatalogCurrencyInput
+                      value={catalogDraft.purchasePrice}
                       disabled={!canEditLaborCostRateValue}
                       title={canEditLaborCostRateValue ? undefined : "Nur die Geschäftsführung kann den LK-Satz-Wert manuell ändern."}
-                      onChange={(event) => updateCatalogDraft("purchasePrice", roundCurrencyValue(Number(event.target.value)))}
+                      onChange={(value) => updateCatalogDraft("purchasePrice", value)}
                     />
                   </label>
                   <span className={styles.catalogGridSpacer} aria-hidden="true" />
@@ -66019,7 +66115,7 @@ await addProjectLogbookEntry(
                     Einkaufspreis (€)
                     {renderCatalogHelp("Interner Einkaufspreis je Einheit. Daraus wird zusammen mit dem Verkaufspreis die Marge berechnet.")}
                   </span>
-                  <input type="number" value={catalogDraft.purchasePrice} onChange={(event) => updateCatalogDraft("purchasePrice", Number(event.target.value))} />
+                  <CatalogCurrencyInput value={catalogDraft.purchasePrice} onChange={(value) => updateCatalogDraft("purchasePrice", value)} />
                 </label>
               )}
               <label>
@@ -66027,7 +66123,7 @@ await addProjectLogbookEntry(
                   Verkaufspreis aktuell (€)
                   {renderCatalogHelp("Aktueller Netto-Verkaufspreis je Einheit. Dieser Preis wird für neue Angebote, Rechnungen und Paketbestandteile verwendet.")}
                 </span>
-                <input type="number" value={catalogDraft.salesPrice} onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))} />
+                <CatalogCurrencyInput value={catalogDraft.salesPrice} onChange={(value) => updateCatalogDraft("salesPrice", value)} />
               </label>
               <label>MwSt. (%)<input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} /></label>
               {catalogDraft.type === "service" ? (
@@ -74351,6 +74447,16 @@ await addProjectLogbookEntry(
             </div>
 
             <div className={`${styles.standardModalBody} ${styles.contactModalBody}`}>
+              {contactDraft.deletionMarkedAt ? (
+                <div className={styles.contactDeletionNotice}>
+                  <strong>Dieser Kontakt ist löschmarkiert.</strong>
+                  <span>
+                    Markiert am {formatDeadline(contactDraft.deletionMarkedAt)}
+                    {contactDraft.deletionMarkedByName ? ` von ${contactDraft.deletionMarkedByName}` : ""}.
+                    Bitte zuerst wiederherstellen, um Stammdaten zu ändern.
+                  </span>
+                </div>
+              ) : null}
               <section className={styles.contactFormTopGrid}>
                 <div className={styles.contactTypeSwitch}>
                     <span>Typ</span>
@@ -74393,13 +74499,21 @@ await addProjectLogbookEntry(
                     </div>
                 </div>
 
-              <label>
-                Kundennummer
-                <input
-                  value={contactDraft.customerNumber}
-                  onChange={(event) => updateContactDraft("customerNumber", event.target.value)}
-                />
-              </label>
+              {contactDraft.type !== "person" ? (
+                <label>
+                  Kundennummer
+                  <input
+                    value={contactDraft.customerNumber}
+                    onChange={(event) => updateContactDraft("customerNumber", event.target.value)}
+                  />
+                </label>
+              ) : (
+                <div className={styles.contactNumberNotApplicable}>
+                  <span>Kundennummer</span>
+                  <strong>Nicht erforderlich</strong>
+                  <small>Ansprechpartner werden über ihre Firma und Kontakt-ID zugeordnet.</small>
+                </div>
+              )}
 
               <label>
                 Anrede
@@ -74900,18 +75014,28 @@ await addProjectLogbookEntry(
 
             <div className={styles.standardModalFooter}>
               <div>
-                {editingContactId && (
-                  <button className={styles.deleteButton} onClick={deleteContact}>
-                    Löschen
+                {editingContactId && !contactDraft.deletionMarkedAt && activeUserCanMarkContacts ? (
+                  <button className={styles.deleteButton} onClick={() => void changeContactDeletionState("mark")}>
+                    Löschmarkieren
                   </button>
-                )}
+                ) : null}
+                {editingContactId && contactDraft.deletionMarkedAt && activeUserCanMarkContacts ? (
+                  <button className={styles.secondaryButton} onClick={() => void changeContactDeletionState("restore")}>
+                    Wiederherstellen
+                  </button>
+                ) : null}
+                {editingContactId && contactDraft.deletionMarkedAt && activeUserCanPurgeContacts ? (
+                  <button className={styles.deleteButton} onClick={() => void changeContactDeletionState("purge")}>
+                    Endgültig löschen
+                  </button>
+                ) : null}
               </div>
               <div className={styles.modalActions}>
                 {errorMessage && <div className={styles.modalSaveNotice}>{errorMessage}</div>}
                 <button className={styles.secondaryButton} onClick={() => setIsContactModalOpen(false)}>
                   Abbrechen
                 </button>
-                <button className={styles.primaryButton} onClick={saveContact}>
+                <button className={styles.primaryButton} onClick={saveContact} disabled={Boolean(contactDraft.deletionMarkedAt)}>
                   {editingContactId ? "Speichern" : "Erstellen"}
                 </button>
               </div>

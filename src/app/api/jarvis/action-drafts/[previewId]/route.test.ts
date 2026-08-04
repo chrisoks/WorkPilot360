@@ -1430,11 +1430,11 @@ describe("JARVIS action-draft API", () => {
     });
     const response = (await POST(request("POST", {
       actorId: "user-1", actionId: "contact.delete", command: "confirm", revision: 6,
-      confirmationText: "KONTAKT ENDGÜLTIG LÖSCHEN 7000049", contactId: "other-contact", reason: "Manipuliert",
+      confirmationText: "", contactId: "other-contact", reason: "Manipuliert",
     }, { "x-jarvis-action": "jarvis-action-draft-v2", origin: "https://workpilot.example" }) as never, context))!;
     expect(response.status).toBe(200);
     expect(mocks.confirmJarvisContactDeletionDraft).toHaveBeenCalledWith(
-      "preview-1", expect.anything(), 6, "KONTAKT ENDGÜLTIG LÖSCHEN 7000049"
+      "preview-1", expect.anything(), 6, ""
     );
     expect(mocks.confirmJarvisContactManagementDraft).not.toHaveBeenCalled();
   });

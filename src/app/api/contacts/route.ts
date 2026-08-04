@@ -4,7 +4,7 @@ import { Role, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
-import { canDeleteContacts, canManageContacts, canReadContacts } from "@/lib/permissions";
+import { canDeleteContacts, canManageContacts, canMarkContactsForDeletion, canReadContacts } from "@/lib/permissions";
 import {
   deriveCustomerStatus,
   getCustomerStatusAuditText,
@@ -16,7 +16,6 @@ import {
   ContactDeletionServiceError,
   evaluateContactDeletion,
   executeContactDeletion,
-  getContactDeletionConfirmationText,
 } from "@/lib/contacts/contact-deletion-service";
 import {
   allocateContactCustomerNumber,
@@ -30,6 +29,9 @@ type ContactRow = {
   category: string;
   type: string;
   legalForm: string | null;
+  deletionMarkedAt: Date | null;
+  deletionMarkedById: string | null;
+  deletionMarkedByName: string | null;
   customerNumber: string;
   salutation: string | null;
   additionalSalutation: string | null;
@@ -106,6 +108,9 @@ async function ensureContactsTable() {
       "category" TEXT NOT NULL DEFAULT 'Kunde',
       "type" TEXT NOT NULL DEFAULT 'person',
       "legalForm" TEXT,
+      "deletionMarkedAt" TIMESTAMP(3),
+      "deletionMarkedById" TEXT,
+      "deletionMarkedByName" TEXT,
       "customerNumber" TEXT NOT NULL,
       "salutation" TEXT,
       "additionalSalutation" TEXT,
@@ -163,6 +168,9 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "mainContactName" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isMainContact" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "legalForm" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "deletionMarkedAt" TIMESTAMP(3)`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "deletionMarkedById" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "deletionMarkedByName" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "invoiceEmail" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "activityReportEmail" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false`;
@@ -179,6 +187,7 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_phoneNormalized_idx" ON "Contact"("organizationId", "phoneNormalized")`;
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_mobileNormalized_idx" ON "Contact"("organizationId", "mobileNormalized")`;
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_faxNormalized_idx" ON "Contact"("organizationId", "faxNormalized")`;
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_deletionMarkedAt_idx" ON "Contact"("organizationId", "deletionMarkedAt")`;
 }
 
 function cleanString(value: unknown) {
@@ -194,7 +203,7 @@ function forbiddenContactResponse() {
 
 function forbiddenContactDeleteResponse() {
   return NextResponse.json(
-    { error: "Du darfst Kontakte nicht endgueltig loeschen." },
+    { error: "Du darfst Kontakte nicht endgültig löschen." },
     { status: 403 }
   );
 }
@@ -272,6 +281,9 @@ function formatContact(contact: ContactRow, invoiceCount = 0) {
     category: contact.category,
     type: contact.type,
     legalForm: contact.legalForm ?? "",
+    deletionMarkedAt: contact.deletionMarkedAt?.toISOString() ?? "",
+    deletionMarkedById: contact.deletionMarkedById ?? "",
+    deletionMarkedByName: contact.deletionMarkedByName ?? "",
     customerNumber: contact.customerNumber,
     salutation: contact.salutation ?? "",
     additionalSalutation: contact.additionalSalutation ?? "",
@@ -434,9 +446,9 @@ export async function POST(req: Request) {
     return forbiddenContactResponse();
   }
   const id = randomUUID();
-  const category = cleanString(body.category) || "Kunde";
   const requestedType = cleanString(body.type);
   const type = requestedType === "company" || requestedType === "private" ? requestedType : "person";
+  const category = type === "person" ? "Ansprechpartner" : cleanString(body.category) || "Kunde";
   const requiredContactError = getRequiredContactError({ ...body, type });
   if (requiredContactError) {
     return NextResponse.json({ error: requiredContactError }, { status: 400 });
@@ -470,11 +482,13 @@ export async function POST(req: Request) {
   let inserted: ContactRow[];
   try {
     inserted = await prisma.$transaction(async (transaction) => {
-    const customerNumber = await allocateContactCustomerNumber({
-      tx: transaction,
-      organizationId: organization.id,
-      requestedNumber: requestedCustomerNumber,
-    });
+    const customerNumber = type === "person"
+      ? ""
+      : await allocateContactCustomerNumber({
+          tx: transaction,
+          organizationId: organization.id,
+          requestedNumber: requestedCustomerNumber,
+        });
     const rows = await transaction.$queryRaw<ContactRow[]>`
     INSERT INTO "Contact" (
       "id", "organizationId", "category", "type", "legalForm", "customerNumber",
@@ -539,9 +553,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Keine Kontakt-ID übergeben." }, { status: 400 });
   }
 
-  const category = cleanString(body.category) || "Kunde";
   const requestedType = cleanString(body.type);
   const type = requestedType === "company" || requestedType === "private" ? requestedType : "person";
+  const category = type === "person" ? "Ansprechpartner" : cleanString(body.category) || "Kunde";
   const requiredContactError = getRequiredContactError({ ...body, type });
   if (requiredContactError) {
     return NextResponse.json({ error: requiredContactError }, { status: 400 });
@@ -573,7 +587,9 @@ export async function PATCH(req: Request) {
       { status: 409 }
     );
   }
-  const customerNumber = cleanString(body.customerNumber) || existingContacts[0].customerNumber;
+  let customerNumber = type === "person"
+    ? ""
+    : cleanString(body.customerNumber) || existingContacts[0].customerNumber;
   const customerStatus = getCustomerStatusInput({
     body,
     actor,
@@ -619,13 +635,20 @@ export async function PATCH(req: Request) {
   let updated: ContactRow[];
   try {
     updated = await prisma.$transaction(async (transaction) => {
-    await assertChangedContactCustomerNumberAvailable({
-      tx: transaction,
-      organizationId: organization.id,
-      contactId: id,
-      previousNumber: previousContact.customerNumber,
-      nextNumber: customerNumber,
-    });
+    if (type !== "person" && !customerNumber) {
+      customerNumber = await allocateContactCustomerNumber({
+        tx: transaction,
+        organizationId: organization.id,
+      });
+    } else if (type !== "person") {
+      await assertChangedContactCustomerNumberAvailable({
+        tx: transaction,
+        organizationId: organization.id,
+        contactId: id,
+        previousNumber: previousContact.customerNumber,
+        nextNumber: customerNumber,
+      });
+    }
     const rows = await transaction.$queryRaw<ContactRow[]>`
       UPDATE "Contact"
       SET
@@ -765,21 +788,89 @@ export async function DELETE(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
-  if (!canDeleteContacts(actor)) {
-    return forbiddenContactDeleteResponse();
-  }
   const id = cleanString(body.id);
+  const action = cleanString(body.action) || "purge";
 
   if (!id) {
     return NextResponse.json({ error: "Keine Kontakt-ID übergeben." }, { status: 400 });
   }
 
-  try {
-    const evaluation = await evaluateContactDeletion({ organizationId: organization.id, contactId: id, reason: body.reason });
-    const requiredText = getContactDeletionConfirmationText(evaluation.contact.customerNumber);
-    if (cleanString(body.confirmationText) !== requiredText) {
-      return NextResponse.json({ error: `Gib zur endgültigen Löschung exakt „${requiredText}“ ein.`, code: "invalid_confirmation" }, { status: 400 });
+  if (action === "mark" || action === "restore") {
+    if (!canMarkContactsForDeletion(actor)) {
+      return NextResponse.json({ error: "Du darfst Kontakte nicht löschmarkieren oder wiederherstellen." }, { status: 403 });
     }
+    const existing = await prisma.contact.findFirst({
+      where: { id, organizationId: organization.id },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Kontakt wurde nicht gefunden." }, { status: 404 });
+    }
+    const expectedUpdatedAt = cleanString(body.expectedUpdatedAt);
+    if (expectedUpdatedAt && new Date(expectedUpdatedAt).getTime() !== existing.updatedAt.getTime()) {
+      return NextResponse.json({ error: "Der Kontakt wurde zwischenzeitlich geändert. Bitte neu laden." }, { status: 409 });
+    }
+    const actorName = getUserName(actor);
+    let updated: ContactRow;
+    try {
+      updated = await prisma.$transaction(async (transaction) => {
+      const rows = await transaction.$queryRaw<ContactRow[]>`
+        UPDATE "Contact"
+        SET
+          "deletionMarkedAt" = ${action === "mark" ? new Date() : null},
+          "deletionMarkedById" = ${action === "mark" ? actor.id : null},
+          "deletionMarkedByName" = ${action === "mark" ? actorName : null},
+          "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "id" = ${id}
+          AND "organizationId" = ${organization.id}
+          AND "updatedAt" = ${existing.updatedAt}
+        RETURNING *
+      `;
+      if (!rows[0]) {
+        throw new ContactWriteConflictError("Der Kontakt wurde zwischenzeitlich geändert. Bitte neu laden.");
+      }
+      await transaction.contactIntegrationEvent.create({
+        data: {
+          organizationId: organization.id,
+          contactId: id,
+          eventType: action === "mark" ? "deletion_marked" : "deletion_restored",
+          changedFields: ["deletionMarkedAt"],
+        },
+      });
+      await transaction.auditLog.create({
+        data: {
+          organizationId: organization.id,
+          actorId: actor.id,
+          action: action === "mark" ? "contact.deletion_marked" : "contact.deletion_restored",
+          entityType: "contact",
+          entityId: id,
+          payload: { customerNumber: existing.customerNumber, actorName },
+        },
+      });
+        return rows[0];
+      });
+    } catch (error) {
+      if (error instanceof ContactWriteConflictError) {
+        return NextResponse.json({ error: error.message }, { status: 409 });
+      }
+      throw error;
+    }
+    const invoiceCounts = await getCustomerInvoiceCounts(organization.id);
+    return NextResponse.json(formatContact(updated, invoiceCounts.get(updated.id) ?? 0));
+  }
+
+  if (action !== "purge") {
+    return NextResponse.json({ error: "Unbekannte Kontakt-Löschaktion." }, { status: 400 });
+  }
+  if (!canDeleteContacts(actor)) {
+    return forbiddenContactDeleteResponse();
+  }
+
+  try {
+    const evaluation = await evaluateContactDeletion({
+      organizationId: organization.id,
+      contactId: id,
+      reason: "Finale Löschung nach vorheriger Löschmarkierung",
+    });
     await prisma.$transaction(
       (transaction) => executeContactDeletion({
         tx: transaction,

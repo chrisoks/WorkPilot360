@@ -1002,7 +1002,6 @@ vi.mock("@/lib/contacts/contact-management-service", () => ({
 vi.mock("@/lib/contacts/contact-deletion-service", () => ({
   evaluateContactDeletion: fake.evaluateContactDeletion,
   executeContactDeletion: fake.executeContactDeletion,
-  getContactDeletionConfirmationText: (customerNumber: string) => `KONTAKT ENDGÜLTIG LÖSCHEN ${customerNumber}`,
   ContactDeletionServiceError: class ContactDeletionServiceError extends Error {
     constructor(public readonly code: string, message: string) { super(message); }
   },
@@ -3253,12 +3252,12 @@ describe("persistent JARVIS contact-deletion drafts", () => {
     execution: { enabled: false as const, reason: "preview_only" as const }, audit: [],
   });
 
-  it("deletes the bound unreferenced contact exactly once after the exact phrase", async () => {
+  it("deletes the bound marked and unreferenced contact exactly once after confirmation", async () => {
     const created = await createPersistedJarvisContactDeletionDraft({ ...binding(), now: baseNow, preview: preview("contact-delete-1") });
     expect(created).toMatchObject({
       state: "awaiting_confirmation",
       customerNumber: "7000049",
-      confirmation: { requiredText: "KONTAKT ENDGÜLTIG LÖSCHEN 7000049" },
+      confirmation: { requiredText: "" },
     });
     const first = await confirmJarvisContactDeletionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
     const replay = await confirmJarvisContactDeletionDraft(created.previewId, binding(), created.revision, created.confirmation.requiredText, baseNow);
@@ -3270,9 +3269,7 @@ describe("persistent JARVIS contact-deletion drafts", () => {
     }));
   });
 
-  it("rejects an inexact phrase and cancels without deleting", async () => {
-    const wrong = await createPersistedJarvisContactDeletionDraft({ ...binding(), now: baseNow, preview: preview("contact-delete-wrong") });
-    await expect(confirmJarvisContactDeletionDraft(wrong.previewId, binding(), wrong.revision, wrong.confirmation.requiredText.toLowerCase(), baseNow)).rejects.toMatchObject({ code: "invalid_input" });
+  it("cancels without requiring a typed code and without deleting", async () => {
     const cancellable = await createPersistedJarvisContactDeletionDraft({ ...binding(), now: baseNow, preview: preview("contact-delete-cancel") });
     expect((await cancelJarvisContactDeletionDraft(cancellable.previewId, binding(), cancellable.revision, baseNow)).state).toBe("cancelled");
     expect(fake.contactDeletions).toHaveLength(0);
@@ -3287,7 +3284,7 @@ describe("persistent JARVIS contact-deletion drafts", () => {
     } as never);
     const created = await createPersistedJarvisContactDeletionDraft({ ...binding(), now: baseNow, preview: preview("contact-delete-blocked") });
     expect(created).toMatchObject({ state: "awaiting_input", references: [{ key: "projects", count: 2 }], confirmation: { enabled: false } });
-    await expect(confirmJarvisContactDeletionDraft(created.previewId, binding(), created.revision, "KONTAKT ENDGÜLTIG LÖSCHEN 7000049", baseNow)).rejects.toMatchObject({ code: "conflict" });
+    await expect(confirmJarvisContactDeletionDraft(created.previewId, binding(), created.revision, "", baseNow)).rejects.toMatchObject({ code: "conflict" });
     expect(fake.executeContactDeletion).not.toHaveBeenCalled();
   });
 });

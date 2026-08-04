@@ -1235,7 +1235,7 @@ async function buildJarvisContactDeletionDraft(input: {
     return {
       type: "answer" as const,
       topicId: "action.contact-deletion",
-      message: "Ich habe die endgültige Kontaktlöschung serverseitig geprüft. Kontrolliere Identität, Grund und sämtliche Referenzfamilien. Schon eine einzige fachliche Verknüpfung blockiert fail-closed. Ein freier Kontakt wird erst nach der exakten kritischen Bestätigungsphrase genau einmal physisch gelöscht; diese Löschung kann nicht wiederhergestellt werden.",
+      message: "Ich habe die endgültige Kontaktlöschung serverseitig geprüft. Kontrolliere Identität, Löschmarkierung, Grund und sämtliche Referenzfamilien. Schon eine einzige fachliche Verknüpfung blockiert fail-closed. Ein freier, zuvor löschmarkierter Kontakt wird erst nach deiner normalen Bestätigung genau einmal physisch gelöscht; diese Löschung kann nicht wiederhergestellt werden.",
       actionDraft,
     };
   } catch (error) {

@@ -18,6 +18,7 @@ export type ContactDeletionEvaluation = {
     type: string;
     category: string;
     updatedAt: string;
+    deletionMarkedAt: string;
   };
   reason: string;
   references: ContactDeletionReference[];
@@ -48,10 +49,6 @@ function displayName(contact: { companyName?: string | null; firstName?: string 
 
 function stableHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
-}
-
-export function getContactDeletionConfirmationText(customerNumber: string) {
-  return `KONTAKT ENDGÜLTIG LÖSCHEN ${clean(customerNumber, 120)}`;
 }
 
 export async function getContactDeletionReferences(input: {
@@ -115,12 +112,14 @@ export async function evaluateContactDeletion(input: {
   if (!contact) throw new ContactDeletionServiceError("not_found", "Der Kontakt wurde in der aktuellen Organisation nicht gefunden.");
   const references = await getContactDeletionReferences({ organizationId: input.organizationId, contactId: contact.id, db });
   const activeReferences = references.filter((item) => item.count > 0);
-  const blockingIssues = activeReferences.length
-    ? [`Der Kontakt bleibt erhalten, weil ${activeReferences.map((item) => `${item.label}: ${item.count}`).join(", ")}. Bitte archiviere den Kontakt oder kläre zuerst sämtliche Bezüge.`]
-    : [];
+  const blockingIssues = !contact.deletionMarkedAt
+    ? ["Der Kontakt muss vor der endgültigen Löschung zuerst löschmarkiert werden."]
+    : activeReferences.length
+      ? [`Der Kontakt bleibt erhalten, weil ${activeReferences.map((item) => `${item.label}: ${item.count}`).join(", ")}. Bitte kläre zuerst sämtliche Bezüge.`]
+      : [];
   const identity = displayName(contact);
   return {
-    contact: { id: contact.id, customerNumber: contact.customerNumber, displayName: identity, type: contact.type, category: contact.category, updatedAt: contact.updatedAt.toISOString() },
+    contact: { id: contact.id, customerNumber: contact.customerNumber, displayName: identity, type: contact.type, category: contact.category, updatedAt: contact.updatedAt.toISOString(), deletionMarkedAt: contact.deletionMarkedAt?.toISOString() ?? "" },
     reason,
     references,
     checks: [
@@ -132,7 +131,7 @@ export async function evaluateContactDeletion(input: {
       "Integrationsereignis, JARVIS-Aktionshistorie und Auditnachweis bleiben ohne Kontaktdaten-Kopie erhalten.",
     ],
     blockingIssues,
-    fingerprint: stableHash({ organizationId: input.organizationId, contact: { id: contact.id, customerNumber: contact.customerNumber, companyName: clean(contact.companyName), firstName: clean(contact.firstName), lastName: clean(contact.lastName), type: contact.type, category: contact.category, updatedAt: contact.updatedAt.toISOString() }, reason, references }),
+    fingerprint: stableHash({ organizationId: input.organizationId, contact: { id: contact.id, customerNumber: contact.customerNumber, companyName: clean(contact.companyName), firstName: clean(contact.firstName), lastName: clean(contact.lastName), type: contact.type, category: contact.category, updatedAt: contact.updatedAt.toISOString(), deletionMarkedAt: contact.deletionMarkedAt?.toISOString() ?? "" }, reason, references }),
   };
 }
 

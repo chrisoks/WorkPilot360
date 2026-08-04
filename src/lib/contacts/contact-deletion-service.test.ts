@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { evaluateContactDeletion, executeContactDeletion, getContactDeletionConfirmationText } from "@/lib/contacts/contact-deletion-service";
+import { evaluateContactDeletion, executeContactDeletion } from "@/lib/contacts/contact-deletion-service";
 
 function database(referenceOverrides: Record<string, number> = {}) {
   const countModel = (key: string) => ({ count: vi.fn().mockResolvedValue(referenceOverrides[key] ?? 0) });
   return {
     contact: {
-      findFirst: vi.fn().mockResolvedValue({ id: "contact-1", organizationId: "org-1", customerNumber: "7000049", companyName: "Muster GmbH", firstName: null, lastName: null, type: "company", category: "Kunde", updatedAt: new Date("2026-08-02T02:00:00.000Z") }),
+      findFirst: vi.fn().mockResolvedValue({ id: "contact-1", organizationId: "org-1", customerNumber: "7000049", companyName: "Muster GmbH", firstName: null, lastName: null, type: "company", category: "Kunde", deletionMarkedAt: new Date("2026-08-02T01:00:00.000Z"), updatedAt: new Date("2026-08-02T02:00:00.000Z") }),
       count: countModel("childContacts").count,
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
@@ -22,10 +22,6 @@ function database(referenceOverrides: Record<string, number> = {}) {
 }
 
 describe("contact deletion service", () => {
-  it("uses an explicit irreversible confirmation phrase", () => {
-    expect(getContactDeletionConfirmationText("7000049")).toBe("KONTAKT ENDGÜLTIG LÖSCHEN 7000049");
-  });
-
   it("rejects a missing reason", async () => {
     await expect(evaluateContactDeletion({ organizationId: "org-1", contactId: "contact-1", reason: "x", db: database() as never }))
       .rejects.toMatchObject({ code: "invalid_input" });
@@ -37,6 +33,24 @@ describe("contact deletion service", () => {
     expect(evaluation.blockingIssues.join(" ")).toContain("Objektadressen: 1");
     expect(evaluation.blockingIssues.join(" ")).toContain("zugeordnete Online-Anfragen: 2");
     expect(evaluation.blockingIssues.join(" ")).toContain("Kundenlogbuch-Einträge: 3");
+  });
+
+  it("blocks final deletion until the contact was marked for deletion", async () => {
+    const db = database();
+    db.contact.findFirst.mockResolvedValueOnce({
+      id: "contact-1",
+      organizationId: "org-1",
+      customerNumber: "7000049",
+      companyName: "Muster GmbH",
+      firstName: null,
+      lastName: null,
+      type: "company",
+      category: "Kunde",
+      deletionMarkedAt: null,
+      updatedAt: new Date("2026-08-02T02:00:00.000Z"),
+    });
+    const evaluation = await evaluateContactDeletion({ organizationId: "org-1", contactId: "contact-1", reason: "Finale Löschung", db: db as never });
+    expect(evaluation.blockingIssues).toContain("Der Kontakt muss vor der endgültigen Löschung zuerst löschmarkiert werden.");
   });
 
   it("deletes an unreferenced contact atomically and writes retained evidence", async () => {

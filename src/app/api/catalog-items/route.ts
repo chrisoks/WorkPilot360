@@ -17,6 +17,7 @@ import {
   type ValidatedCatalogPackageComponent,
   validateCatalogPackageComponents,
 } from "@/lib/catalog/package-components";
+import { isCatalogSalesPriceBelowCost } from "@/lib/catalog/pricing";
 
 type CatalogDb = Prisma.TransactionClient | typeof prisma;
 
@@ -840,6 +841,19 @@ export async function POST(req: Request) {
   if (!scheduledPriceResult.ok) {
     return NextResponse.json({ error: scheduledPriceResult.error }, { status: 400 });
   }
+  if (
+    isCatalogSalesPriceBelowCost({
+      type,
+      purchasePrice: parseNumber(body.purchasePrice),
+      salesPrice: parseNumber(body.salesPrice),
+      planningMinutesPerUnit: parseInteger(body.planningMinutesPerUnit),
+    }) && body.confirmBelowCost !== true
+  ) {
+    return NextResponse.json(
+      { error: "Der Verkaufspreis liegt unter dem kalkulatorischen Einkaufspreis. Bitte bestätige diese Ausnahme ausdrücklich.", code: "below_cost_confirmation_required" },
+      { status: 409 }
+    );
+  }
   if (isWinterServicePackage) {
     const duplicateName = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT "id"
@@ -1051,6 +1065,19 @@ export async function PATCH(req: Request) {
   const nextSalesPrice = parseNumber(body.salesPrice);
   const nextPurchasePrice = parseNumber(body.purchasePrice);
   const nextPlanningMinutes = parseInteger(body.planningMinutesPerUnit);
+  if (
+    isCatalogSalesPriceBelowCost({
+      type,
+      purchasePrice: nextPurchasePrice,
+      salesPrice: nextSalesPrice,
+      planningMinutesPerUnit: nextPlanningMinutes,
+    }) && body.confirmBelowCost !== true
+  ) {
+    return NextResponse.json(
+      { error: "Der Verkaufspreis liegt unter dem kalkulatorischen Einkaufspreis. Bitte bestätige diese Ausnahme ausdrücklich.", code: "below_cost_confirmation_required" },
+      { status: 409 }
+    );
+  }
   const salesPriceChanged = comparableValue(before.salesPrice) !== comparableValue(nextSalesPrice);
   const existingPackageItems =
     before.type === "package" || type === "package"

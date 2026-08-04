@@ -3482,7 +3482,7 @@ describe("POST /api/jarvis/chat", () => {
       contactId: "contact-1", customerNumber: "7000049", displayName: "Muster GmbH", reason: "Versehentliche Doppelanlage",
       references: [{ key: "projects", label: "Projekte", count: 0 }], checks: [],
       warnings: ["Die physische Löschung ist endgültig."], blockingIssues: [],
-      confirmation: { enabled: true, reason: "ready", requiredText: "KONTAKT ENDGÜLTIG LÖSCHEN 7000049" },
+      confirmation: { enabled: true, reason: "ready", requiredText: "" },
       cancellation: { enabled: true }, execution: { enabled: false, reason: "requires_confirmation" },
     }));
     const response = await POST(new Request("http://localhost/api/jarvis/chat", {
