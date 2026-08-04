@@ -17,7 +17,12 @@ import {
   type ValidatedCatalogPackageComponent,
   validateCatalogPackageComponents,
 } from "@/lib/catalog/package-components";
-import { isCatalogSalesPriceBelowCost } from "@/lib/catalog/pricing";
+import {
+  getImpliedCatalogSalesRatePerHour,
+  getTimeBasedCatalogSalesPrice,
+  isCatalogSalesPriceBelowCost,
+  normalizeCatalogSalesPriceCalculationMode,
+} from "@/lib/catalog/pricing";
 
 type CatalogDb = Prisma.TransactionClient | typeof prisma;
 
@@ -48,7 +53,10 @@ type CatalogItemRow = {
   laborCostRateKey: string | null;
   listPrice: number;
   salesPrice: number;
+  salesPriceCalculationMode: string;
+  salesRatePerHour: number | null;
   scheduledSalesPrice: number | null;
+  scheduledSalesRatePerHour: number | null;
   scheduledSalesPriceValidFrom: Date | null;
   scheduledSalesPriceCreatedAt: Date | null;
   scheduledSalesPriceUpdatePackages: boolean;
@@ -141,6 +149,8 @@ async function initializeCatalogTables() {
       "laborCostRateKey" TEXT NOT NULL DEFAULT '',
       "listPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "salesPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "salesPriceCalculationMode" TEXT NOT NULL DEFAULT 'manual',
+      "salesRatePerHour" DOUBLE PRECISION,
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
       "isLaborPosition" BOOLEAN NOT NULL DEFAULT false,
       "isPlanningRelevant" BOOLEAN NOT NULL DEFAULT false,
@@ -190,6 +200,9 @@ async function initializeCatalogTables() {
 
   await prisma.$executeRaw`
     ALTER TABLE "CatalogItem"
+    ADD COLUMN IF NOT EXISTS "salesPriceCalculationMode" TEXT NOT NULL DEFAULT 'manual',
+    ADD COLUMN IF NOT EXISTS "salesRatePerHour" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "scheduledSalesRatePerHour" DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS "scheduledSalesPrice" DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS "scheduledSalesPriceValidFrom" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "scheduledSalesPriceCreatedAt" TIMESTAMP(3),
@@ -394,11 +407,21 @@ function parseNullableDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function validateScheduledSalesPrice(body: Record<string, unknown>) {
-  const scheduledSalesPrice = parseNullableNumber(body.scheduledSalesPrice);
+function validateScheduledSalesPrice(
+  body: Record<string, unknown>,
+  pricing?: { salesPriceCalculationMode: string; planningMinutesPerUnit: number }
+) {
+  const scheduledSalesRatePerHour = parseNullableNumber(body.scheduledSalesRatePerHour);
+  const scheduledSalesPrice =
+    pricing?.salesPriceCalculationMode === "time_based" && scheduledSalesRatePerHour !== null
+      ? getTimeBasedCatalogSalesPrice({
+          salesRatePerHour: scheduledSalesRatePerHour,
+          planningMinutesPerUnit: pricing.planningMinutesPerUnit,
+        })
+      : parseNullableNumber(body.scheduledSalesPrice);
   const scheduledSalesPriceValidFrom = parseNullableDate(body.scheduledSalesPriceValidFrom);
-  if (scheduledSalesPrice === null && scheduledSalesPriceValidFrom === null) {
-    return { ok: true as const, scheduledSalesPrice, scheduledSalesPriceValidFrom };
+  if (scheduledSalesPrice === null && scheduledSalesRatePerHour === null && scheduledSalesPriceValidFrom === null) {
+    return { ok: true as const, scheduledSalesPrice, scheduledSalesRatePerHour, scheduledSalesPriceValidFrom };
   }
   if (scheduledSalesPrice === null || scheduledSalesPrice <= 0) {
     return { ok: false as const, error: "Bitte einen neuen Verkaufspreis groesser 0 angeben." };
@@ -406,7 +429,51 @@ function validateScheduledSalesPrice(body: Record<string, unknown>) {
   if (!scheduledSalesPriceValidFrom) {
     return { ok: false as const, error: "Bitte ein gueltiges Wirksamkeitsdatum fuer den neuen Verkaufspreis angeben." };
   }
-  return { ok: true as const, scheduledSalesPrice, scheduledSalesPriceValidFrom };
+  if (pricing?.salesPriceCalculationMode === "time_based" && !(scheduledSalesRatePerHour && scheduledSalesRatePerHour > 0)) {
+    return { ok: false as const, error: "Bitte einen neuen SVS größer 0 angeben." };
+  }
+  return { ok: true as const, scheduledSalesPrice, scheduledSalesRatePerHour, scheduledSalesPriceValidFrom };
+}
+
+function resolveSalesPricing(args: {
+  body: Record<string, unknown>;
+  type: string;
+  fallbackMode: string;
+}) {
+  const planningMinutesPerUnit = parseInteger(args.body.planningMinutesPerUnit);
+  const salesPriceCalculationMode = args.type === "service"
+    ? normalizeCatalogSalesPriceCalculationMode(
+        args.body.salesPriceCalculationMode,
+        normalizeCatalogSalesPriceCalculationMode(args.fallbackMode)
+      )
+    : "manual";
+  let salesRatePerHour = parseNullableNumber(args.body.salesRatePerHour);
+  const requestedSalesPrice = parseNumber(args.body.salesPrice);
+  if (
+    args.type === "service" &&
+    salesPriceCalculationMode === "time_based" &&
+    !(salesRatePerHour && salesRatePerHour > 0) &&
+    requestedSalesPrice > 0 &&
+    planningMinutesPerUnit > 0
+  ) {
+    salesRatePerHour = getImpliedCatalogSalesRatePerHour({
+      salesPrice: requestedSalesPrice,
+      planningMinutesPerUnit,
+    });
+  }
+  const salesPrice =
+    args.type === "service" && salesPriceCalculationMode === "time_based"
+      ? getTimeBasedCatalogSalesPrice({ salesRatePerHour, planningMinutesPerUnit })
+      : requestedSalesPrice;
+  return {
+    salesPrice,
+    salesPriceCalculationMode,
+    salesRatePerHour:
+      args.type === "service" && salesPriceCalculationMode === "time_based"
+        ? salesRatePerHour
+        : null,
+    planningMinutesPerUnit,
+  };
 }
 
 function parseInteger(value: unknown, fallback = 0) {
@@ -495,7 +562,10 @@ function formatCatalogItem(
     laborCostRateKey: item.laborCostRateKey ?? "",
     listPrice: item.listPrice,
     salesPrice: item.salesPrice,
+    salesPriceCalculationMode: normalizeCatalogSalesPriceCalculationMode(item.salesPriceCalculationMode),
+    salesRatePerHour: item.salesRatePerHour,
     scheduledSalesPrice: item.scheduledSalesPrice,
+    scheduledSalesRatePerHour: item.scheduledSalesRatePerHour,
     scheduledSalesPriceValidFrom: item.scheduledSalesPriceValidFrom?.toISOString() ?? "",
     scheduledSalesPriceCreatedAt: item.scheduledSalesPriceCreatedAt?.toISOString() ?? "",
     scheduledSalesPriceUpdatePackages: item.scheduledSalesPriceUpdatePackages,
@@ -689,7 +759,10 @@ async function writeChangeHistory(
     ["purchasePrice", "Einkaufspreis"],
     ["laborCostRateKey", "LK-Satz"],
     ["salesPrice", "Verkaufspreis"],
+    ["salesPriceCalculationMode", "Verkaufspreis-Berechnung"],
+    ["salesRatePerHour", "SVS"],
     ["scheduledSalesPrice", "Geplanter Verkaufspreis"],
+    ["scheduledSalesRatePerHour", "Geplanter SVS"],
     ["scheduledSalesPriceValidFrom", "Neuer Verkaufspreis ab"],
     ["scheduledSalesPriceUpdatePackages", "Paketpreise mit aktualisieren"],
     ["vatRate", "MwSt."],
@@ -833,7 +906,12 @@ export async function POST(req: Request) {
     Object.prototype.hasOwnProperty.call(body, "isLaborPosition")
       ? Boolean(body.isLaborPosition)
       : type === "service";
-  const scheduledPriceResult = validateScheduledSalesPrice(body);
+  const pricing = resolveSalesPricing({
+    body,
+    type,
+    fallbackMode: type === "service" ? "time_based" : "manual",
+  });
+  const scheduledPriceResult = validateScheduledSalesPrice(body, pricing);
 
   if (!name) {
     return NextResponse.json({ error: "Bitte einen Namen angeben." }, { status: 400 });
@@ -845,8 +923,8 @@ export async function POST(req: Request) {
     isCatalogSalesPriceBelowCost({
       type,
       purchasePrice: parseNumber(body.purchasePrice),
-      salesPrice: parseNumber(body.salesPrice),
-      planningMinutesPerUnit: parseInteger(body.planningMinutesPerUnit),
+      salesPrice: pricing.salesPrice,
+      planningMinutesPerUnit: pricing.planningMinutesPerUnit,
     }) && body.confirmBelowCost !== true
   ) {
     return NextResponse.json(
@@ -885,7 +963,7 @@ export async function POST(req: Request) {
         "description", "matchcode", "ean", "costCenter", "supplierName", "supplierNumber",
         "manufacturer", "manufacturerNumber", "manufacturerTypeName", "minimumOrderQuantity",
         "quantityScale", "priceUnit", "deliveryTime", "stockQuantity", "purchasePrice", "laborCostRateKey",
-        "listPrice", "salesPrice", "scheduledSalesPrice", "scheduledSalesPriceValidFrom", "scheduledSalesPriceCreatedAt",
+        "listPrice", "salesPrice", "salesPriceCalculationMode", "salesRatePerHour", "scheduledSalesPrice", "scheduledSalesRatePerHour", "scheduledSalesPriceValidFrom", "scheduledSalesPriceCreatedAt",
         "scheduledSalesPriceUpdatePackages",
         "vatRate", "isLaborPosition", "isPlanningRelevant", "planningMinutesPerUnit",
         "defaultPlanningBoard", "defaultPlanningGroup", "isActive", "updatedAt"
@@ -896,10 +974,10 @@ export async function POST(req: Request) {
         ${nullableString(body.supplierName)}, ${nullableString(body.supplierNumber)}, ${nullableString(body.manufacturer)},
         ${nullableString(body.manufacturerNumber)}, ${nullableString(body.manufacturerTypeName)}, ${parseNullableNumber(body.minimumOrderQuantity)},
         ${nullableString(body.quantityScale)}, ${nullableString(body.priceUnit)}, ${nullableString(body.deliveryTime)}, ${parseNullableNumber(body.stockQuantity)},
-        ${parseNumber(body.purchasePrice)}, ${cleanString(body.laborCostRateKey)}, 0, ${parseNumber(body.salesPrice)},
-        ${scheduledPriceResult.scheduledSalesPrice}, ${scheduledPriceResult.scheduledSalesPriceValidFrom},
+        ${parseNumber(body.purchasePrice)}, ${cleanString(body.laborCostRateKey)}, 0, ${pricing.salesPrice}, ${pricing.salesPriceCalculationMode}, ${pricing.salesRatePerHour},
+        ${scheduledPriceResult.scheduledSalesPrice}, ${scheduledPriceResult.scheduledSalesRatePerHour}, ${scheduledPriceResult.scheduledSalesPriceValidFrom},
         ${scheduledPriceResult.scheduledSalesPrice ? new Date() : null}, ${Boolean(body.scheduledSalesPriceUpdatePackages)}, ${parseNumber(body.vatRate, 19)},
-        ${isLaborPosition}, ${Boolean(body.isPlanningRelevant)}, ${parseInteger(body.planningMinutesPerUnit)}, ${nullableString(body.defaultPlanningBoard)},
+        ${isLaborPosition}, ${Boolean(body.isPlanningRelevant)}, ${pricing.planningMinutesPerUnit}, ${nullableString(body.defaultPlanningBoard)},
         ${nullableString(body.defaultPlanningGroup)}, ${body.isActive !== false}, CURRENT_TIMESTAMP
       )
       RETURNING *
@@ -1055,16 +1133,21 @@ export async function PATCH(req: Request) {
     Object.prototype.hasOwnProperty.call(body, "isLaborPosition")
       ? Boolean(body.isLaborPosition)
       : type === "service";
-  const scheduledPriceResult = validateScheduledSalesPrice(body);
+  const pricing = resolveSalesPricing({
+    body,
+    type,
+    fallbackMode: before.salesPriceCalculationMode,
+  });
+  const scheduledPriceResult = validateScheduledSalesPrice(body, pricing);
   if (!name) {
     return NextResponse.json({ error: "Bitte einen Namen angeben." }, { status: 400 });
   }
   if (!scheduledPriceResult.ok) {
     return NextResponse.json({ error: scheduledPriceResult.error }, { status: 400 });
   }
-  const nextSalesPrice = parseNumber(body.salesPrice);
+  const nextSalesPrice = pricing.salesPrice;
   const nextPurchasePrice = parseNumber(body.purchasePrice);
-  const nextPlanningMinutes = parseInteger(body.planningMinutesPerUnit);
+  const nextPlanningMinutes = pricing.planningMinutesPerUnit;
   if (
     isCatalogSalesPriceBelowCost({
       type,
@@ -1139,7 +1222,10 @@ export async function PATCH(req: Request) {
     purchasePrice: nextPurchasePrice,
     laborCostRateKey: cleanString(body.laborCostRateKey),
     salesPrice: nextSalesPrice,
+    salesPriceCalculationMode: pricing.salesPriceCalculationMode,
+    salesRatePerHour: pricing.salesRatePerHour,
     scheduledSalesPrice: scheduledPriceResult.scheduledSalesPrice,
+    scheduledSalesRatePerHour: scheduledPriceResult.scheduledSalesRatePerHour,
     scheduledSalesPriceValidFrom:
       scheduledPriceResult.scheduledSalesPriceValidFrom,
     scheduledSalesPriceUpdatePackages: Boolean(
@@ -1199,7 +1285,10 @@ export async function PATCH(req: Request) {
         "laborCostRateKey" = ${cleanString(body.laborCostRateKey)},
         "listPrice" = 0,
         "salesPrice" = ${nextSalesPrice},
+        "salesPriceCalculationMode" = ${pricing.salesPriceCalculationMode},
+        "salesRatePerHour" = ${pricing.salesRatePerHour},
         "scheduledSalesPrice" = ${scheduledPriceResult.scheduledSalesPrice},
+        "scheduledSalesRatePerHour" = ${scheduledPriceResult.scheduledSalesRatePerHour},
         "scheduledSalesPriceValidFrom" = ${scheduledPriceResult.scheduledSalesPriceValidFrom},
         "scheduledSalesPriceCreatedAt" = ${
           scheduledPriceResult.scheduledSalesPrice &&

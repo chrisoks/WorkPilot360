@@ -69,7 +69,10 @@ function packageRow() {
     laborCostRateKey: "",
     listPrice: 0,
     salesPrice: 20,
+    salesPriceCalculationMode: "manual",
+    salesRatePerHour: null,
     scheduledSalesPrice: null,
+    scheduledSalesRatePerHour: null,
     scheduledSalesPriceValidFrom: null,
     scheduledSalesPriceCreatedAt: null,
     scheduledSalesPriceUpdatePackages: false,
@@ -118,6 +121,44 @@ describe("catalog item package safeguards", () => {
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({ code: "below_cost_confirmation_required" });
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("calculates the unit sales price of a new service from SVS and planning minutes", async () => {
+    mocks.prisma.$queryRaw.mockResolvedValueOnce([{
+      ...packageRow(),
+      id: "service-1",
+      type: "service",
+      number: "L1001",
+      name: "Zeitbasierte Leistung",
+      purchasePrice: 28.33,
+      salesPrice: 23,
+      salesPriceCalculationMode: "time_based",
+      salesRatePerHour: 46,
+      planningMinutesPerUnit: 30,
+    }]);
+
+    const response = await POST(request("POST", {
+      actorId: "user-1",
+      type: "service",
+      number: "L1001",
+      name: "Zeitbasierte Leistung",
+      purchasePrice: 28.33,
+      salesPriceCalculationMode: "time_based",
+      salesRatePerHour: 46,
+      planningMinutesPerUnit: 30,
+      confirmBelowCost: true,
+    }));
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      salesPrice: 23,
+      salesPriceCalculationMode: "time_based",
+      salesRatePerHour: 46,
+    });
+    const insertArguments = mocks.prisma.$queryRaw.mock.calls[0] ?? [];
+    expect(insertArguments).toContain(23);
+    expect(insertArguments).toContain(46);
+    expect(insertArguments).toContain("time_based");
   });
 
   it("validates a new package inside the transaction before inserting its header", async () => {

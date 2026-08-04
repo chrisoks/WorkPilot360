@@ -14,8 +14,11 @@ type DueCatalogPriceRow = {
   name: string;
   purchasePrice: number;
   salesPrice: number;
+  salesPriceCalculationMode: string;
+  salesRatePerHour: number | null;
   planningMinutesPerUnit: number;
   scheduledSalesPrice: number;
+  scheduledSalesRatePerHour: number | null;
   scheduledSalesPriceValidFrom: Date;
   scheduledSalesPriceUpdatePackages: boolean;
 };
@@ -42,6 +45,9 @@ function hasCronAuthorization(req: Request) {
 async function ensureScheduledPriceColumns() {
   await prisma.$executeRaw`
     ALTER TABLE "CatalogItem"
+    ADD COLUMN IF NOT EXISTS "salesPriceCalculationMode" TEXT NOT NULL DEFAULT 'manual',
+    ADD COLUMN IF NOT EXISTS "salesRatePerHour" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "scheduledSalesRatePerHour" DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS "scheduledSalesPrice" DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS "scheduledSalesPriceValidFrom" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "scheduledSalesPriceCreatedAt" TIMESTAMP(3),
@@ -71,7 +77,7 @@ async function ensureScheduledPriceColumns() {
 async function getDuePriceChanges(organizationId: string, catalogItemId?: string) {
   if (catalogItemId) {
     return prisma.$queryRaw<DueCatalogPriceRow[]>`
-      SELECT "id", "organizationId", "type", "number", "name", "purchasePrice", "salesPrice", "planningMinutesPerUnit", "scheduledSalesPrice", "scheduledSalesPriceValidFrom", "scheduledSalesPriceUpdatePackages"
+      SELECT "id", "organizationId", "type", "number", "name", "purchasePrice", "salesPrice", "salesPriceCalculationMode", "salesRatePerHour", "planningMinutesPerUnit", "scheduledSalesPrice", "scheduledSalesRatePerHour", "scheduledSalesPriceValidFrom", "scheduledSalesPriceUpdatePackages"
       FROM "CatalogItem"
       WHERE "organizationId" = ${organizationId}
         AND "id" = ${catalogItemId}
@@ -83,7 +89,7 @@ async function getDuePriceChanges(organizationId: string, catalogItemId?: string
   }
 
   return prisma.$queryRaw<DueCatalogPriceRow[]>`
-    SELECT "id", "organizationId", "type", "number", "name", "purchasePrice", "salesPrice", "planningMinutesPerUnit", "scheduledSalesPrice", "scheduledSalesPriceValidFrom", "scheduledSalesPriceUpdatePackages"
+    SELECT "id", "organizationId", "type", "number", "name", "purchasePrice", "salesPrice", "salesPriceCalculationMode", "salesRatePerHour", "planningMinutesPerUnit", "scheduledSalesPrice", "scheduledSalesRatePerHour", "scheduledSalesPriceValidFrom", "scheduledSalesPriceUpdatePackages"
     FROM "CatalogItem"
     WHERE "organizationId" = ${organizationId}
       AND "scheduledSalesPrice" IS NOT NULL
@@ -143,10 +149,15 @@ export async function POST(req: Request) {
         UPDATE "CatalogItem"
         SET
           "salesPrice" = ${item.scheduledSalesPrice},
+          "salesRatePerHour" = CASE
+            WHEN "salesPriceCalculationMode" = 'time_based' THEN ${item.scheduledSalesRatePerHour}
+            ELSE "salesRatePerHour"
+          END,
           "lastSalesPriceChangedAt" = CURRENT_TIMESTAMP,
           "lastSalesPriceOldValue" = ${item.salesPrice},
           "lastSalesPriceNewValue" = ${item.scheduledSalesPrice},
           "scheduledSalesPrice" = NULL,
+          "scheduledSalesRatePerHour" = NULL,
           "scheduledSalesPriceValidFrom" = NULL,
           "scheduledSalesPriceCreatedAt" = NULL,
           "scheduledSalesPriceUpdatePackages" = false,

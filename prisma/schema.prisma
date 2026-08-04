@@ -664,7 +664,10 @@ model CatalogItem {
   laborCostRateKey                  String                     @default("")
   listPrice                         Float                      @default(0)
   salesPrice                        Float                      @default(0)
+  salesPriceCalculationMode         String                     @default("manual")
+  salesRatePerHour                  Float?
   scheduledSalesPrice               Float?
+  scheduledSalesRatePerHour         Float?
   scheduledSalesPriceValidFrom      DateTime?
   scheduledSalesPriceCreatedAt      DateTime?
   scheduledSalesPriceUpdatePackages Boolean                    @default(false)

@@ -6,6 +6,7 @@ import {
   hasCatalogReviewRelevantChange,
   normalizeCatalogReviewStatus,
 } from "@/lib/catalog/review-status";
+import { getImpliedCatalogSalesRatePerHour } from "@/lib/catalog/pricing";
 
 type CatalogManagementDb = Prisma.TransactionClient | typeof prisma;
 export type ManagedCatalogType = "article" | "service";
@@ -151,7 +152,7 @@ export async function executeCatalogManagement(input: { tx: Prisma.TransactionCl
   if (evaluation.blockingIssues.length) throw new CatalogManagementServiceError("conflict", evaluation.blockingIssues.join(" · "));
   const data = evaluation.values;
   if (input.mode === "create") {
-    const created = await input.tx.catalogItem.create({ data: { organizationId: input.organizationId, type: data.type, number: data.number, name: clean(data.name), category: clean(data.category) || null, trade: clean(data.trade), unit: clean(data.unit) || defaultUnit(data.type), description: clean(data.description, 4000) || null, purchasePrice: money(data.purchasePrice), salesPrice: money(data.salesPrice), vatRate: money(data.vatRate), laborCostRateKey: clean(data.laborCostRateKey), isLaborPosition: Boolean(data.isLaborPosition), isPlanningRelevant: Boolean(data.isPlanningRelevant), planningMinutesPerUnit: integer(data.planningMinutesPerUnit), defaultPlanningBoard: clean(data.defaultPlanningBoard) || null, defaultPlanningGroup: clean(data.defaultPlanningGroup) || null, reviewStatus: "unreviewed", isActive: true } });
+    const created = await input.tx.catalogItem.create({ data: { organizationId: input.organizationId, type: data.type, number: data.number, name: clean(data.name), category: clean(data.category) || null, trade: clean(data.trade), unit: clean(data.unit) || defaultUnit(data.type), description: clean(data.description, 4000) || null, purchasePrice: money(data.purchasePrice), salesPrice: money(data.salesPrice), salesPriceCalculationMode: data.type === "service" ? "time_based" : "manual", salesRatePerHour: data.type === "service" ? getImpliedCatalogSalesRatePerHour({ salesPrice: money(data.salesPrice), planningMinutesPerUnit: integer(data.planningMinutesPerUnit) }) : null, vatRate: money(data.vatRate), laborCostRateKey: clean(data.laborCostRateKey), isLaborPosition: Boolean(data.isLaborPosition), isPlanningRelevant: Boolean(data.isPlanningRelevant), planningMinutesPerUnit: integer(data.planningMinutesPerUnit), defaultPlanningBoard: clean(data.defaultPlanningBoard) || null, defaultPlanningGroup: clean(data.defaultPlanningGroup) || null, reviewStatus: "unreviewed", isActive: true } });
     await input.tx.catalogItemHistory.create({ data: { organizationId: input.organizationId, catalogItemId: created.id, eventType: "created", actorUserId: input.actorId, actorName: clean(input.actorName), note: `JARVIS · ${clean(input.requestId, 120)}` } });
     return created;
   }

@@ -42,7 +42,11 @@ import {
 import { getOfferAcceptanceFunnel } from "@/lib/offer-acceptance/analytics";
 import { calculateWeightedLaborCostRate } from "@/lib/employee-costs/labor-cost-rate";
 import type { CatalogReviewStatus } from "@/lib/catalog/review-status";
-import { getEffectiveCatalogPurchasePrice, isCatalogSalesPriceBelowCost } from "@/lib/catalog/pricing";
+import {
+  getEffectiveCatalogPurchasePrice,
+  getTimeBasedCatalogSalesPrice,
+  isCatalogSalesPriceBelowCost,
+} from "@/lib/catalog/pricing";
 import type { ProjectReviewStatus } from "@/lib/projects/review-status";
 import {
   type WinterServiceOfferTransfer,
@@ -9313,7 +9317,10 @@ type CatalogItem = {
   laborCostRateKey: string;
   listPrice: number;
   salesPrice: number;
+  salesPriceCalculationMode: "manual" | "time_based";
+  salesRatePerHour: number | null;
   scheduledSalesPrice: number | null;
+  scheduledSalesRatePerHour: number | null;
   scheduledSalesPriceValidFrom: string;
   scheduledSalesPriceCreatedAt: string;
   scheduledSalesPriceUpdatePackages: boolean;
@@ -11205,7 +11212,10 @@ const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" 
   laborCostRateKey: "",
   listPrice: 0,
   salesPrice: 0,
+  salesPriceCalculationMode: "manual",
+  salesRatePerHour: null,
   scheduledSalesPrice: null,
+  scheduledSalesRatePerHour: null,
   scheduledSalesPriceValidFrom: "",
   scheduledSalesPriceCreatedAt: "",
   scheduledSalesPriceUpdatePackages: false,
@@ -21792,6 +21802,14 @@ export function DashboardPage() {
   }
 
   function openCatalogModal(type: CatalogItemType = activeTab === "services" ? "service" : activeTab === "packages" ? "package" : "article") {
+    const configuredSvsRates = planningGroupCapacitySettings
+      .map((setting) => setting.manualSvsPerHour ?? 0)
+      .filter((rate) => rate > 0)
+      .sort((first, second) => first - second);
+    const defaultSalesRatePerHour =
+      configuredSvsRates.length > 0
+        ? configuredSvsRates[Math.floor(configuredSvsRates.length / 2)]
+        : 0;
     setCatalogDraft({
       ...emptyCatalogItemDraft,
       type,
@@ -21799,6 +21817,11 @@ export function DashboardPage() {
       number: getNextCatalogNumber(type),
       isPlanningRelevant: type === "service" || type === "package",
       planningMinutesPerUnit: type === "service" ? 60 : 0,
+      salesPriceCalculationMode: type === "service" ? "time_based" : "manual",
+      salesRatePerHour: type === "service" ? defaultSalesRatePerHour : null,
+      salesPrice: type === "service" ? defaultSalesRatePerHour : 0,
+      laborCostRateKey: type === "service" ? "ok-solutions" : "",
+      purchasePrice: 0,
     });
     setEditingCatalogItemId("");
     setCatalogFormTab("information");
@@ -21822,6 +21845,7 @@ export function DashboardPage() {
       number: getNextCatalogNumber(item.type),
       name: `${item.name} Kopie`,
       scheduledSalesPrice: null,
+      scheduledSalesRatePerHour: null,
       scheduledSalesPriceValidFrom: "",
       scheduledSalesPriceCreatedAt: "",
       scheduledSalesPriceUpdatePackages: false,
@@ -21844,10 +21868,24 @@ export function DashboardPage() {
     key: K,
     value: (typeof catalogDraft)[K]
   ) {
-    setCatalogDraft((current) => ({
-      ...current,
-      [key]: value,
-    }));
+    setCatalogDraft((current) => {
+      const next = { ...current, [key]: value };
+      if (next.type === "service" && next.salesPriceCalculationMode === "time_based") {
+        next.salesPrice = getTimeBasedCatalogSalesPrice({
+          salesRatePerHour: next.salesRatePerHour,
+          planningMinutesPerUnit: next.planningMinutesPerUnit,
+        });
+        if (next.scheduledSalesRatePerHour !== null) {
+          next.scheduledSalesPrice = getTimeBasedCatalogSalesPrice({
+            salesRatePerHour: next.scheduledSalesRatePerHour,
+            planningMinutesPerUnit: next.planningMinutesPerUnit,
+          });
+        } else if (key === "scheduledSalesRatePerHour") {
+          next.scheduledSalesPrice = null;
+        }
+      }
+      return next;
+    });
   }
 
   function addCatalogPackageItem(componentItemId = "") {
@@ -27705,6 +27743,42 @@ export function DashboardPage() {
     projectFileTab,
     users,
   ]);
+
+  useEffect(() => {
+    if (!isCatalogModalOpen || editingCatalogItemId || catalogDraft.type !== "service") return;
+    const activeEmployees = users.filter((user) => user.isActive);
+    const employeeCostsReady =
+      activeEmployees.length > 0 &&
+      activeEmployees.every((user) => Boolean(employeeCostCalculations[user.id]));
+    const defaultLaborCostRate = employeeCostsReady
+      ? getLaborCostRateOption(catalogDraft.laborCostRateKey) ?? getLaborCostRateOptions().find((option) => option.rate > 0)
+      : undefined;
+    const configuredSvsRates = planningGroupCapacitySettings
+      .map((setting) => setting.manualSvsPerHour ?? 0)
+      .filter((rate) => rate > 0)
+      .sort((first, second) => first - second);
+    const defaultSalesRatePerHour =
+      configuredSvsRates.length > 0
+        ? configuredSvsRates[Math.floor(configuredSvsRates.length / 2)]
+        : 0;
+    if (!defaultLaborCostRate && defaultSalesRatePerHour <= 0) return;
+    setCatalogDraft((current) => {
+      if (current.type !== "service") return current;
+      const next = { ...current };
+      if (defaultLaborCostRate && defaultLaborCostRate.rate > 0) {
+        next.laborCostRateKey = defaultLaborCostRate.key;
+        next.purchasePrice = roundCurrencyValue(defaultLaborCostRate.rate);
+      }
+      if (next.salesPriceCalculationMode === "time_based" && !(next.salesRatePerHour && next.salesRatePerHour > 0) && defaultSalesRatePerHour > 0) {
+        next.salesRatePerHour = defaultSalesRatePerHour;
+        next.salesPrice = getTimeBasedCatalogSalesPrice({
+          salesRatePerHour: defaultSalesRatePerHour,
+          planningMinutesPerUnit: next.planningMinutesPerUnit,
+        });
+      }
+      return next;
+    });
+  }, [catalogDraft.type, editingCatalogItemId, employeeCostCalculations, isCatalogModalOpen, planningGroupCapacitySettings, users]);
 
   useEffect(() => {
     if (!isOfferModalOpen) return;
@@ -66118,13 +66192,23 @@ await addProjectLogbookEntry(
                   <CatalogCurrencyInput value={catalogDraft.purchasePrice} onChange={(value) => updateCatalogDraft("purchasePrice", value)} />
                 </label>
               )}
-              <label>
-                <span className={styles.catalogLabelText}>
-                  Verkaufspreis aktuell (€)
-                  {renderCatalogHelp("Aktueller Netto-Verkaufspreis je Einheit. Dieser Preis wird für neue Angebote, Rechnungen und Paketbestandteile verwendet.")}
-                </span>
-                <CatalogCurrencyInput value={catalogDraft.salesPrice} onChange={(value) => updateCatalogDraft("salesPrice", value)} />
-              </label>
+              {catalogDraft.type === "service" && catalogDraft.salesPriceCalculationMode === "time_based" ? (
+                <label>
+                  <span className={styles.catalogLabelText}>
+                    SVS (€ / Std.)
+                    {renderCatalogHelp("Netto-Stundenverrechnungssatz. WorkPilot multipliziert ihn live mit der Planungszeit je Einheit und berechnet daraus den Verkaufspreis je Einheit.")}
+                  </span>
+                  <CatalogCurrencyInput value={catalogDraft.salesRatePerHour ?? 0} onChange={(value) => updateCatalogDraft("salesRatePerHour", value)} />
+                </label>
+              ) : (
+                <label>
+                  <span className={styles.catalogLabelText}>
+                    Verkaufspreis pro Einheit (€)
+                    {renderCatalogHelp("Aktueller Netto-Verkaufspreis je Einheit. Bestehende Leistungen bleiben bewusst in ihrer bisherigen manuellen Preislogik.")}
+                  </span>
+                  <CatalogCurrencyInput value={catalogDraft.salesPrice} onChange={(value) => updateCatalogDraft("salesPrice", value)} />
+                </label>
+              )}
               <label>MwSt. (%)<input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} /></label>
               {catalogDraft.type === "service" ? (
                 <label>
@@ -66158,7 +66242,7 @@ await addProjectLogbookEntry(
                 </span>
                 <select value={catalogDraft.defaultPlanningGroup} onChange={(event) => updateCatalogDraft("defaultPlanningGroup", event.target.value)}><option value="">Nicht vorbelegen</option>{planningGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select>
               </label>
-              <section className={styles.catalogMetricGrid} data-columns={catalogDraft.type === "service" ? "3" : "2"}>
+              <section className={styles.catalogMetricGrid} data-columns={catalogDraft.type === "service" ? "4" : "2"}>
                 <article className={styles.catalogMetric}>
                   <span className={styles.catalogLabelText}>
                     Marge vom VK
@@ -66180,6 +66264,15 @@ await addProjectLogbookEntry(
                       {renderCatalogHelp("Berechnet aus LK-Satz Wert und Planungszeit je Einheit. Beispiel: 60 Minuten entsprechen einer Stunde zum hinterlegten LK-Satz.")}
                     </span>
                     <strong>{formatMoney(servicePurchaseTotal)}</strong>
+                  </article>
+                ) : null}
+                {catalogDraft.type === "service" && catalogDraft.salesPriceCalculationMode === "time_based" ? (
+                  <article className={styles.catalogMetric}>
+                    <span className={styles.catalogLabelText}>
+                      Verkaufspreis je Einheit
+                      {renderCatalogHelp("Automatisch berechnet aus SVS mal Planungszeit je Einheit. Dieser Netto-Einzelpreis fließt in neue Angebote und Paketbestandteile ein.")}
+                    </span>
+                    <strong>{formatMoney(effectiveSalesPrice)}</strong>
                   </article>
                 ) : null}
               </section>
@@ -66214,7 +66307,7 @@ await addProjectLogbookEntry(
                   <div>
                     <strong className={styles.catalogLabelText}>
                       Geplante Preisänderung
-                      {renderCatalogHelp("Trägt einen neuen Verkaufspreis mit Wirksamkeitsdatum vor. Am Stichtag wird er automatisch zum aktuellen Verkaufspreis übernommen.")}
+                      {renderCatalogHelp(catalogDraft.type === "service" && catalogDraft.salesPriceCalculationMode === "time_based" ? "Trägt einen neuen SVS mit Wirksamkeitsdatum vor. Der Verkaufspreis je Einheit wird daraus automatisch berechnet." : "Trägt einen neuen Verkaufspreis mit Wirksamkeitsdatum vor. Am Stichtag wird er automatisch übernommen.")}
                     </strong>
                     <span>Wird ab dem Wirksamkeitsdatum automatisch zum aktuellen Verkaufspreis.</span>
                   </div>
@@ -66226,14 +66319,14 @@ await addProjectLogbookEntry(
                 </div>
                 <div className={styles.catalogPriceScheduleGrid}>
                   <label>
-                    Neuer Verkaufspreis (€)
+                    {catalogDraft.type === "service" && catalogDraft.salesPriceCalculationMode === "time_based" ? "Neuer SVS (€ / Std.)" : "Neuer Verkaufspreis (€)"}
                     <input
                       type="number"
                       step="0.01"
-                      value={catalogDraft.scheduledSalesPrice ?? ""}
+                      value={catalogDraft.type === "service" && catalogDraft.salesPriceCalculationMode === "time_based" ? catalogDraft.scheduledSalesRatePerHour ?? "" : catalogDraft.scheduledSalesPrice ?? ""}
                       onChange={(event) =>
                         updateCatalogDraft(
-                          "scheduledSalesPrice",
+                          catalogDraft.type === "service" && catalogDraft.salesPriceCalculationMode === "time_based" ? "scheduledSalesRatePerHour" : "scheduledSalesPrice",
                           event.target.value ? roundCurrencyValue(Number(event.target.value)) : null
                         )
                       }
@@ -66257,7 +66350,7 @@ await addProjectLogbookEntry(
                     <span>Geplant</span>
                     <strong>
                       {catalogDraft.scheduledSalesPrice && catalogDraft.scheduledSalesPriceValidFrom
-                        ? `${formatMoney(catalogDraft.scheduledSalesPrice)} ab ${formatPlainDate(catalogDraft.scheduledSalesPriceValidFrom)}`
+                        ? `${catalogDraft.type === "service" && catalogDraft.salesPriceCalculationMode === "time_based" ? `${formatMoney(catalogDraft.scheduledSalesRatePerHour ?? 0)} / Std. · ` : ""}${formatMoney(catalogDraft.scheduledSalesPrice)} je Einheit ab ${formatPlainDate(catalogDraft.scheduledSalesPriceValidFrom)}`
                         : "Keine Preisänderung geplant"}
                     </strong>
                   </article>
