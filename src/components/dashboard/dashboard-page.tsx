@@ -70235,9 +70235,6 @@ await addProjectLogbookEntry(
                 <div>
                   <p className={styles.eyebrow}>Tagesimpuls</p>
                   <h2>{dashboardDailyImpulse.text}</h2>
-                  <p>
-                    {dashboardDailyImpulse.audienceLabel} · {dashboardDailyImpulse.periodLabel}
-                  </p>
                 </div>
               </section>
             </section>

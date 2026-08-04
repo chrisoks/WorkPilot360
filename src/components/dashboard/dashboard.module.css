@@ -36638,6 +36638,22 @@
   box-shadow: 0 0 0 3px rgba(73, 210, 189, 0.16);
 }
 
+.dailyImpulsePanel {
+  background:
+    radial-gradient(circle at 12% 84%, rgba(73, 210, 189, 0.2), transparent 28%),
+    linear-gradient(110deg, #1b7669 0%, #155d60 48%, #0c2e3a 100%);
+  border: 0;
+  box-shadow: 0 18px 38px rgba(9, 42, 51, 0.14);
+}
+
+.dailyImpulsePanel .eyebrow {
+  color: #3fc6b5;
+}
+
+.dailyImpulsePanel h2 {
+  color: #ffffff;
+}
+
 @media (max-width: 560px) {
   .overviewHero .dashboardHeaderDate {
     border-left: 0;
