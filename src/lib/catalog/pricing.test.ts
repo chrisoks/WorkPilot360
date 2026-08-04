@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getEffectiveCatalogServicePricing,
   getEffectiveCatalogPurchasePrice,
   getEffectiveCatalogSalesPrice,
   getImpliedCatalogSalesRatePerHour,
@@ -49,5 +50,32 @@ describe("catalog pricing safeguards", () => {
   it("derives an hourly sales rate from an existing unit price", () => {
     expect(getImpliedCatalogSalesRatePerHour({ salesPrice: 23, planningMinutesPerUnit: 30 })).toBe(46);
     expect(getImpliedCatalogSalesRatePerHour({ salesPrice: 23, planningMinutesPerUnit: 0 })).toBe(0);
+  });
+
+  it("converts an existing timed service to SVS without changing its unit price", () => {
+    expect(getEffectiveCatalogServicePricing({
+      type: "service",
+      salesPrice: 46,
+      planningMinutesPerUnit: 60,
+      salesPriceCalculationMode: "manual",
+      salesRatePerHour: null,
+    })).toMatchObject({
+      salesPriceCalculationMode: "time_based",
+      salesRatePerHour: 46,
+    });
+  });
+
+  it("keeps a priced legacy service manual when its time basis is missing", () => {
+    expect(getEffectiveCatalogServicePricing({
+      type: "service",
+      salesPrice: 6.5,
+      planningMinutesPerUnit: 0,
+      salesPriceCalculationMode: "manual",
+      salesRatePerHour: null,
+    })).toEqual({
+      salesPriceCalculationMode: "manual",
+      salesRatePerHour: null,
+      scheduledSalesRatePerHour: null,
+    });
   });
 });

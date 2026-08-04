@@ -51,6 +51,59 @@ export function getImpliedCatalogSalesRatePerHour(input: {
   return roundCurrency((Math.max(0, Number(input.salesPrice) || 0) * 60) / minutes);
 }
 
+export function getEffectiveCatalogServicePricing(input: {
+  type: string;
+  salesPrice: number;
+  planningMinutesPerUnit: number;
+  salesPriceCalculationMode?: CatalogSalesPriceCalculationMode | string | null;
+  salesRatePerHour?: number | null;
+  scheduledSalesPrice?: number | null;
+  scheduledSalesRatePerHour?: number | null;
+}) {
+  if (input.type !== "service") {
+    return {
+      salesPriceCalculationMode: "manual" as const,
+      salesRatePerHour: null,
+      scheduledSalesRatePerHour: null,
+    };
+  }
+
+  const planningMinutesPerUnit = Math.max(0, Number(input.planningMinutesPerUnit) || 0);
+  const salesPrice = Math.max(0, Number(input.salesPrice) || 0);
+  const storedMode = normalizeCatalogSalesPriceCalculationMode(input.salesPriceCalculationMode);
+  const canSafelyConvertLegacyPrice = planningMinutesPerUnit > 0 || salesPrice === 0;
+  if (storedMode !== "time_based" && !canSafelyConvertLegacyPrice) {
+    return {
+      salesPriceCalculationMode: "manual" as const,
+      salesRatePerHour: null,
+      scheduledSalesRatePerHour: null,
+    };
+  }
+
+  const storedSalesRate = Math.max(0, Number(input.salesRatePerHour) || 0);
+  const salesRatePerHour =
+    storedSalesRate > 0 || salesPrice === 0
+      ? storedSalesRate
+      : getImpliedCatalogSalesRatePerHour({ salesPrice, planningMinutesPerUnit });
+  const scheduledSalesPrice = Math.max(0, Number(input.scheduledSalesPrice) || 0);
+  const storedScheduledRate = Math.max(0, Number(input.scheduledSalesRatePerHour) || 0);
+  const scheduledSalesRatePerHour =
+    storedScheduledRate > 0
+      ? storedScheduledRate
+      : scheduledSalesPrice > 0 && planningMinutesPerUnit > 0
+        ? getImpliedCatalogSalesRatePerHour({
+            salesPrice: scheduledSalesPrice,
+            planningMinutesPerUnit,
+          })
+        : null;
+
+  return {
+    salesPriceCalculationMode: "time_based" as const,
+    salesRatePerHour,
+    scheduledSalesRatePerHour,
+  };
+}
+
 export function getEffectiveCatalogPurchasePrice(input: {
   type: PricedCatalogItemType;
   purchasePrice: number;

@@ -18,6 +18,7 @@ import {
   validateCatalogPackageComponents,
 } from "@/lib/catalog/package-components";
 import {
+  getEffectiveCatalogServicePricing,
   getImpliedCatalogSalesRatePerHour,
   getTimeBasedCatalogSalesPrice,
   isCatalogSalesPriceBelowCost,
@@ -441,14 +442,19 @@ function resolveSalesPricing(args: {
   fallbackMode: string;
 }) {
   const planningMinutesPerUnit = parseInteger(args.body.planningMinutesPerUnit);
-  const salesPriceCalculationMode = args.type === "service"
+  const requestedSalesPrice = parseNumber(args.body.salesPrice);
+  const requestedMode = args.type === "service"
     ? normalizeCatalogSalesPriceCalculationMode(
         args.body.salesPriceCalculationMode,
         normalizeCatalogSalesPriceCalculationMode(args.fallbackMode)
       )
     : "manual";
+  const salesPriceCalculationMode =
+    args.type === "service" &&
+    (requestedMode === "time_based" || planningMinutesPerUnit > 0 || requestedSalesPrice <= 0)
+      ? "time_based"
+      : "manual";
   let salesRatePerHour = parseNullableNumber(args.body.salesRatePerHour);
-  const requestedSalesPrice = parseNumber(args.body.salesPrice);
   if (
     args.type === "service" &&
     salesPriceCalculationMode === "time_based" &&
@@ -536,6 +542,15 @@ function formatCatalogItem(
   history: CatalogHistoryRow[] = [],
   packageItems: CatalogPackageItemRow[] = []
 ) {
+  const effectiveServicePricing = getEffectiveCatalogServicePricing({
+    type: item.type,
+    salesPrice: item.salesPrice,
+    planningMinutesPerUnit: item.planningMinutesPerUnit,
+    salesPriceCalculationMode: item.salesPriceCalculationMode,
+    salesRatePerHour: item.salesRatePerHour,
+    scheduledSalesPrice: item.scheduledSalesPrice,
+    scheduledSalesRatePerHour: item.scheduledSalesRatePerHour,
+  });
   return {
     id: item.id,
     type: item.type === "service" ? "service" : item.type === "package" ? "package" : "article",
@@ -562,10 +577,10 @@ function formatCatalogItem(
     laborCostRateKey: item.laborCostRateKey ?? "",
     listPrice: item.listPrice,
     salesPrice: item.salesPrice,
-    salesPriceCalculationMode: normalizeCatalogSalesPriceCalculationMode(item.salesPriceCalculationMode),
-    salesRatePerHour: item.salesRatePerHour,
+    salesPriceCalculationMode: effectiveServicePricing.salesPriceCalculationMode,
+    salesRatePerHour: effectiveServicePricing.salesRatePerHour,
     scheduledSalesPrice: item.scheduledSalesPrice,
-    scheduledSalesRatePerHour: item.scheduledSalesRatePerHour,
+    scheduledSalesRatePerHour: effectiveServicePricing.scheduledSalesRatePerHour,
     scheduledSalesPriceValidFrom: item.scheduledSalesPriceValidFrom?.toISOString() ?? "",
     scheduledSalesPriceCreatedAt: item.scheduledSalesPriceCreatedAt?.toISOString() ?? "",
     scheduledSalesPriceUpdatePackages: item.scheduledSalesPriceUpdatePackages,
