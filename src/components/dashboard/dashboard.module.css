@@ -26154,11 +26154,25 @@
   background: #f8fafc;
 }
 
-.catalogMetric span {
-  display: block;
+.catalogMetricGrid {
+  display: grid;
+  gap: 14px;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.catalogMetricGrid[data-columns="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.catalogMetric .catalogLabelText {
+  align-items: center;
   color: #64748b;
+  display: inline-flex;
   font-size: 14px;
   font-weight: 600;
+  flex-wrap: nowrap;
+  width: 100%;
 }
 
 .catalogMetric strong {
@@ -26168,41 +26182,42 @@
   font-size: 20px;
 }
 
-.catalogLaborRatePreview {
-  background: #eef7f7;
-  border: 1px solid #99caca;
+.catalogGridSpacer {
+  display: block;
+}
+
+.catalogLaborRateWarning {
+  align-items: center;
+  background: #fff8e8;
+  border: 1px solid #f4c66a;
   border-radius: 12px;
-  display: grid;
+  display: flex;
   gap: 12px;
   grid-column: 1 / -1;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-content: space-between;
   padding: 14px;
 }
 
-.catalogLaborRatePreview article {
-  background: #ffffff;
-  border: 1px solid #d7e7e7;
-  border-radius: 10px;
-  padding: 10px 12px;
+.catalogLaborRateWarning > div {
+  display: grid;
+  gap: 4px;
 }
 
-.catalogLaborRatePreview span {
-  color: #64748b;
-  display: block;
-  font-size: 12px;
+.catalogLaborRateWarning strong {
+  color: #8a4b08;
+  font-size: 14px;
   font-weight: 700;
 }
 
-.catalogLaborRatePreview strong {
-  color: #0f172a;
-  display: block;
-  font-size: 17px;
-  margin-top: 4px;
+.catalogLaborRateWarning span,
+.catalogLaborRateWarning small {
+  color: #79521d;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
-.catalogLaborRatePreview button {
-  align-self: center;
-  justify-self: stretch;
+.catalogLaborRateWarning button {
+  flex: 0 0 auto;
 }
 
 .catalogReviewPanel {
@@ -26438,9 +26453,18 @@
 }
 
 @media (max-width: 760px) {
-  .catalogLaborRatePreview,
+  .catalogMetricGrid,
   .catalogReviewCheckGrid {
     grid-template-columns: 1fr;
+  }
+
+  .catalogGridSpacer {
+    display: none;
+  }
+
+  .catalogLaborRateWarning {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .catalogReviewSummary {

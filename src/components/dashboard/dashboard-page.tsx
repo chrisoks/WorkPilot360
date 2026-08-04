@@ -66011,46 +66011,7 @@ await addProjectLogbookEntry(
                       onChange={(event) => updateCatalogDraft("purchasePrice", roundCurrencyValue(Number(event.target.value)))}
                     />
                   </label>
-                  <section className={styles.catalogLaborRatePreview}>
-                    <div>
-                      <span>Gespeicherter LK-Satz</span>
-                      <strong>{formatMoney(catalogDraft.purchasePrice)} / Std.</strong>
-                    </div>
-                    <div>
-                      <span>Aktuell korrekt berechnet</span>
-                      <strong>{formatMoney(currentCalculatedLaborCostRate)} / Std.</strong>
-                      <small>{selectedLaborCostRateOption?.label ?? "Keine LK-Gruppe zugeordnet"}</small>
-                    </div>
-                    <div data-state={hasLaborCostRateDifference ? "warning" : "ok"}>
-                      <span>Abweichung</span>
-                      <strong>
-                        {laborCostRateDifference > 0 ? "+" : ""}
-                        {formatMoney(laborCostRateDifference)} / Std.
-                      </strong>
-                    </div>
-                    {hasLaborCostRateDifference ? (
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        disabled={!canEditLaborCostRateValue}
-                        onClick={() =>
-                          updateCatalogDraft(
-                            "purchasePrice",
-                            currentCalculatedLaborCostRate
-                          )
-                        }
-                      >
-                        In Entwurf übernehmen
-                      </button>
-                    ) : (
-                      <p>Gespeicherter und aktuell berechneter LK-Satz stimmen überein.</p>
-                    )}
-                    <p>
-                      Die Übernahme ändert zunächst nur diesen Entwurf. Erst „Speichern“
-                      aktualisiert die Leistung; bestehende Angebote und Rechnungen bleiben
-                      unverändert.
-                    </p>
-                  </section>
+                  <span className={styles.catalogGridSpacer} aria-hidden="true" />
                 </>
               ) : (
                 <label>
@@ -66070,35 +66031,23 @@ await addProjectLogbookEntry(
               </label>
               <label>MwSt. (%)<input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} /></label>
               {catalogDraft.type === "service" ? (
-                <article className={styles.catalogMetric}>
+                <label>
                   <span className={styles.catalogLabelText}>
-                    Kalkulatorischer EK
-                    {renderCatalogHelp("Berechnet aus LK-Satz Wert und Planungszeit je Einheit. Beispiel: 60 Minuten entsprechen einer Stunde zum hinterlegten LK-Satz.")}
+                    Planungszeit je Einheit (Min.)
+                    {renderCatalogHelp("Zeitansatz für eine Einheit dieser Leistung. In Paketen kann diese Zeit je Paketbestandteil bewusst überschrieben werden.")}
                   </span>
-                  <strong>{formatMoney(servicePurchaseTotal)}</strong>
-                </article>
+                  <input type="number" value={catalogDraft.planningMinutesPerUnit} onChange={(event) => updateCatalogDraft("planningMinutesPerUnit", Number(event.target.value))} />
+                </label>
               ) : null}
-              <article className={styles.catalogMetric}>
-                <span className={styles.catalogLabelText}>
-                  Marge vom VK
-                  {renderCatalogHelp("Anteil des Deckungsbeitrags am Netto-Verkaufspreis.")}
-                </span>
-                <strong>{formatHours(margin)}%</strong>
-              </article>
-              <article className={styles.catalogMetric}>
-                <span className={styles.catalogLabelText}>
-                  Aufschlag auf EK
-                  {renderCatalogHelp("Prozentualer Aufschlag auf den Einkaufspreis beziehungsweise kalkulatorischen EK.")}
-                </span>
-                <strong>{formatHours(markup)}%</strong>
-              </article>
-              <label>
-                <span className={styles.catalogLabelText}>
-                  Planungszeit je Einheit (Min.)
-                  {renderCatalogHelp("Zeitansatz für eine Einheit dieser Leistung. In Paketen kann diese Zeit je Paketbestandteil bewusst überschrieben werden.")}
-                </span>
-                <input type="number" value={catalogDraft.planningMinutesPerUnit} onChange={(event) => updateCatalogDraft("planningMinutesPerUnit", Number(event.target.value))} />
-              </label>
+              {catalogDraft.type === "article" ? (
+                <label>
+                  <span className={styles.catalogLabelText}>
+                    Planungszeit je Einheit (Min.)
+                    {renderCatalogHelp("Zeitansatz für eine Einheit. In Paketen kann diese Zeit je Paketbestandteil bewusst überschrieben werden.")}
+                  </span>
+                  <input type="number" value={catalogDraft.planningMinutesPerUnit} onChange={(event) => updateCatalogDraft("planningMinutesPerUnit", Number(event.target.value))} />
+                </label>
+              ) : null}
               <label>
                 <span className={styles.catalogLabelText}>
                   Standard-Board
@@ -66113,6 +66062,50 @@ await addProjectLogbookEntry(
                 </span>
                 <select value={catalogDraft.defaultPlanningGroup} onChange={(event) => updateCatalogDraft("defaultPlanningGroup", event.target.value)}><option value="">Nicht vorbelegen</option>{planningGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select>
               </label>
+              <section className={styles.catalogMetricGrid} data-columns={catalogDraft.type === "service" ? "3" : "2"}>
+                <article className={styles.catalogMetric}>
+                  <span className={styles.catalogLabelText}>
+                    Marge vom VK
+                    {renderCatalogHelp("Anteil des Deckungsbeitrags am Netto-Verkaufspreis.")}
+                  </span>
+                  <strong>{formatHours(margin)}%</strong>
+                </article>
+                <article className={styles.catalogMetric}>
+                  <span className={styles.catalogLabelText}>
+                    Aufschlag auf EK
+                    {renderCatalogHelp("Prozentualer Aufschlag auf den Einkaufspreis beziehungsweise kalkulatorischen EK.")}
+                  </span>
+                  <strong>{formatHours(markup)}%</strong>
+                </article>
+                {catalogDraft.type === "service" ? (
+                  <article className={styles.catalogMetric}>
+                    <span className={styles.catalogLabelText}>
+                      Kalkulatorischer EK
+                      {renderCatalogHelp("Berechnet aus LK-Satz Wert und Planungszeit je Einheit. Beispiel: 60 Minuten entsprechen einer Stunde zum hinterlegten LK-Satz.")}
+                    </span>
+                    <strong>{formatMoney(servicePurchaseTotal)}</strong>
+                  </article>
+                ) : null}
+              </section>
+              {hasLaborCostRateDifference ? (
+                <section className={styles.catalogLaborRateWarning}>
+                  <div>
+                    <strong>LK-Satz weicht von der aktuellen Berechnung ab</strong>
+                    <span>
+                      Gespeichert: {formatMoney(catalogDraft.purchasePrice)} / Std. · Aktuell: {formatMoney(currentCalculatedLaborCostRate)} / Std. · Abweichung: {laborCostRateDifference > 0 ? "+" : ""}{formatMoney(laborCostRateDifference)} / Std.
+                    </span>
+                    <small>Bestehende Angebote und Rechnungen bleiben bei einer Übernahme unverändert.</small>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!canEditLaborCostRateValue}
+                    onClick={() => updateCatalogDraft("purchasePrice", currentCalculatedLaborCostRate)}
+                  >
+                    In Entwurf übernehmen
+                  </button>
+                </section>
+              ) : null}
               <label className={`${styles.checkboxRow} ${styles.catalogPlanningFlag}`}>
                 <input type="checkbox" checked={catalogDraft.isPlanningRelevant} onChange={(event) => updateCatalogDraft("isPlanningRelevant", event.target.checked)} />
                 <span className={styles.catalogLabelText}>
