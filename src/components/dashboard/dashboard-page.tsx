@@ -55,6 +55,11 @@ import {
 } from "@/lib/catalog/pricing";
 import type { ProjectReviewStatus } from "@/lib/projects/review-status";
 import {
+  getProjectContactPersonName,
+  getProjectContactPersonOptionLabel,
+  getProjectContactPersonOptions,
+} from "@/lib/projects/project-contact-person";
+import {
   type WinterServiceOfferTransfer,
 } from "@/components/calculators/winter-service-calculator";
 import { CalculatorWorkspace } from "@/components/calculators/calculator-workspace";
@@ -30518,7 +30523,7 @@ export function DashboardPage() {
       projectDraft.volume ? `Volumen: ${projectDraft.volume} EUR` : "",
       projectDraft.timeBudgetHours ? `Zeitkontingent: ${projectDraft.timeBudgetHours} Std.` : "",
       projectDraft.source ? `Quelle: ${projectDraft.source}` : "",
-      selectedContactPerson ? `Ansprechpartner/in: ${getContactDisplayName(selectedContactPerson)}` : "",
+      selectedContactPerson ? `Ansprechpartner/in: ${getProjectContactPersonName(selectedContactPerson)}` : "",
     ]
       .filter(Boolean)
       .join(" | ");
@@ -34593,21 +34598,7 @@ await addProjectLogbookEntry(
       : selectedProjectContact
         ? getCustomerFileTarget(selectedProjectContact)
         : null;
-  const projectContactPersons = selectedProjectCompany
-    ? contacts
-        .filter(
-          (contact) =>
-            contact.category === "Ansprechpartner" &&
-            (contact.parentCompanyId === selectedProjectCompany.id ||
-              (selectedProjectCompany.companyName &&
-                contact.parentCompanyName === selectedProjectCompany.companyName))
-        )
-        .sort((first, second) => {
-          if (first.isMainContact && !second.isMainContact) return -1;
-          if (!first.isMainContact && second.isMainContact) return 1;
-          return getContactDisplayName(first).localeCompare(getContactDisplayName(second), "de");
-        })
-    : [];
+  const projectContactPersons = getProjectContactPersonOptions(selectedProjectCompany, contacts);
   const projectObjectAddressOptions = selectedProjectCompany
     ? getActiveObjectAddresses(selectedProjectCompany.id)
     : [];
@@ -56707,7 +56698,7 @@ await addProjectLogbookEntry(
                 <dt>Kunde</dt>
                 <dd>{selectedProjectFile.customer || "-"}</dd>
                 <dt>Ansprechpartner/in</dt>
-                <dd>{selectedContactPerson ? getContactDisplayName(selectedContactPerson) : "-"}</dd>
+                <dd>{selectedContactPerson ? getProjectContactPersonName(selectedContactPerson) : "-"}</dd>
                 <dt>Projekttyp</dt>
                 <dd>{selectedProjectFile.projectType || "Projekt OK solutions"}</dd>
                 <dt>Projektart</dt>
@@ -76605,13 +76596,13 @@ await addProjectLogbookEntry(
                     <option value="">Bitte auswählen</option>
                     {projectContactPersons.map((contact) => (
                       <option key={contact.id} value={contact.id}>
-                        {getContactLabel(contact)}
+                        {getProjectContactPersonOptionLabel(contact, selectedProjectCompany?.id || "")}
                       </option>
                     ))}
                   </select>
                   {projectDraft.contactId && projectContactPersons.length === 0 && (
                     <small className={styles.projectSelectHint}>
-                      Keine Ansprechpartner zu diesem Kontakt hinterlegt.
+                      Keine Kontaktperson oder separaten Ansprechpartner zu diesem Kontakt hinterlegt.
                     </small>
                   )}
                   <button
