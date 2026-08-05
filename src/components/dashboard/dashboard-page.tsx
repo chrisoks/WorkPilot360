@@ -166,9 +166,8 @@ function WorkPilotWordmark({ className = "" }: { className?: string }) {
   return (
     <span className={`${styles.workPilotWordmark} ${className}`} aria-label="WorkPilot360">
       <svg className={styles.workPilotMark} viewBox="0 0 30 30" aria-hidden="true" focusable="false">
-        <path d="M3.5 7.5 8.3 21l5.6-10.5 4.3 8.2" />
-        <path d="M18.2 18.7 24.4 7.8" />
-        <polygon points="27.2 4.4 18.8 9.3 25.1 14.4" />
+        <path d="M3.5 7.5 8.3 21l5.6-10.5 4.3 8.2L26 5.8" />
+        <path d="M20.7 5.8H26V11" />
         <circle cx="3.5" cy="7.5" r="1.65" />
       </svg>
       <span className={styles.workPilotName}>Work</span>

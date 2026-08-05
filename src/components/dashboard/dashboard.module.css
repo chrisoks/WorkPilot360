@@ -37705,11 +37705,6 @@
 
 .workPilotMark path:nth-of-type(2) {
   stroke: #34c8ba;
-  stroke-width: 3.1;
-}
-
-.workPilotMark polygon {
-  fill: #34c8ba;
 }
 
 .workPilotName {
