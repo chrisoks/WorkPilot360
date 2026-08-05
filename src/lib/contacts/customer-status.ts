@@ -3,7 +3,7 @@ export type CustomerStatusOverride = "automatic" | CustomerStatus;
 
 const CUSTOMER_STATUS_LABELS = {
   automatic: "Automatik",
-  prospect: "Interessent",
+  prospect: "Kunde ohne Rechnung",
   new: "Neukunde",
   existing: "Bestandskunde",
 } as const;

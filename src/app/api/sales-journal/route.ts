@@ -275,7 +275,7 @@ export async function POST(req: Request) {
   const activityType = cleanString(body.activityType);
 
   if (!customerId || !note || !isSalesJournalActivityType(activityType)) {
-    return NextResponse.json({ error: "Kunde, Aktivitätsart und kurze Notiz sind erforderlich." }, { status: 400 });
+    return NextResponse.json({ error: "Kontakt, Aktivitätsart und kurze Notiz sind erforderlich." }, { status: 400 });
   }
 
   const contacts = await prisma.$queryRaw<Array<{ id: string }>>`
@@ -283,12 +283,12 @@ export async function POST(req: Request) {
     FROM "Contact"
     WHERE "organizationId" = ${organization.id}
       AND "id" = ${customerId}
-      AND "category" = 'Kunde'
+      AND "category" IN ('Kunde', 'Privatkunde', 'Interessent')
       AND "deletionMarkedAt" IS NULL
     LIMIT 1
   `;
   if (!contacts.length) {
-    return NextResponse.json({ error: "Der ausgewählte Kunde wurde nicht gefunden." }, { status: 404 });
+    return NextResponse.json({ error: "Der ausgewählte Kunde oder Interessent wurde nicht gefunden." }, { status: 404 });
   }
 
   const actorName = getActorName(actor);

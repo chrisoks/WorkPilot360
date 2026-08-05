@@ -1637,6 +1637,8 @@ model Contact {
   customerStatusOverrideAt     DateTime?
   customerStatusOverrideById   String?
   customerStatusOverrideByName String?
+  prospectSince                DateTime?
+  prospectConvertedAt          DateTime?
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @default(now())
   parentCompanyId              String?
@@ -1652,6 +1654,7 @@ model Contact {
   @@index([organizationId, mobileNormalized])
   @@index([organizationId, faxNormalized])
   @@index([organizationId, deletionMarkedAt])
+  @@index([organizationId, category, prospectSince])
 }
 
 model ObjectAddress {

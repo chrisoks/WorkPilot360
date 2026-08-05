@@ -56,6 +56,7 @@ function contactRow(phone: string | null = null) {
     discountTermDays: 0, priceGroup: null, iban: null, bic: null, bankName: null, taxId: null,
     debtorCreditorAccount: null, leitwegId: null, customerStatusOverride: "automatic", customerStatusOverrideReason: null,
     customerStatusOverrideAt: null, customerStatusOverrideById: null, customerStatusOverrideByName: null,
+    prospectSince: null, prospectConvertedAt: null,
     createdAt: updatedAt, updatedAt,
   };
 }
@@ -153,5 +154,78 @@ describe("contact reachability safeguard", () => {
     expect(response.status).toBe(400);
     expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("contact prospect lifecycle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.prisma.$executeRaw.mockResolvedValue(0);
+    mocks.prisma.$transaction.mockImplementation(async (callback) => callback(mocks.tx));
+    mocks.tx.$queryRaw.mockResolvedValue([{ ...contactRow(), category: "Interessent", customerNumber: "", prospectSince: updatedAt }]);
+    mocks.tx.contactIntegrationEvent.create.mockResolvedValue({ id: "event-1" });
+  });
+
+  it("creates an Interessent without allocating a customer number", async () => {
+    const response = await POST(new Request("http://localhost/api/contacts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: "user-1",
+        type: "company",
+        category: "Interessent",
+        companyName: "Interessent GmbH",
+        email: "kontakt@interessent.example",
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({ category: "Interessent", customerNumber: "", prospectSince: updatedAt.toISOString() });
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("converts an Interessent atomically and assigns a customer number", async () => {
+    const existingProspect = { ...contactRow(), category: "Interessent", customerNumber: "", prospectSince: updatedAt };
+    const convertedAt = new Date("2026-08-05T09:00:00.000Z");
+    const convertedCustomer = {
+      ...existingProspect,
+      category: "Kunde",
+      customerNumber: "7000101",
+      prospectConvertedAt: convertedAt,
+      updatedAt: convertedAt,
+    };
+    mocks.prisma.$queryRaw.mockReset();
+    mocks.prisma.$queryRaw.mockResolvedValueOnce([existingProspect]).mockResolvedValueOnce([]);
+    mocks.tx.$queryRaw
+      .mockReset()
+      .mockResolvedValueOnce([{ maximum: 7000100n }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([convertedCustomer]);
+    mocks.tx.$executeRaw.mockResolvedValue(0);
+    mocks.tx.auditLog.create.mockResolvedValue({ id: "audit-conversion" });
+
+    const response = await PATCH(new Request("http://localhost/api/contacts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...existingProspect,
+        actorId: "user-1",
+        expectedUpdatedAt: updatedAt.toISOString(),
+        category: "Kunde",
+        customerNumber: "",
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({ category: "Kunde", customerNumber: "7000101", prospectConvertedAt: convertedAt.toISOString() });
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      action: "contact_prospect_converted",
+      entityType: "contact-logbook",
+      entityId: "contact-1",
+      payload: expect.objectContaining({ previousCategory: "Interessent", nextCategory: "Kunde", customerNumber: "7000101" }),
+    }) });
   });
 });

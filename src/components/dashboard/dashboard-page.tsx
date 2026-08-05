@@ -10173,6 +10173,8 @@ type ContactItem = {
   customerStatusOverrideAt: string;
   customerStatusOverrideById: string;
   customerStatusOverrideByName: string;
+  prospectSince: string;
+  prospectConvertedAt: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -12208,10 +12210,12 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   customerStatusOverrideAt: "",
   customerStatusOverrideById: "",
   customerStatusOverrideByName: "",
+  prospectSince: "",
+  prospectConvertedAt: "",
 };
 
 const customerStatusLabels: Record<ContactItem["customerStatusEffective"], string> = {
-  prospect: "Interessent",
+  prospect: "Kunde ohne Rechnung",
   new: "Neukunde",
   existing: "Bestandskunde",
 };
@@ -12222,6 +12226,12 @@ function formatCustomerStatusAuditDate(value: string) {
   return Number.isNaN(date.getTime())
     ? ""
     : new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function getContactProspectAgeDays(contact: Pick<ContactItem, "prospectSince" | "createdAt">, reference = new Date()) {
+  const since = parseAppDateTime(contact.prospectSince || contact.createdAt);
+  const difference = reference.getTime() - since.getTime();
+  return Number.isFinite(difference) ? Math.max(0, Math.floor(difference / 86_400_000)) : 0;
 }
 
 const emptyObjectAddressDraft: ObjectAddressDraft = {
@@ -14169,7 +14179,7 @@ function ContactsListView({
         id: "category",
         label: "Kategorie",
         filterType: "select",
-        options: ["Kunde", "Privatkunde", "Lieferant", "Partner", "Ansprechpartner"],
+        options: ["Kunde", "Privatkunde", "Interessent", "Lieferant", "Partner", "Ansprechpartner"],
         value: (contact) => getEffectiveContactCategory(contact.category, contact.type),
         render: (contact) => {
           const category = getEffectiveContactCategory(contact.category, contact.type);
@@ -14510,7 +14520,7 @@ function ContactsListView({
         <div>
           <p className={styles.taskModuleEyebrow}>CRM</p>
           <h1>Kontakte</h1>
-          <p>Gewerbekunden, Privatkunden, Lieferanten, Partner und Ansprechpartner zentral verwalten.</p>
+          <p>Gewerbekunden, Privatkunden, Interessenten, Lieferanten, Partner und Ansprechpartner zentral verwalten.</p>
         </div>
         <button
           className={`${styles.primaryButton} ${styles.headerPrimaryAction}`}
@@ -14530,6 +14540,12 @@ function ContactsListView({
             value: "Privatkunde",
             count: categoryCounts.Privatkunde ?? 0,
             tone: "teal",
+          },
+          {
+            label: "Interessenten",
+            value: "Interessent",
+            count: categoryCounts.Interessent ?? 0,
+            tone: "rose",
           },
           {
             label: "Lieferanten",
@@ -14580,6 +14596,7 @@ function ContactsListView({
             <option value="">Alle</option>
             <option value="Kunde">Gewerbekunden</option>
             <option value="Privatkunde">Privatkunden</option>
+            <option value="Interessent">Interessenten</option>
             <option value="Lieferant">Lieferanten</option>
             <option value="Partner">Partner</option>
             <option value="Ansprechpartner">Ansprechpartner</option>
@@ -22303,6 +22320,8 @@ export function DashboardPage() {
       category:
         type === "person"
           ? "Ansprechpartner"
+          : category === "Interessent"
+            ? "Interessent"
           : type === "private"
             ? "Privatkunde"
             : category ||
@@ -22311,7 +22330,7 @@ export function DashboardPage() {
                 : current.category),
       parentCompanyId: type === "person" ? current.parentCompanyId : "",
       parentCompanyName: type === "person" ? current.parentCompanyName : "",
-      customerNumber: type === "person" ? "" : current.customerNumber,
+      customerNumber: type === "person" || category === "Interessent" ? "" : current.customerNumber,
     }));
   }
 
@@ -22326,6 +22345,8 @@ export function DashboardPage() {
       category:
         contactDraft.type === "person"
           ? "Ansprechpartner"
+          : contactDraft.category === "Interessent"
+            ? "Interessent"
           : contactDraft.type === "private"
             ? "Privatkunde"
             : contactDraft.category === "Privatkunde" || contactDraft.category === "Ansprechpartner"
@@ -22333,8 +22354,23 @@ export function DashboardPage() {
               : contactDraft.category,
       parentCompanyId: contactDraft.type === "person" ? contactDraft.parentCompanyId : "",
       parentCompanyName: contactDraft.type === "person" ? contactDraft.parentCompanyName : "",
-      customerNumber: contactDraft.type === "person" ? "" : contactDraft.customerNumber,
+      customerNumber:
+        contactDraft.type === "person" || contactDraft.category === "Interessent"
+          ? ""
+          : contactDraft.customerNumber,
     };
+    const storedContact = editingContactId
+      ? contacts.find((contact) => contact.id === editingContactId)
+      : undefined;
+    if (
+      storedContact?.category === "Interessent" &&
+      normalizedContactDraft.category !== "Interessent" &&
+      !window.confirm(
+        `Interessent jetzt als ${normalizedContactDraft.category === "Privatkunde" ? "Privatkunde" : "Gewerbekunde"} übernehmen? Dabei wird automatisch eine Kundennummer vergeben.`
+      )
+    ) {
+      return;
+    }
     if (normalizedContactDraft.type === "company" && !normalizedContactDraft.companyName.trim()) {
       setErrorMessage("Bitte einen Firmennamen angeben.");
       return;
@@ -34763,6 +34799,7 @@ await addProjectLogbookEntry(
     .sort((first, second) => getContactDisplayName(first).localeCompare(getContactDisplayName(second), "de"));
   const projectContactPickerOptions = contacts
     .filter((contact) => {
+      if (contact.deletionMarkedAt || contact.category === "Interessent") return false;
       const search = projectContactPickerSearch.trim().toLowerCase();
       if (!search) return true;
 
@@ -38633,6 +38670,21 @@ await addProjectLogbookEntry(
   const salesNewCustomerContacts = contacts.filter(
     (contact) => contact.category === "Kunde" && isReportDate(contact.createdAt)
   );
+  const activeProspectContacts = contacts
+    .filter((contact) => contact.category === "Interessent" && !contact.deletionMarkedAt)
+    .sort((left, right) => getContactProspectAgeDays(right, reportNow) - getContactProspectAgeDays(left, reportNow));
+  const salesNewProspectContacts = activeProspectContacts.filter((contact) =>
+    isReportDate(contact.prospectSince || contact.createdAt)
+  );
+  const salesConvertedProspectContacts = contacts.filter((contact) =>
+    Boolean(contact.prospectConvertedAt && isReportDate(contact.prospectConvertedAt))
+  );
+  const salesProspectOver30Count = activeProspectContacts.filter(
+    (contact) => getContactProspectAgeDays(contact, reportNow) >= 30
+  ).length;
+  const salesAverageProspectAgeDays = activeProspectContacts.length > 0
+    ? Math.round(activeProspectContacts.reduce((sum, contact) => sum + getContactProspectAgeDays(contact, reportNow), 0) / activeProspectContacts.length)
+    : 0;
   const salesCurrentMonthFirstCustomerOfferRows = salesOfferRows.filter((row) => {
     if (getReportMonthKey(row.offer.createdAt) !== salesCurrentMonthKey) return false;
     const customerName = normalizeSalesCustomerName(row.offer.customerName || row.project?.customer);
@@ -39638,7 +39690,7 @@ await addProjectLogbookEntry(
     revenue_before_period: "Positive Rechnung vor dem Zeitraum vorhanden",
     missing_customer: "Keine stabile Kundenzuordnung",
     missing_contact: "Verknüpfter Kontakt nicht vorhanden",
-    prospect_override: "Kontakt manuell als Interessent eingestuft",
+    prospect_override: "Kontakt manuell als Kunde ohne Rechnung eingestuft",
     no_positive_revenue_evidence: "Kein positiver Erstumsatz nachweisbar",
   } as const;
   const additionalSalesProofLabels = {
@@ -43927,6 +43979,34 @@ await addProjectLogbookEntry(
               </article>
             ))}
           </section>
+
+          <article className={styles.analyticsCard}>
+            <div className={styles.salesSectionHeader}>
+              <div>
+                <h2>Interessentenentwicklung</h2>
+                <p>Interessenten bleiben Kontakte ohne Angebot. Für ein Projekt oder Angebot werden sie zuerst bewusst zum Gewerbe- oder Privatkunden umgewandelt.</p>
+              </div>
+              <span>{activeProspectContacts.length} aktiv</span>
+            </div>
+            <div className={styles.salesAnalyticsSummaryGrid}>
+              <article><span>Neu im Zeitraum</span><strong>{salesNewProspectContacts.length}</strong><small>neu angelegte Interessenten</small></article>
+              <article><span>Umgewandelt</span><strong>{salesConvertedProspectContacts.length}</strong><small>zu Gewerbe- oder Privatkunden</small></article>
+              <article><span>Ø Interessent seit</span><strong>{salesAverageProspectAgeDays} Tg.</strong><small>{salesProspectOver30Count} seit mindestens 30 Tagen</small></article>
+            </div>
+            <div className={styles.salesAnalyticsTableScroll}>
+              <table className={styles.analyticsTable}>
+                <thead><tr><th>Interessent</th><th>Seit</th><th>Alter</th><th>Kontakt</th></tr></thead>
+                <tbody>{activeProspectContacts.length === 0 ? <tr><td colSpan={4}>Keine aktiven Interessenten.</td></tr> : activeProspectContacts.slice(0, 30).map((contact) => (
+                  <tr key={`sales-prospect-${contact.id}`}>
+                    <td>{getContactDisplayName(contact)}</td>
+                    <td>{formatDateOnly(contact.prospectSince || contact.createdAt)}</td>
+                    <td>{getContactProspectAgeDays(contact, reportNow)} Tg.</td>
+                    <td><button type="button" className={styles.secondaryButton} onClick={() => { setActiveTab("contacts"); openCustomerFile(contact); }}>Öffnen</button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </article>
 
           {selectedSalesAnalyticsDetail ? (
             <div
@@ -71581,10 +71661,13 @@ await addProjectLogbookEntry(
               actorId={activeUserId}
               actorRole={activeUser?.role || ""}
               contacts={contacts
-                .filter((contact) => contact.category === "Kunde" && !contact.deletionMarkedAt)
+                .filter((contact) => ["Kunde", "Privatkunde", "Interessent"].includes(contact.category) && !contact.deletionMarkedAt)
                 .map((contact) => ({
                   id: contact.id,
                   label: `${contact.customerNumber ? `${contact.customerNumber} · ` : ""}${getContactDisplayName(contact)}`,
+                  category: contact.category,
+                  prospectSince: contact.prospectSince,
+                  prospectConvertedAt: contact.prospectConvertedAt,
                 }))
                 .sort((left, right) => left.label.localeCompare(right.label, APP_LOCALE))}
               users={users
@@ -74666,6 +74749,13 @@ await addProjectLogbookEntry(
                       </button>
                       <button
                         type="button"
+                        data-active={contactDraft.category === "Interessent"}
+                        onClick={() => updateContactType("company", "Interessent")}
+                      >
+                        Interessent
+                      </button>
+                      <button
+                        type="button"
                         data-active={contactDraft.type === "person"}
                         onClick={() => updateContactType("person")}
                       >
@@ -74688,7 +74778,7 @@ await addProjectLogbookEntry(
                     </div>
                 </div>
 
-              {contactDraft.type !== "person" ? (
+              {contactDraft.type !== "person" && contactDraft.category !== "Interessent" ? (
                 <label>
                   Kundennummer
                   <input
@@ -74700,9 +74790,25 @@ await addProjectLogbookEntry(
                 <div className={styles.contactNumberNotApplicable}>
                   <span>Kundennummer</span>
                   <strong>Nicht erforderlich</strong>
-                  <small>Ansprechpartner werden über ihre Firma und Kontakt-ID zugeordnet.</small>
+                  <small>
+                    {contactDraft.category === "Interessent"
+                      ? "Die Kundennummer wird erst bei der Übernahme als Kunde automatisch vergeben."
+                      : "Ansprechpartner werden über ihre Firma und Kontakt-ID zugeordnet."}
+                  </small>
                 </div>
               )}
+
+              {contactDraft.category === "Interessent" ? (
+                <div className={styles.contactNumberNotApplicable}>
+                  <span>Interessentenstatus</span>
+                  <strong>
+                    {contactDraft.prospectSince
+                      ? `Seit ${getContactProspectAgeDays({ prospectSince: contactDraft.prospectSince, createdAt: contactDraft.prospectSince })} Tagen`
+                      : "Beginnt mit dem Speichern"}
+                  </strong>
+                  <small>Vertriebsaktivitäten werden im Sales-Journal dokumentiert. Vor einem Projekt oder Angebot muss der Kontakt bewusst als Gewerbe- oder Privatkunde übernommen werden.</small>
+                </div>
+              ) : null}
 
               <label>
                 Anrede
@@ -74968,7 +75074,7 @@ await addProjectLogbookEntry(
                         }}
                       >
                         <option value="automatic">Automatisch aus WorkPilot-Belegen</option>
-                        <option value="prospect">Manuell: Interessent</option>
+                        <option value="prospect">Manuell: Kunde ohne Rechnung</option>
                         <option value="new">Manuell: Neukunde</option>
                         <option value="existing">Manuell: Bestandskunde</option>
                       </select>
@@ -74998,7 +75104,7 @@ await addProjectLogbookEntry(
                   </div>
 
                   <div className={styles.customerClassificationNote}>
-                    <strong>Regel:</strong> 0 Rechnungen = Interessent, 1 Rechnung = Neukunde,
+                    <strong>Regel:</strong> 0 Rechnungen = Kunde ohne Rechnung, 1 Rechnung = Neukunde,
                     ab 2 Rechnungen = Bestandskunde. Entwürfe, Stornos und nicht positive Beträge
                     zählen nicht. Altbelege ohne eindeutige Kontaktverknüpfung sind nicht enthalten.
                     {contactDraft.customerStatusSource === "manual" &&
@@ -76584,6 +76690,7 @@ await addProjectLogbookEntry(
                         </div>
                       </div>
                     )}
+                    <small>Interessenten werden hier erst nach der Übernahme als Gewerbe- oder Privatkunde angeboten.</small>
                   </div>
                   <button type="button" onClick={() => openCreateContactModal("contact")}>
                     + Neu

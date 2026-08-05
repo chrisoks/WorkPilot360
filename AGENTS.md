@@ -1,5 +1,22 @@
 # WorkPilot360 Agent Handover
 
+- Interessenten im bestehenden CRM/Sales-Journal 2026-08-05: Die neue
+  Kontaktkategorie `Interessent` ist bewusst kein separates Lead- oder
+  Wiedervorlagemodul. Interessenten besitzen zunächst keine Kundennummer und
+  werden wie Kunden im vorhandenen Sales-Journal sowie im Kontaktlogbuch
+  verwendet. `prospectSince` dokumentiert den Beginn; bei der bewussten
+  Umwandlung zu `Kunde` oder `Privatkunde` vergibt der vorhandene
+  transaktions- und lockgeschützte Nummernservice automatisch die nächste
+  Kundennummer und `prospectConvertedAt` dokumentiert die Umwandlung. Die
+  Projekt- und damit Angebotsanlage sperrt aktive Interessenten fail-closed,
+  bis sie als Gewerbe- oder Privatkunde übernommen wurden. Sales-Journal und
+  Sales-Performance zeigen Bestand, Alter, neue und umgewandelte Interessenten,
+  ohne Aufgaben, Zeitbuchungen oder ein zweites Datensilo anzulegen. Der
+  bisherige technische Kundenstatus `prospect` (keine positive Rechnung) heißt
+  im Frontend nun eindeutig `Kunde ohne Rechnung` und ist nicht mit der neuen
+  Kontaktkategorie zu verwechseln. Bestehende Kontakte werden nicht automatisch
+  umklassifiziert.
+
 - Sales-Journal 2026-08-05: Der neue eigenständige Sidebar-Reiter
   `Sales-Journal` dokumentiert ausgeführte Vertriebsaktivitäten ohne eigene
   Wiedervorlage, Aufgabe oder Zeiterfassung. Manuell werden ausschließlich

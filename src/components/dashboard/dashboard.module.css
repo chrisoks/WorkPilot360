@@ -2042,7 +2042,7 @@
   border-radius: 20px;
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.045);
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   overflow: hidden;
 }
 
@@ -37688,6 +37688,12 @@
   margin-right: 0.3em;
   object-fit: contain;
   width: 1.08em;
+}
+
+.contactCategoryBadge[data-tone="prospect"] {
+  background: #fff3e8;
+  border-color: #f0bc83;
+  color: #9a4f0b;
 }
 
 .workPilotName {

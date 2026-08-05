@@ -6,6 +6,9 @@ import styles from "./sales-journal-workspace.module.css";
 type SalesJournalContact = {
   id: string;
   label: string;
+  category: string;
+  prospectSince?: string;
+  prospectConvertedAt?: string;
 };
 
 type SalesJournalUser = {
@@ -78,6 +81,12 @@ function sourceLabel(source: SalesJournalEntry["source"]) {
   return "Manuell";
 }
 
+function getProspectAgeDays(contact: SalesJournalContact) {
+  const since = new Date(contact.prospectSince || "");
+  if (Number.isNaN(since.getTime())) return 0;
+  return Math.max(0, Math.floor((Date.now() - since.getTime()) / 86_400_000));
+}
+
 export function SalesJournalWorkspace({
   actorId,
   actorRole,
@@ -143,6 +152,10 @@ export function SalesJournalWorkspace({
   const todayEntries = countedEntries.filter((entry) => dateKey(entry.occurredAt) === todayKey);
   const customerCount = new Set(countedEntries.map((entry) => entry.customerId || entry.customerName).filter(Boolean)).size;
   const manualCount = entries.filter((entry) => !entry.isSystemGenerated).length;
+  const prospectContacts = contacts
+    .filter((contact) => contact.category === "Interessent")
+    .sort((left, right) => getProspectAgeDays(right) - getProspectAgeDays(left));
+  const prospectsOver30Days = prospectContacts.filter((contact) => getProspectAgeDays(contact) >= 30).length;
 
   async function saveActivity() {
     if (!draft.customerId || !draft.activityType || !draft.note.trim() || isSaving) return;
@@ -182,15 +195,31 @@ export function SalesJournalWorkspace({
       <div className={styles.metrics}>
         <article><span>Aktivitäten heute</span><strong>{todayEntries.length}</strong></article>
         <article><span>Im gewählten Zeitraum</span><strong>{countedEntries.length}</strong></article>
-        <article><span>Bearbeitete Kunden</span><strong>{customerCount}</strong></article>
+        <article><span>Bearbeitete Kontakte</span><strong>{customerCount}</strong></article>
         <article><span>Persönlich dokumentiert</span><strong>{manualCount}</strong></article>
       </div>
 
       <section className={styles.filters}>
         <label><span>Zeitraum</span><select value={days} onChange={(event) => setDays(event.target.value)}><option value="7">Letzte 7 Tage</option><option value="30">Letzte 30 Tage</option><option value="90">Letzte 90 Tage</option><option value="365">Letzte 12 Monate</option></select></label>
         {canReadAll ? <label><span>Mitarbeiter</span><select value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}><option value="">Alle Mitarbeiter</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label> : null}
-        <label><span>Kunde</span><select value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="">Alle Kunden</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.label}</option>)}</select></label>
+        <label><span>Kunde / Interessent</span><select value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="">Alle Kunden und Interessenten</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.category === "Interessent" ? "Interessent · " : ""}{contact.label}</option>)}</select></label>
         <label><span>Aktivitätsart</span><select value={activityType} onChange={(event) => setActivityType(event.target.value)}><option value="">Alle Aktivitäten</option>{activityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}<option value="opportunity">Zusatzverkauf erkannt</option></select></label>
+      </section>
+
+      <section className={styles.prospectOverview}>
+        <div className={styles.prospectOverviewHeader}>
+          <div><p>INTERESSENTEN</p><h2>Offene Kontakte im Blick</h2></div>
+          <div className={styles.prospectMetrics}><span><strong>{prospectContacts.length}</strong> aktiv</span><span><strong>{prospectsOver30Days}</strong> seit mindestens 30 Tagen</span></div>
+        </div>
+        {prospectContacts.length === 0 ? (
+          <p className={styles.prospectEmpty}>Aktuell sind keine Kontakte als Interessent eingeordnet.</p>
+        ) : (
+          <div className={styles.prospectList}>
+            {prospectContacts.slice(0, 8).map((contact) => (
+              <article key={contact.id}><strong>{contact.label}</strong><span>seit {getProspectAgeDays(contact)} Tagen Interessent</span></article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className={styles.journal}>
@@ -229,7 +258,7 @@ export function SalesJournalWorkspace({
           <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="sales-journal-dialog-title">
             <header><div><p>SALES-JOURNAL</p><h2 id="sales-journal-dialog-title">Vertriebsaktivität eintragen</h2><span>Nur das festhalten, was tatsächlich im Vertrieb getan wurde.</span></div><button type="button" aria-label="Schließen" onClick={() => setIsModalOpen(false)} disabled={isSaving}>×</button></header>
             <div className={styles.formGrid}>
-              <label><span>Kunde</span><select value={draft.customerId} onChange={(event) => setDraft((current) => ({ ...current, customerId: event.target.value }))}><option value="">Bitte auswählen</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.label}</option>)}</select></label>
+              <label><span>Kunde / Interessent</span><select value={draft.customerId} onChange={(event) => setDraft((current) => ({ ...current, customerId: event.target.value }))}><option value="">Bitte auswählen</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.category === "Interessent" ? "Interessent · " : ""}{contact.label}</option>)}</select></label>
               <label><span>Aktivitätsart</span><select value={draft.activityType} onChange={(event) => setDraft((current) => ({ ...current, activityType: event.target.value }))}>{activityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
               <label className={styles.noteField}><span>Kurze Notiz / Ergebnis</span><textarea rows={5} value={draft.note} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Was wurde besprochen oder erreicht?" maxLength={2000} /></label>
             </div>

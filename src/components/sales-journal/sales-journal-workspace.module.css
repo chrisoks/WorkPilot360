@@ -20,6 +20,18 @@
 .formGrid textarea { min-height: 118px; padding: 12px; resize: vertical; }
 .filters select:focus, .formGrid select:focus, .formGrid textarea:focus { border-color: #178b85; box-shadow: 0 0 0 3px rgba(23,139,133,.12); outline: 0; }
 .journal { background: #fff; border: 1px solid #d2e0e3; border-radius: 16px; min-height: 320px; padding: 22px; }
+.prospectOverview { background: #fff; border: 1px solid #d2e0e3; border-radius: 16px; padding: 20px 22px; }
+.prospectOverviewHeader { align-items: center; display: flex; gap: 20px; justify-content: space-between; }
+.prospectOverviewHeader p { color: #b85b13; font-size: .72rem; font-weight: 800; letter-spacing: .12em; margin: 0 0 5px; }
+.prospectOverviewHeader h2 { color: #0d1b2c; font-size: 1.25rem; margin: 0; }
+.prospectMetrics { display: flex; flex-wrap: wrap; gap: 8px; }
+.prospectMetrics span { background: #fff5e9; border: 1px solid #f1c58f; border-radius: 999px; color: #85450f; font-size: .75rem; padding: 7px 11px; }
+.prospectMetrics strong { color: #643005; }
+.prospectList { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 16px; }
+.prospectList article { background: #fffaf4; border: 1px solid #f1d8ba; border-radius: 11px; display: grid; gap: 4px; padding: 12px; }
+.prospectList strong { color: #19283a; font-size: .86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prospectList span, .prospectEmpty { color: #765437; font-size: .75rem; }
+.prospectEmpty { margin: 16px 0 0; }
 .journalHeader { align-items: center; border-bottom: 1px solid #dde7e9; display: flex; justify-content: space-between; padding-bottom: 17px; }
 .journalHeader h2 { color: #0d1b2c; font-size: 1.35rem; margin: 0; }
 .journalHeader > span { background: #edf7f6; border: 1px solid #c5e3df; border-radius: 999px; color: #146a68; font-size: .75rem; font-weight: 750; padding: 7px 11px; }
@@ -53,5 +65,5 @@
 .formError { font-size: .84rem; font-weight: 650; margin: 4px 26px; }
 .modal footer { border-top: 1px solid #e1e9eb; display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; padding: 18px 26px; }
 .modal footer .primaryButton { background: #137b78; border-color: #137b78; color: #fff; }
-@media (max-width: 1050px) { .metrics { grid-template-columns: repeat(2, 1fr); } .filters { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 700px) { .hero { align-items: flex-start; flex-direction: column; gap: 20px; padding: 24px; } .metrics, .filters, .formGrid { grid-template-columns: 1fr; } .noteField { grid-column: auto; } .journal { padding: 16px; } .journalHeader { align-items: flex-start; flex-direction: column; gap: 10px; } .dayGroup > h3 { margin-left: 0; } .entry { grid-template-columns: 48px 18px minmax(0,1fr); } .modalBackdrop { padding: 10px; } }
+@media (max-width: 1050px) { .metrics { grid-template-columns: repeat(2, 1fr); } .filters { grid-template-columns: repeat(2, 1fr); } .prospectList { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .hero { align-items: flex-start; flex-direction: column; gap: 20px; padding: 24px; } .metrics, .filters, .formGrid, .prospectList { grid-template-columns: 1fr; } .prospectOverviewHeader { align-items: flex-start; flex-direction: column; } .noteField { grid-column: auto; } .journal { padding: 16px; } .journalHeader { align-items: flex-start; flex-direction: column; gap: 10px; } .dayGroup > h3 { margin-left: 0; } .entry { grid-template-columns: 48px 18px minmax(0,1fr); } .modalBackdrop { padding: 10px; } }

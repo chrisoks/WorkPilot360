@@ -24,6 +24,7 @@ describe("contact form safeguards", () => {
     expect(getContactCategoryLabel("Kunde")).toBe("Gewerbekunde");
     expect(getContactCategoryTone("Kunde")).toBe("business");
     expect(getContactCategoryTone("Privatkunde")).toBe("private");
+    expect(getContactCategoryTone("Interessent")).toBe("prospect");
     expect(getContactCategoryTone("Ansprechpartner")).toBe("person");
   });
 

@@ -90,6 +90,8 @@ type ContactRow = {
   customerStatusOverrideAt: Date | null;
   customerStatusOverrideById: string | null;
   customerStatusOverrideByName: string | null;
+  prospectSince: Date | null;
+  prospectConvertedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -177,6 +179,8 @@ async function ensureContactsTable() {
       "customerStatusOverrideAt" TIMESTAMP(3),
       "customerStatusOverrideById" TEXT,
       "customerStatusOverrideByName" TEXT,
+      "prospectSince" TIMESTAMP(3),
+      "prospectConvertedAt" TIMESTAMP(3),
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -207,6 +211,8 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideAt" TIMESTAMP(3)`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideById" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideByName" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "prospectSince" TIMESTAMP(3)`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "prospectConvertedAt" TIMESTAMP(3)`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "phoneNormalized" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "mobileNormalized" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "faxNormalized" TEXT`;
@@ -214,6 +220,7 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_mobileNormalized_idx" ON "Contact"("organizationId", "mobileNormalized")`;
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_faxNormalized_idx" ON "Contact"("organizationId", "faxNormalized")`;
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_deletionMarkedAt_idx" ON "Contact"("organizationId", "deletionMarkedAt")`;
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_category_prospectSince_idx" ON "Contact"("organizationId", "category", "prospectSince")`;
 }
 
 function cleanString(value: unknown) {
@@ -376,6 +383,8 @@ function formatContact(contact: ContactRow, invoiceCount = 0) {
     customerStatusOverrideAt: contact.customerStatusOverrideAt?.toISOString() ?? "",
     customerStatusOverrideById: contact.customerStatusOverrideById ?? "",
     customerStatusOverrideByName: contact.customerStatusOverrideByName ?? "",
+    prospectSince: contact.prospectSince?.toISOString() ?? "",
+    prospectConvertedAt: contact.prospectConvertedAt?.toISOString() ?? "",
     createdAt: contact.createdAt.toISOString(),
     updatedAt: contact.updatedAt.toISOString(),
   };
@@ -537,7 +546,8 @@ export async function POST(req: Request) {
   let inserted: ContactRow[];
   try {
     inserted = await prisma.$transaction(async (transaction) => {
-    const customerNumber = type === "person"
+    const isProspect = category === "Interessent";
+    const customerNumber = type === "person" || isProspect
       ? ""
       : await allocateContactCustomerNumber({
           tx: transaction,
@@ -554,7 +564,8 @@ export async function POST(req: Request) {
       "street", "addressLine1", "addressLine2", "postalCode", "city", "country",
       "paymentTermDays", "discountPercent", "discountTermDays", "priceGroup",
       "iban", "bic", "bankName", "taxId", "debtorCreditorAccount", "leitwegId",
-      "customerStatusOverride", "customerStatusOverrideReason", "customerStatusOverrideAt", "customerStatusOverrideById", "customerStatusOverrideByName"
+      "customerStatusOverride", "customerStatusOverrideReason", "customerStatusOverrideAt", "customerStatusOverrideById", "customerStatusOverrideByName",
+      "prospectSince", "prospectConvertedAt"
     )
     VALUES (
       ${id}, ${organization.id}, ${category}, ${type}, ${nullableString(body.legalForm)}, ${customerNumber},
@@ -572,7 +583,8 @@ export async function POST(req: Request) {
       ${nullableString(body.iban)}, ${nullableString(body.bic)}, ${nullableString(body.bankName)}, ${nullableString(body.taxId)},
       ${nullableString(body.debtorCreditorAccount)}, ${nullableString(body.leitwegId)},
       ${customerStatus.customerStatusOverride}, ${customerStatus.customerStatusOverrideReason}, ${customerStatus.customerStatusOverrideAt},
-      ${customerStatus.customerStatusOverrideById}, ${customerStatus.customerStatusOverrideByName}
+      ${customerStatus.customerStatusOverrideById}, ${customerStatus.customerStatusOverrideByName},
+      ${isProspect ? new Date() : null}, ${null}
     )
     RETURNING *
     `;
@@ -656,20 +668,29 @@ export async function PATCH(req: Request) {
       { status: 409 }
     );
   }
-  let customerNumber = type === "person"
+  const previousContact = existingContacts[0];
+  const isProspect = category === "Interessent";
+  const wasProspect = previousContact.category === "Interessent";
+  const isProspectConversion = wasProspect && (category === "Kunde" || category === "Privatkunde");
+  if (!wasProspect && isProspect) {
+    return NextResponse.json(
+      { error: "Ein bestehender Kunde oder Geschäftskontakt kann nicht zurück zum Interessenten gemacht werden." },
+      { status: 409 }
+    );
+  }
+  let customerNumber = type === "person" || isProspect
     ? ""
-    : cleanString(body.customerNumber) || existingContacts[0].customerNumber;
+    : cleanString(body.customerNumber) || previousContact.customerNumber;
   const customerStatus = getCustomerStatusInput({
     body,
     actor,
     isCustomer: type === "private" || category === "Kunde" || category === "Privatkunde",
-    existing: existingContacts[0],
+    existing: previousContact,
   });
   if ("error" in customerStatus) {
     return NextResponse.json({ error: customerStatus.error }, { status: 400 });
   }
 
-  const previousContact = existingContacts[0];
   const phone = normalizeContactPhone(body.phone, "Telefon", previousContact.phone);
   const mobile = normalizeContactPhone(body.mobile, "Mobiltelefon", previousContact.mobile);
   const fax = normalizeContactPhone(body.fax, "Fax", previousContact.fax);
@@ -724,7 +745,7 @@ export async function PATCH(req: Request) {
   let updated: ContactRow[];
   try {
     updated = await prisma.$transaction(async (transaction) => {
-    if (type !== "person" && !customerNumber) {
+    if (type !== "person" && !isProspect && !customerNumber) {
       customerNumber = await allocateContactCustomerNumber({
         tx: transaction,
         organizationId: organization.id,
@@ -800,6 +821,8 @@ export async function PATCH(req: Request) {
       "customerStatusOverrideAt" = ${customerStatus.customerStatusOverrideAt},
       "customerStatusOverrideById" = ${customerStatus.customerStatusOverrideById},
       "customerStatusOverrideByName" = ${customerStatus.customerStatusOverrideByName},
+      "prospectSince" = ${isProspect ? previousContact.prospectSince ?? new Date() : previousContact.prospectSince},
+      "prospectConvertedAt" = ${isProspectConversion ? new Date() : previousContact.prospectConvertedAt},
       "updatedAt" = CURRENT_TIMESTAMP
       WHERE "id" = ${id}
         AND "organizationId" = ${organization.id}
@@ -847,6 +870,28 @@ export async function PATCH(req: Request) {
           })),
         });
       }
+    }
+
+    if (isProspectConversion) {
+      await transaction.auditLog.create({
+        data: {
+          organizationId: organization.id,
+          actorId: actor.id,
+          action: "contact_prospect_converted",
+          entityType: "contact-logbook",
+          entityId: id,
+          payload: {
+            text: `Interessent wurde als ${category === "Privatkunde" ? "Privatkunde" : "Gewerbekunde"} übernommen. Kundennummer: ${customerNumber}.`,
+            author: getUserName(actor),
+            authorUserId: actor.id,
+            previousCategory: previousContact.category,
+            nextCategory: category,
+            customerNumber,
+            prospectSince: previousContact.prospectSince?.toISOString() ?? previousContact.createdAt.toISOString(),
+            isSystem: true,
+          },
+        },
+      });
     }
 
     if (masterDataChange.text) {

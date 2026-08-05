@@ -93,6 +93,26 @@ describe("sales journal route", () => {
     }), select: { id: true, createdAt: true } });
   });
 
+  it("stores a manual activity for an Interessent in the same contact logbook", async () => {
+    vi.clearAllMocks();
+    mocks.prisma.$queryRaw.mockReset();
+    mocks.prisma.$queryRaw.mockResolvedValueOnce([{ id: "prospect-1" }]);
+    mocks.prisma.auditLog.create.mockResolvedValue({ id: "journal-2", createdAt: new Date("2026-08-05T10:30:00.000Z") });
+
+    const response = await POST(new Request("http://localhost/api/sales-journal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "employee-1", customerId: "prospect-1", activityType: "email", note: "Erstkontakt hergestellt." }),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.prisma.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      entityType: "contact-logbook",
+      entityId: "prospect-1",
+      payload: expect.objectContaining({ salesActivityType: "email", text: "Erstkontakt hergestellt." }),
+    }), select: { id: true, createdAt: true } });
+  });
+
   it("rejects task, follow-up and time-tracking fields as activity types", async () => {
     vi.clearAllMocks();
     mocks.prisma.$queryRaw.mockReset();

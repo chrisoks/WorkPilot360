@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getProjectMainContactEligibilityError } from "@/lib/projects/project-contact-eligibility";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import {
   canArchiveProjects,
@@ -504,8 +505,8 @@ async function validateProjectContactReferences(
   );
   if (contactIds.length === 0) return null;
 
-  const rows = await prisma.$queryRaw<Array<{ id: string; parentCompanyId: string | null }>>`
-    SELECT "id", "parentCompanyId"
+  const rows = await prisma.$queryRaw<Array<{ id: string; parentCompanyId: string | null; category: string; deletionMarkedAt: Date | null }>>`
+    SELECT "id", "parentCompanyId", "category", "deletionMarkedAt"
     FROM "Contact"
     WHERE "organizationId" = ${organizationId}
       AND "id" IN (${Prisma.join(contactIds)})
@@ -517,6 +518,9 @@ async function validateProjectContactReferences(
   }
 
   const mainContactId = cleanString(input.contactId);
+  const mainContact = rows.find((row) => row.id === mainContactId);
+  const eligibilityError = getProjectMainContactEligibilityError(mainContact);
+  if (eligibilityError) return eligibilityError;
   const linkedContactIds = [cleanString(input.contactPersonId), cleanString(input.addressContactId)].filter(Boolean);
   if (mainContactId && linkedContactIds.length > 0) {
     const invalidLinkedIds = linkedContactIds.filter((id) => {

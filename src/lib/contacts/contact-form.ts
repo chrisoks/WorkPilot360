@@ -36,6 +36,7 @@ export function getEffectiveContactCategory(
 export function getContactCategoryTone(category: string) {
   if (category === "Kunde") return "business";
   if (category === "Privatkunde") return "private";
+  if (category === "Interessent") return "prospect";
   if (category === "Ansprechpartner") return "person";
   if (category === "Lieferant") return "supplier";
   if (category === "Partner") return "partner";
