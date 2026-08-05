@@ -23,6 +23,7 @@ import {
   ContactNumberConflictError,
 } from "@/lib/contacts/customer-number-service";
 import { getContactMasterDataChange } from "@/lib/contacts/contact-logbook-change";
+import { getContactReachabilityError } from "@/lib/contacts/contact-form";
 
 type ContactRow = {
   id: string;
@@ -508,6 +509,16 @@ export async function POST(req: Request) {
   if (emailValidationError) {
     return NextResponse.json({ error: emailValidationError }, { status: 400 });
   }
+  const reachabilityError = getContactReachabilityError({
+    email,
+    invoiceEmail,
+    activityReportEmail,
+    phone: body.phone,
+    mobile: body.mobile,
+  });
+  if (reachabilityError) {
+    return NextResponse.json({ error: reachabilityError }, { status: 400 });
+  }
   const customerStatus = getCustomerStatusInput({
     body,
     actor,
@@ -617,6 +628,16 @@ export async function PATCH(req: Request) {
     getEmailValidationError("E-Mail Tätigkeitsbericht", activityReportEmail);
   if (emailValidationError) {
     return NextResponse.json({ error: emailValidationError }, { status: 400 });
+  }
+  const reachabilityError = getContactReachabilityError({
+    email,
+    invoiceEmail,
+    activityReportEmail,
+    phone: body.phone,
+    mobile: body.mobile,
+  });
+  if (reachabilityError) {
+    return NextResponse.json({ error: reachabilityError }, { status: 400 });
   }
   const existingContacts = await prisma.$queryRaw<ContactRow[]>`
     SELECT *

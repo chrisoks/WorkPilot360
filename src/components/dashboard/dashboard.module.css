@@ -25079,6 +25079,103 @@
   margin-top: 0;
 }
 
+.contactCategoryBadge {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 750;
+  line-height: 1;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.contactCategoryBadge[data-tone="business"] {
+  background: #e6f6f2;
+  border-color: #9edbd0;
+  color: #0b6b63;
+}
+
+.contactCategoryBadge[data-tone="private"] {
+  background: #edf3ff;
+  border-color: #b8cdfd;
+  color: #2857a5;
+}
+
+.contactCategoryBadge[data-tone="person"] {
+  background: #e8f8fb;
+  border-color: #a8dfe8;
+  color: #087381;
+}
+
+.contactCategoryBadge[data-tone="supplier"] {
+  background: #fff5df;
+  border-color: #efd294;
+  color: #8b5b00;
+}
+
+.contactCategoryBadge[data-tone="partner"] {
+  background: #f1edff;
+  border-color: #c9bcfa;
+  color: #5941a6;
+}
+
+.contactCategoryBadge[data-tone="neutral"] {
+  background: #f1f5f7;
+  border-color: #d5dfe3;
+  color: #53656c;
+}
+
+.contactSortButton {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-weight: inherit;
+  gap: 7px;
+  justify-content: space-between;
+  min-width: 100%;
+  padding: 0;
+  text-align: left;
+}
+
+.contactSortButton:focus-visible {
+  outline: 2px solid #63d4c7;
+  outline-offset: 3px;
+}
+
+.contactSortArrows {
+  display: inline-grid;
+  flex: 0 0 auto;
+  font-size: 0.52rem;
+  gap: 0;
+  line-height: 0.7;
+}
+
+.contactSortArrows > span {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.contactSortArrows > span[data-active="true"] {
+  color: #62e2d2;
+}
+
+.contactReachabilityHint {
+  background: #eef8f6;
+  border: 1px solid #c5e3dd;
+  border-radius: 9px;
+  color: #315f5d;
+  font-size: 0.82rem;
+  font-weight: 650;
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 9px 11px;
+}
+
 .projectStatusChangeModal {
   width: min(920px, calc(100vw - 16px));
 }

@@ -20,6 +20,14 @@ import {
   getRecommendedInvoiceMailRecipient,
   type InvoiceMailCandidate,
 } from "@/lib/contacts/invoice-routing";
+import {
+  getContactCategoryLabel,
+  getContactCategoryTone,
+  getContactReachabilityError,
+  getInheritedCompanyAddress,
+  sortContactsByValue,
+  type ContactSortDirection,
+} from "@/lib/contacts/contact-form";
 import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
 import styles from "./dashboard.module.css";
 import { JarvisComposer } from "./jarvis-composer";
@@ -14122,6 +14130,10 @@ function ContactsListView({
   const [searchTerm, setSearchTerm] = useState("");
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [contactSort, setContactSort] = useState<{
+    columnId: ContactColumnId;
+    direction: ContactSortDirection;
+  }>({ columnId: "customerNumber", direction: "desc" });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
@@ -14232,6 +14244,14 @@ function ContactsListView({
         filterType: "select",
         options: ["Kunde", "Privatkunde", "Lieferant", "Partner", "Ansprechpartner"],
         value: (contact) => contact.category,
+        render: (contact) => (
+          <span
+            className={styles.contactCategoryBadge}
+            data-tone={getContactCategoryTone(contact.category)}
+          >
+            {getContactCategoryLabel(contact.category)}
+          </span>
+        ),
       },
       {
         id: "location",
@@ -14325,9 +14345,14 @@ function ContactsListView({
   );
   const pageCount = Math.max(1, Math.ceil(visibleContacts.length / pageSize));
   const activePage = Math.min(page, pageCount);
+  const sortedContacts = useMemo(() => {
+    const sortColumn = contactColumns.find((column) => column.id === contactSort.columnId);
+    if (!sortColumn) return visibleContacts;
+    return sortContactsByValue(visibleContacts, sortColumn.value, contactSort.direction);
+  }, [contactColumns, contactSort, visibleContacts]);
   const paginatedContacts = useMemo(
-    () => visibleContacts.slice((activePage - 1) * pageSize, activePage * pageSize),
-    [activePage, pageSize, visibleContacts]
+    () => sortedContacts.slice((activePage - 1) * pageSize, activePage * pageSize),
+    [activePage, pageSize, sortedContacts]
   );
 
   useEffect(() => {
@@ -14341,6 +14366,15 @@ function ContactsListView({
 
   function updateColumnFilter(columnId: ContactColumnId, value: string) {
     setColumnFilters((currentFilters) => ({ ...currentFilters, [columnId]: value }));
+  }
+
+  function updateContactSort(columnId: ContactColumnId) {
+    setContactSort((currentSort) => ({
+      columnId,
+      direction:
+        currentSort.columnId === columnId && currentSort.direction === "asc" ? "desc" : "asc",
+    }));
+    setPage(1);
   }
 
   function toggleColumn(columnId: ContactColumnId, checked: boolean) {
@@ -14359,14 +14393,17 @@ function ContactsListView({
 
   function downloadExport(format: "csv" | "excel") {
     const getExportValue = (contact: ContactItem, column: ContactColumn) =>
-      column.value(contact).replace(/\s+/g, " ").trim();
+      (column.id === "category"
+        ? getContactCategoryLabel(column.value(contact))
+        : column.value(contact)
+      ).replace(/\s+/g, " ").trim();
     const fileDate = new Date().toISOString().slice(0, 10);
 
     if (format === "csv") {
       const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
       const rows = [
         visibleColumns.map((column) => escapeCsv(column.label)).join(";"),
-        ...visibleContacts.map((contact) =>
+        ...sortedContacts.map((contact) =>
           visibleColumns
             .map((column) => escapeCsv(getExportValue(contact, column)))
             .join(";")
@@ -14391,7 +14428,7 @@ function ContactsListView({
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
-    const tableRows = visibleContacts
+    const tableRows = sortedContacts
       .map(
         (contact) =>
           `<tr>${visibleColumns
@@ -14516,7 +14553,7 @@ function ContactsListView({
         <div>
           <p className={styles.taskModuleEyebrow}>CRM</p>
           <h1>Kontakte</h1>
-          <p>Kunden, Lieferanten, Partner und Ansprechpartner zentral verwalten.</p>
+          <p>Gewerbekunden, Privatkunden, Lieferanten, Partner und Ansprechpartner zentral verwalten.</p>
         </div>
         <button
           className={`${styles.primaryButton} ${styles.headerPrimaryAction}`}
@@ -14530,7 +14567,7 @@ function ContactsListView({
       <section className={styles.contactSummaryGrid}>
         {[
           { label: "Alle", value: "", count: contacts.filter((contact) => !contact.deletionMarkedAt).length, tone: "neutral" },
-          { label: "Kunden", value: "Kunde", count: categoryCounts.Kunde ?? 0, tone: "blue" },
+          { label: "Gewerbekunden", value: "Kunde", count: categoryCounts.Kunde ?? 0, tone: "blue" },
           {
             label: "Privatkunden",
             value: "Privatkunde",
@@ -14584,7 +14621,7 @@ function ContactsListView({
           Kategorie
           <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
             <option value="">Alle</option>
-            <option value="Kunde">Kunden</option>
+            <option value="Kunde">Gewerbekunden</option>
             <option value="Privatkunde">Privatkunden</option>
             <option value="Lieferant">Lieferanten</option>
             <option value="Partner">Partner</option>
@@ -14673,7 +14710,29 @@ function ContactsListView({
           <thead>
             <tr>
               {visibleColumns.map((column) => (
-                <th key={column.id}>{column.label}</th>
+                <th
+                  key={column.id}
+                  aria-sort={
+                    contactSort.columnId === column.id
+                      ? contactSort.direction === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                >
+                  <button
+                    type="button"
+                    className={styles.contactSortButton}
+                    onClick={() => updateContactSort(column.id)}
+                    title={`${column.label} sortieren`}
+                  >
+                    <span>{column.label}</span>
+                    <span className={styles.contactSortArrows} aria-hidden="true">
+                      <span data-active={contactSort.columnId === column.id && contactSort.direction === "asc"}>▲</span>
+                      <span data-active={contactSort.columnId === column.id && contactSort.direction === "desc"}>▼</span>
+                    </span>
+                  </button>
+                </th>
               ))}
             </tr>
             <tr className={styles.contactFilterRow}>
@@ -14687,7 +14746,7 @@ function ContactsListView({
                       <option value="">Alle</option>
                       {(column.options ?? []).map((option) => (
                         <option key={option} value={option}>
-                          {option}
+                          {column.id === "category" ? getContactCategoryLabel(option) : option}
                         </option>
                       ))}
                     </select>
@@ -22237,11 +22296,19 @@ export function DashboardPage() {
         .filter((value) => Number.isFinite(value))
         .sort((first, second) => second - first)[0] ?? 7000048;
 
+    const selectedProjectCompany = target === "person"
+      ? contacts.find(
+          (contact) => contact.id === projectDraft.contactId && contact.type === "company"
+        )
+      : undefined;
     setContactDraft({
       ...emptyContact,
       category: target === "person" ? "Ansprechpartner" : emptyContact.category,
       type: target === "person" ? "person" : emptyContact.type,
       customerNumber: target === "person" ? "" : String(nextNumber + 1),
+      parentCompanyId: selectedProjectCompany?.id ?? "",
+      parentCompanyName: selectedProjectCompany?.companyName ?? "",
+      ...getInheritedCompanyAddress(selectedProjectCompany),
     });
     setProjectContactTarget(target);
     setEditingContactId(null);
@@ -22319,6 +22386,12 @@ export function DashboardPage() {
       !normalizedContactDraft.lastName.trim()
     ) {
       setErrorMessage("Bitte mindestens Vorname oder Nachname angeben.");
+      return;
+    }
+    const reachabilityError = getContactReachabilityError(normalizedContactDraft);
+    if (reachabilityError) {
+      setErrorMessage(reachabilityError);
+      setContactFormTab("details");
       return;
     }
     if (
@@ -38844,7 +38917,7 @@ await addProjectLogbookEntry(
       label: "Erstangebote",
       value: `${salesCurrentMonthFirstCustomerOfferRows.length}`,
       trend: `${salesNewCustomerContacts.length} neue Akten`,
-      detail: "Erste Angebote im aktuellen Auswertungsmonat; neue Kundenakten werden separat ausgewiesen.",
+      detail: "Erste Angebote im aktuellen Auswertungsmonat; neue Gewerbekundenakten werden separat ausgewiesen.",
     },
     {
       key: "opening-rate",
@@ -38937,7 +39010,7 @@ await addProjectLogbookEntry(
     : selectedSalesAnalyticsDetail === "offers"
       ? "Angebotsmotor im Detail"
       : selectedSalesAnalyticsDetail === "newCustomers"
-        ? "Erstangebote und neue Kundenakten"
+        ? "Erstangebote und neue Gewerbekundenakten"
         : selectedSalesAnalyticsDetail === "closing"
           ? "Abschlusskraft im Detail"
           : selectedSalesAnalyticsDetail === "approvals"
@@ -43984,18 +44057,18 @@ await addProjectLogbookEntry(
                         {renderSalesOffersTable(salesCurrentMonthFirstCustomerOfferRows)}
                       </section>
                       <section className={styles.salesAnalyticsBlock}>
-                        <h3>Im Zeitraum neu angelegte Kundenakten</h3>
+                        <h3>Im Zeitraum neu angelegte Gewerbekundenakten</h3>
                         <div className={styles.salesAnalyticsTableScroll}>
                           <table className={styles.analyticsTable}>
-                            <thead><tr><th>Kunde</th><th>Angelegt</th><th>Aktionen</th></tr></thead>
-                            <tbody>{salesNewCustomerContacts.length === 0 ? <tr><td colSpan={3}>Keine neu angelegten Kundenakten.</td></tr> : salesNewCustomerContacts.slice(0, 100).map((contact) => (
+                            <thead><tr><th>Gewerbekunde</th><th>Angelegt</th><th>Aktionen</th></tr></thead>
+                            <tbody>{salesNewCustomerContacts.length === 0 ? <tr><td colSpan={3}>Keine neu angelegten Gewerbekundenakten.</td></tr> : salesNewCustomerContacts.slice(0, 100).map((contact) => (
                               <tr key={`sales-new-contact-${contact.id}`}>
                                 <td>{getContactDisplayName(contact)}</td><td>{formatDateOnly(contact.createdAt)}</td>
                                 <td><button type="button" className={styles.secondaryButton} onClick={() => {
                                   setSelectedSalesAnalyticsDetail(null);
                                   setActiveTab("contacts");
                                   openCustomerFile(contact);
-                                }}>Kunde</button></td>
+                                }}>Gewerbekunde</button></td>
                               </tr>
                             ))}</tbody>
                           </table>
@@ -74647,7 +74720,7 @@ await addProjectLogbookEntry(
                         data-active={contactDraft.type === "company" && contactDraft.category === "Kunde"}
                         onClick={() => updateContactType("company", "Kunde")}
                       >
-                        Firma
+                        Gewerbekunde
                       </button>
                       <button
                         type="button"
@@ -74736,8 +74809,12 @@ await addProjectLogbookEntry(
                       const selectedCompany = contactCompanyOptions.find(
                         (contact) => contact.id === event.target.value
                       );
-                      updateContactDraft("parentCompanyId", selectedCompany?.id || "");
-                      updateContactDraft("parentCompanyName", selectedCompany?.companyName || "");
+                      setContactDraft((current) => ({
+                        ...current,
+                        parentCompanyId: selectedCompany?.id || "",
+                        parentCompanyName: selectedCompany?.companyName || "",
+                        ...getInheritedCompanyAddress(selectedCompany),
+                      }));
                     }}
                   >
                     <option value="">Bitte Firma auswählen</option>
@@ -74816,6 +74893,9 @@ await addProjectLogbookEntry(
               {contactFormTab === "details" && (
               <>
               <section className={styles.contactFormGrid}>
+                <p className={styles.contactReachabilityHint}>
+                  Mindestens eine E-Mail-Adresse, Mobilnummer oder Festnetznummer ist erforderlich.
+                </p>
                 <label>
                   E-Mail-Adresse Kontaktperson
                   <input

@@ -37,7 +37,7 @@ vi.mock("@/lib/permissions", () => ({
   canReadContacts: vi.fn(() => true),
 }));
 
-import { PATCH } from "./route";
+import { PATCH, POST } from "./route";
 
 const updatedAt = new Date("2026-08-05T08:00:00.000Z");
 
@@ -103,5 +103,55 @@ describe("contact master data logbook audit", () => {
     }) });
     expect(JSON.stringify(mocks.tx.auditLog.create.mock.calls)).not.toContain("06281 99999");
     expect(JSON.stringify(mocks.tx.auditLog.create.mock.calls)).not.toContain("+49628199999");
+  });
+});
+
+describe("contact reachability safeguard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.prisma.$executeRaw.mockResolvedValue(0);
+  });
+
+  it("rejects creating a contact without email, mobile or phone before persistence", async () => {
+    const response = await POST(new Request("http://localhost/api/contacts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: "user-1",
+        type: "company",
+        category: "Kunde",
+        companyName: "Ohne Erreichbarkeit GmbH",
+        email: "",
+        mobile: "",
+        phone: "",
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Bitte hinterlege mindestens eine E-Mail-Adresse, Mobilnummer oder Festnetznummer.",
+    });
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects updating a contact without a direct contact channel before persistence", async () => {
+    const response = await PATCH(new Request("http://localhost/api/contacts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: "user-1",
+        id: "contact-1",
+        type: "company",
+        category: "Kunde",
+        companyName: "Ohne Erreichbarkeit GmbH",
+        email: "",
+        mobile: "",
+        phone: "",
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
 });
