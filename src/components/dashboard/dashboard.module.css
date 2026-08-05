@@ -7084,6 +7084,7 @@
 
 .jarvisSidebarVisual img {
   display: block;
+  filter: hue-rotate(126deg) saturate(1.28) brightness(0.98);
   height: 96%;
   left: 50%;
   max-width: none;
