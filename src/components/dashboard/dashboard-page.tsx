@@ -165,11 +165,7 @@ const ALLOWED_LOGBOOK_DOCUMENT_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".
 function WorkPilotWordmark({ className = "" }: { className?: string }) {
   return (
     <span className={`${styles.workPilotWordmark} ${className}`} aria-label="WorkPilot360">
-      <svg className={styles.workPilotMark} viewBox="0 0 30 30" aria-hidden="true" focusable="false">
-        <path d="M3.5 7.5 8.3 21l5.6-10.5 4.3 8.2L26 5.8" />
-        <path d="M20.7 5.8H26V11" />
-        <circle cx="3.5" cy="7.5" r="1.65" />
-      </svg>
+      <img className={styles.workPilotMark} src="/workpilot-signet.png" alt="" aria-hidden="true" />
       <span className={styles.workPilotName}>Work</span>
       <span className={styles.workPilotProduct}>Pilot</span>
       <span className={styles.workPilotEdition}>360</span>

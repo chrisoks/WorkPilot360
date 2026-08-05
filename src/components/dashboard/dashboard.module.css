@@ -37683,28 +37683,11 @@
 
 .workPilotMark {
   display: block;
-  fill: #0a3943;
   flex: 0 0 auto;
   height: 1.08em;
   margin-right: 0.3em;
-  overflow: visible;
-  stroke: #137c78;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 3.8;
+  object-fit: contain;
   width: 1.08em;
-}
-
-.workPilotMark circle {
-  stroke: none;
-}
-
-.workPilotMark path {
-  fill: none;
-}
-
-.workPilotMark path:nth-of-type(2) {
-  stroke: #34c8ba;
 }
 
 .workPilotName {
@@ -37806,9 +37789,11 @@
 }
 
 .loginWordmark .workPilotMark {
-  fill: #ffffff;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 0.24em;
+  box-sizing: content-box;
   filter: drop-shadow(0 5px 10px rgba(2, 25, 31, 0.2));
-  stroke: #6de1d6;
+  padding: 0.1em;
 }
 
 .loginProductIcon {

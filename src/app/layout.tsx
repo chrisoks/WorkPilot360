@@ -23,8 +23,8 @@ export const metadata: Metadata = {
     title: "WorkPilot360",
   },
   icons: {
-    icon: [{ url: "/workpilot-mark.svg", type: "image/svg+xml" }],
-    shortcut: "/workpilot-mark.svg",
+    icon: [{ url: "/workpilot-signet.png", type: "image/png" }],
+    shortcut: "/workpilot-signet.png",
     apple: "/workpilot360-app-icon.png",
   },
 };
