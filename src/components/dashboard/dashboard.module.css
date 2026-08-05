@@ -37665,3 +37665,350 @@
     animation: none;
   }
 }
+
+/* Unified WorkPilot360 wordmark and compact login experience */
+.workPilotWordmark {
+  align-items: baseline;
+  display: inline-flex;
+  font-size: 1.75rem;
+  font-weight: 780;
+  letter-spacing: -0.065em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.workPilotWordmark > span:first-child {
+  color: #0a1c35;
+}
+
+.workPilotWordmark > span:nth-child(2) {
+  color: #137c78;
+}
+
+.workPilotWordmark > span:last-child {
+  color: #2bb8ad;
+}
+
+.headerWordmark {
+  font-size: 1.68rem;
+}
+
+.bootWordmark {
+  font-size: clamp(3rem, 7vw, 6.4rem);
+}
+
+.shell.loginShell {
+  align-items: center;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(43, 184, 173, 0.14), transparent 31%),
+    linear-gradient(135deg, #edf6f6 0%, #f7fafb 52%, #e8f0f2 100%);
+  display: flex;
+  justify-content: center;
+  min-height: 100dvh;
+  overflow: auto;
+  padding: clamp(24px, 4vw, 64px);
+}
+
+.loginLayout {
+  align-items: stretch;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 30px;
+  box-shadow: 0 34px 90px rgba(10, 40, 48, 0.18);
+  gap: 0;
+  grid-template-columns: minmax(0, 1.08fr) minmax(410px, 0.92fr);
+  height: min(720px, calc(100dvh - 80px));
+  max-height: 720px;
+  max-width: 1120px;
+  min-height: 620px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.loginHero {
+  background:
+    radial-gradient(circle at 92% 88%, transparent 0 104px, rgba(117, 221, 210, 0.15) 105px 143px, transparent 144px),
+    linear-gradient(145deg, #176c6b 0%, #0c3740 55%, #082b34 100%);
+  color: #ffffff;
+  justify-content: stretch;
+  min-height: 0;
+  overflow: hidden;
+  padding: clamp(42px, 4.2vw, 62px);
+}
+
+.loginHero::before {
+  background: rgba(255, 255, 255, 0.055);
+  border-radius: 50%;
+  bottom: -210px;
+  height: 430px;
+  left: auto;
+  right: -120px;
+  width: 430px;
+}
+
+.loginHeroContent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.loginWordmark {
+  font-size: 1.72rem;
+}
+
+.loginWordmark > span:first-child,
+.loginWordmark > span:nth-child(2) {
+  color: #ffffff;
+}
+
+.loginWordmark > span:last-child {
+  color: #6de1d6;
+}
+
+.loginProductIcon {
+  align-items: center;
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 22px;
+  display: flex;
+  height: 76px;
+  justify-content: center;
+  margin-top: auto;
+  width: 76px;
+}
+
+.loginProductIcon svg {
+  fill: none;
+  height: 44px;
+  stroke: #70e1d7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+  width: 44px;
+}
+
+.loginHero h2 {
+  color: #ffffff;
+  font-size: clamp(2.8rem, 4vw, 4.15rem);
+  letter-spacing: -0.055em;
+  line-height: 1.02;
+  margin: 22px 0 0;
+  max-width: 590px;
+}
+
+.loginHeroContent > p:not(.loginKicker) {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 1rem;
+  font-weight: 550;
+  line-height: 1.55;
+  margin: 18px 0 0;
+  max-width: 510px;
+}
+
+.loginHeroSignature {
+  display: grid;
+  gap: 2px;
+  margin-top: auto;
+  padding-top: 28px;
+}
+
+.loginHeroSignature span {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.loginHeroSignature strong {
+  color: #ffffff;
+  font-size: 1.08rem;
+}
+
+.loginPanel {
+  align-items: center;
+  background: #ffffff;
+  justify-content: center;
+  padding: clamp(38px, 4vw, 62px);
+}
+
+.loginCard {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  gap: 16px;
+  max-width: 430px;
+  padding: 0;
+}
+
+.loginCardHeader {
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.loginCardHeader span {
+  color: #137c78;
+  font-size: 0.78rem;
+  letter-spacing: 0.09em;
+}
+
+.loginCardHeader h1 {
+  color: #091728;
+  font-size: clamp(2.4rem, 3.4vw, 3.25rem);
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+}
+
+.loginCardHeader p {
+  color: #526276;
+  font-size: 0.94rem;
+  font-weight: 520;
+}
+
+.loginInputShell,
+.loginPasswordField {
+  background: #f7fafb;
+  border-color: #cbd9dd;
+  border-radius: 13px;
+  min-height: 52px;
+}
+
+.loginInputShell:hover,
+.loginPasswordField:hover {
+  background: #ffffff;
+  border-color: #91b8b7;
+}
+
+.loginInputShell:focus-within,
+.loginPasswordField:focus-within {
+  border-color: #16847f;
+  box-shadow: 0 0 0 4px rgba(22, 132, 127, 0.12);
+}
+
+.loginCard input {
+  font-size: 0.96rem;
+  font-weight: 620;
+}
+
+.loginPasswordField button,
+.loginOptionsRow button,
+.loginContactHint button {
+  color: #126f6d;
+}
+
+.loginOptionsRow input {
+  accent-color: #137c78;
+}
+
+.loginSubmitButton {
+  align-items: center;
+  background: linear-gradient(135deg, #176c6b 0%, #0d4b57 100%);
+  border-color: #176c6b;
+  border-radius: 13px;
+  min-height: 54px;
+}
+
+.loginSubmitButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1a7a76 0%, #0b414d 100%);
+  box-shadow: 0 13px 28px rgba(13, 75, 87, 0.24);
+}
+
+.loginSecurityHint {
+  color: #7a8798;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin: 2px 0 0;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .shell.loginShell {
+    padding: 18px;
+  }
+
+  .loginLayout {
+    grid-template-columns: 1fr;
+    height: auto;
+    max-height: none;
+    max-width: 650px;
+    min-height: 0;
+  }
+
+  .loginHero {
+    min-height: 280px;
+    padding: 34px;
+  }
+
+  .loginProductIcon {
+    height: 58px;
+    margin-top: 44px;
+    width: 58px;
+  }
+
+  .loginProductIcon svg {
+    height: 34px;
+    width: 34px;
+  }
+
+  .loginHero h2 {
+    font-size: clamp(2.3rem, 7vw, 3.2rem);
+    margin-top: 16px;
+  }
+
+  .loginHero h2 br:nth-of-type(2) {
+    display: none;
+  }
+
+  .loginHeroSignature {
+    display: none;
+  }
+
+  .loginPanel {
+    padding: 36px 34px 42px;
+  }
+}
+
+@media (max-width: 560px) {
+  .shell.loginShell {
+    align-items: flex-start;
+    padding: 0;
+  }
+
+  .loginLayout {
+    border-radius: 0;
+    min-height: 100dvh;
+  }
+
+  .loginHero {
+    min-height: 228px;
+    padding: 26px 24px;
+  }
+
+  .loginWordmark {
+    font-size: 1.48rem;
+  }
+
+  .loginProductIcon {
+    display: none;
+  }
+
+  .loginHero h2 {
+    font-size: 2.25rem;
+    margin-top: auto;
+  }
+
+  .loginHeroContent > p:not(.loginKicker) {
+    display: none;
+  }
+
+  .loginPanel {
+    padding: 32px 24px 38px;
+  }
+
+  .loginOptionsRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

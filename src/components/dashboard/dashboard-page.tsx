@@ -47551,7 +47551,9 @@ await addProjectLogbookEntry(
     return (
       <main className={styles.page}>
         <section className={`${styles.shell} ${styles.bootShell}`}>
-          <img className={styles.bootLogo} src="/wp360-boot-logo.png" alt="WorkPilot360" />
+          <span className={`${styles.workPilotWordmark} ${styles.bootWordmark}`} aria-label="WorkPilot360">
+            <span>Work</span><span>Pilot</span><span>360</span>
+          </span>
           <p>Einen Moment, ich lade gerade...</p>
           <div className={styles.bootWave} aria-hidden="true">
             <span />
@@ -47572,47 +47574,27 @@ await addProjectLogbookEntry(
           <div className={styles.loginLayout}>
             <section className={styles.loginHero}>
               <div className={styles.loginHeroContent}>
-                <img className={styles.loginLogo} src="/wp360-freigestellt.png" alt="WorkPilot360" />
-                <p className={styles.loginKicker}>Willkommen</p>
+                <span className={`${styles.workPilotWordmark} ${styles.loginWordmark}`} aria-label="WorkPilot360">
+                  <span>Work</span><span>Pilot</span><span>360</span>
+                </span>
+                <div className={styles.loginProductIcon} aria-hidden="true">
+                  <svg viewBox="0 0 48 48" role="presentation">
+                    <path d="M11 13.5h11l3.5 4H37v17H11z" />
+                    <path d="m18 27 4 4 8-9" />
+                  </svg>
+                </div>
                 <h2>
-                  Dein Cockpit für
+                  Projekte, Teams
                   <br />
-                  Projekte, Aufgaben
+                  und Abläufe.
                   <br />
-                  und Zeit.
+                  Zentral gesteuert.
                 </h2>
-                <p>Arbeite mit klaren Zuständigkeiten, aktuellen Projektständen und einem Login pro Mitarbeiter.</p>
+                <p>Ein Zugang für Projekte, Aufgaben, Planung, Zeiten und kaufmännische Abläufe.</p>
 
-                <div className={styles.loginPreviewStack} aria-hidden="true">
-                  <div className={styles.loginMiniCard}>
-                    <span>Projekte</span>
-                    <strong>127</strong>
-                    <i />
-                  </div>
-                  <div className={styles.loginProgressCard}>
-                    <span>Projektfortschritt</span>
-                    <div className={styles.loginProgressVisual}>
-                      <strong>68%</strong>
-                    </div>
-                    <ul>
-                      <li><span /> Abgeschlossen <strong>68%</strong></li>
-                      <li><span /> In Arbeit <strong>24%</strong></li>
-                      <li><span /> Geplant <strong>8%</strong></li>
-                    </ul>
-                  </div>
-                  <div className={styles.loginTaskCard}>
-                    <span>Aufgaben</span>
-                    <strong>14</strong>
-                    <i />
-                    <i />
-                    <i />
-                  </div>
-                  <div className={styles.loginListCard}>
-                    <span>Meine nächsten Aufgaben</span>
-                    <div><strong>Angebot erstellen</strong><small>In Arbeit</small></div>
-                    <div><strong>Projektplanung</strong><small>Geplant</small></div>
-                    <div><strong>Kundenmeeting</strong><small>Heute</small></div>
-                  </div>
+                <div className={styles.loginHeroSignature}>
+                  <span>Eine Anwendung von</span>
+                  <strong>OK solutions</strong>
                 </div>
               </div>
             </section>
@@ -47627,8 +47609,8 @@ await addProjectLogbookEntry(
               >
                 <div className={styles.loginCardHeader}>
                   <span>WORKPILOT360</span>
-                  <h1>Sign in</h1>
-                  <p>Melde dich mit deinen Zugangsdaten an.</p>
+                  <h1>Einloggen</h1>
+                  <p>Melde dich mit deinen persönlichen Zugangsdaten an.</p>
                 </div>
 
                 <label className={styles.loginFieldGroup}>
@@ -47679,16 +47661,14 @@ await addProjectLogbookEntry(
                   disabled={!loginEmail.trim() || !loginPassword || isLoginSubmitting}
                 >
                   <span>{isLoginSubmitting ? "Anmeldung läuft..." : "Einloggen"}</span>
+                  {!isLoginSubmitting && <strong aria-hidden="true">→</strong>}
                 </button>
 
                 <p className={styles.loginContactHint}>
                   Noch kein Konto? <button type="button">Jetzt kontaktieren</button>
                 </p>
 
-                <div className={styles.creatorBadge}>
-                  <img src="/ok-solutions-logo.png" alt="OK solutions" />
-                  <span>created by OK solutions</span>
-                </div>
+                <p className={styles.loginSecurityHint}>Geschützter Zugang zu WorkPilot360</p>
               </form>
             </aside>
           </div>
@@ -69392,7 +69372,9 @@ await addProjectLogbookEntry(
       <section className={styles.shell}>
         <header className={styles.header}>
           <div className={styles.brandBlock}>
-            <img className={styles.logo} src="/workpilot360-logo-header.png" alt="WorkPilot360" />
+            <span className={`${styles.workPilotWordmark} ${styles.headerWordmark}`} aria-label="WorkPilot360">
+              <span>Work</span><span>Pilot</span><span>360</span>
+            </span>
           </div>
 
           <button
