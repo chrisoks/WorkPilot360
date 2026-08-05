@@ -37671,7 +37671,7 @@
 
 /* Unified WorkPilot360 wordmark and compact login experience */
 .workPilotWordmark {
-  align-items: baseline;
+  align-items: center;
   display: inline-flex;
   font-size: 1.75rem;
   font-weight: 780;
@@ -37680,15 +37680,41 @@
   white-space: nowrap;
 }
 
-.workPilotWordmark > span:first-child {
+.workPilotMark {
+  display: block;
+  fill: #0a3943;
+  flex: 0 0 auto;
+  height: 1.08em;
+  margin-right: 0.3em;
+  overflow: visible;
+  stroke: #137c78;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3.8;
+  width: 1.08em;
+}
+
+.workPilotMark circle {
+  stroke: none;
+}
+
+.workPilotMark path {
+  fill: none;
+}
+
+.workPilotMark path:nth-of-type(2) {
+  stroke: #34c8ba;
+}
+
+.workPilotName {
   color: #0a1c35;
 }
 
-.workPilotWordmark > span:nth-child(2) {
+.workPilotProduct {
   color: #137c78;
 }
 
-.workPilotWordmark > span:last-child {
+.workPilotEdition {
   color: #2bb8ad;
 }
 
@@ -37769,13 +37795,19 @@
   font-size: 1.72rem;
 }
 
-.loginWordmark > span:first-child,
-.loginWordmark > span:nth-child(2) {
+.loginWordmark .workPilotName,
+.loginWordmark .workPilotProduct {
   color: #ffffff;
 }
 
-.loginWordmark > span:last-child {
+.loginWordmark .workPilotEdition {
   color: #6de1d6;
+}
+
+.loginWordmark .workPilotMark {
+  fill: #ffffff;
+  filter: drop-shadow(0 5px 10px rgba(2, 25, 31, 0.2));
+  stroke: #6de1d6;
 }
 
 .loginProductIcon {

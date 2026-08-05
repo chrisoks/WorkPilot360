@@ -162,6 +162,21 @@ const ALLOWED_LOGBOOK_DOCUMENT_MIME_TYPES = new Set([
 const ALLOWED_LOGBOOK_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 const ALLOWED_LOGBOOK_DOCUMENT_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt"]);
 
+function WorkPilotWordmark({ className = "" }: { className?: string }) {
+  return (
+    <span className={`${styles.workPilotWordmark} ${className}`} aria-label="WorkPilot360">
+      <svg className={styles.workPilotMark} viewBox="0 0 30 30" aria-hidden="true" focusable="false">
+        <path d="M3.5 7.5 8.3 21l5.6-10.5 4.3 8.2L26 5.8" />
+        <path d="M20.7 5.8H26V11" />
+        <circle cx="3.5" cy="7.5" r="1.65" />
+      </svg>
+      <span className={styles.workPilotName}>Work</span>
+      <span className={styles.workPilotProduct}>Pilot</span>
+      <span className={styles.workPilotEdition}>360</span>
+    </span>
+  );
+}
+
 type RemoteFileImageButtonProps = {
   src: string;
   alt: string;
@@ -47535,9 +47550,7 @@ await addProjectLogbookEntry(
     return (
       <main className={styles.page}>
         <section className={`${styles.shell} ${styles.bootShell}`}>
-          <span className={`${styles.workPilotWordmark} ${styles.bootWordmark}`} aria-label="WorkPilot360">
-            <span>Work</span><span>Pilot</span><span>360</span>
-          </span>
+          <WorkPilotWordmark className={styles.bootWordmark} />
           <p>Einen Moment, ich lade gerade...</p>
           <div className={styles.bootWave} aria-hidden="true">
             <span />
@@ -47558,9 +47571,7 @@ await addProjectLogbookEntry(
           <div className={styles.loginLayout}>
             <section className={styles.loginHero}>
               <div className={styles.loginHeroContent}>
-                <span className={`${styles.workPilotWordmark} ${styles.loginWordmark}`} aria-label="WorkPilot360">
-                  <span>Work</span><span>Pilot</span><span>360</span>
-                </span>
+                <WorkPilotWordmark className={styles.loginWordmark} />
                 <div className={styles.loginProductIcon} aria-hidden="true">
                   <svg viewBox="0 0 48 48" role="presentation">
                     <path d="M11 13.5h11l3.5 4H37v17H11z" />
@@ -69356,9 +69367,7 @@ await addProjectLogbookEntry(
       <section className={styles.shell}>
         <header className={styles.header}>
           <div className={styles.brandBlock}>
-            <span className={`${styles.workPilotWordmark} ${styles.headerWordmark}`} aria-label="WorkPilot360">
-              <span>Work</span><span>Pilot</span><span>360</span>
-            </span>
+            <WorkPilotWordmark className={styles.headerWordmark} />
           </div>
 
           <button
