@@ -22,6 +22,7 @@ import {
   assertChangedContactCustomerNumberAvailable,
   ContactNumberConflictError,
 } from "@/lib/contacts/customer-number-service";
+import { getContactMasterDataChange } from "@/lib/contacts/contact-logbook-change";
 
 type ContactRow = {
   id: string;
@@ -655,6 +656,26 @@ export async function PATCH(req: Request) {
     if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
   }
   const changedFields = getChangedContactFields(previousContact, body);
+  const masterDataChange = getContactMasterDataChange(previousContact as unknown as Record<string, unknown>, {
+    ...body,
+    category,
+    type,
+    customerNumber,
+    email,
+    invoiceEmail,
+    activityReportEmail,
+    phone: phone.raw,
+    mobile: mobile.raw,
+    fax: fax.raw,
+    isInvoiceRecipient: Boolean(body.isInvoiceRecipient),
+    isActivityReportRecipient: Boolean(activityReportEmail),
+    eInvoiceRequired: Boolean(body.eInvoiceRequired),
+    eInvoiceRecipientType: cleanEInvoiceRecipientType(body.eInvoiceRecipientType),
+    hasDifferentBillingAddress: type !== "person" && Boolean(body.hasDifferentBillingAddress),
+    paymentTermDays: parseInteger(body.paymentTermDays),
+    discountPercent: parseNumber(body.discountPercent),
+    discountTermDays: parseInteger(body.discountTermDays),
+  }, type);
   const customerStatusAuditText = getCustomerStatusAuditText({
     previousOverride: previousContact.customerStatusOverride,
     previousReason: previousContact.customerStatusOverrideReason ?? "",
@@ -805,6 +826,26 @@ export async function PATCH(req: Request) {
           })),
         });
       }
+    }
+
+    if (masterDataChange.text) {
+      await transaction.auditLog.create({
+        data: {
+          organizationId: organization.id,
+          actorId: actor.id,
+          action: "contact_master_data_changed",
+          entityType: "contact-logbook",
+          entityId: id,
+          payload: {
+            text: masterDataChange.text,
+            author: getUserName(actor),
+            authorUserId: actor.id,
+            changedFields: masterDataChange.changedFields,
+            changeGroups: masterDataChange.labels,
+            isSystem: true,
+          },
+        },
+      });
     }
 
     if (changedFields.length > 0) {
