@@ -8424,13 +8424,13 @@
 }
 
 .forecastPeriodTabs button[data-active="true"] {
-  background: linear-gradient(180deg, #2f7df4 0%, #2563eb 58%, #1d4ed8 100%);
-  border-color: #111827;
+  background: linear-gradient(135deg, #0f4149 0%, #16756f 100%);
+  border-color: #0d5f5b;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -3px 0 rgba(15, 23, 42, 0.32),
-    0 2px 0 rgba(15, 23, 42, 0.32),
-    0 10px 24px rgba(37, 99, 235, 0.18);
+    inset 0 -2px 0 rgba(4, 47, 51, 0.22),
+    0 2px 0 rgba(4, 47, 51, 0.22),
+    0 8px 18px rgba(15, 104, 100, 0.16);
   color: #ffffff;
   transform: translateY(1px);
 }
@@ -10029,13 +10029,13 @@
 
 .forecastSummaryGroup {
   background: #ffffff;
-  border: 1px solid #e5edf7;
-  border-radius: 22px;
-  box-shadow: 0 14px 34px rgb(15 23 42 / 0.07);
+  border: 1px solid #dce7eb;
+  border-radius: 16px;
+  box-shadow: 0 6px 18px rgb(15 65 73 / 0.055);
   display: grid;
-  gap: 12px;
+  gap: 9px;
   min-width: 0;
-  padding: 22px;
+  padding: 16px 18px;
 }
 
 .forecastSummaryHeader {
@@ -10049,23 +10049,23 @@
 .forecastSummaryIcon {
   align-items: center;
   background: #eef6ff;
-  border-radius: 16px;
+  border-radius: 12px;
   color: #005fff;
   display: inline-flex;
-  height: 48px;
+  height: 40px;
   justify-content: center;
-  width: 48px;
+  width: 40px;
 }
 
 .forecastSummaryIcon svg {
   display: block;
   fill: none;
-  height: 25px;
+  height: 21px;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2.2;
-  width: 25px;
+  width: 21px;
 }
 
 .forecastSummaryHeader > small {
@@ -10075,7 +10075,7 @@
   font-size: 0.78rem;
   font-weight: 600;
   line-height: 1;
-  padding: 7px 10px;
+  padding: 6px 9px;
   white-space: nowrap;
 }
 
@@ -10125,7 +10125,7 @@
 
 .forecastSummaryGroup > strong {
   color: #020617;
-  font-size: clamp(2rem, 2.2vw, 2.75rem);
+  font-size: clamp(1.75rem, 1.9vw, 2.3rem);
   font-weight: 700;
   line-height: 1;
 }
@@ -10139,16 +10139,16 @@
 .forecastSummaryDetails span {
   background: #f8fbff;
   border: 1px solid #e5edf7;
-  border-radius: 12px;
+  border-radius: 10px;
   display: grid;
   gap: 3px;
   min-width: 0;
-  padding: 11px 12px;
+  padding: 8px 10px;
 }
 
 .forecastSummaryDetails b {
   color: #0f172a;
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 600;
   line-height: 1.1;
 }
@@ -25086,8 +25086,11 @@
   display: inline-flex;
   font-size: 0.76rem;
   font-weight: 750;
-  line-height: 1;
-  padding: 6px 9px;
+  justify-content: center;
+  line-height: 1.15;
+  min-height: 26px;
+  padding: 5px 10px;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -37689,9 +37692,9 @@
   color: #2bb8ad;
 }
 
-.headerWordmark {
+.brandBlock .headerWordmark {
   display: inline-flex;
-  font-size: 1.68rem;
+  font-size: 1.72rem;
   margin-top: 0;
 }
 

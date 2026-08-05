@@ -42980,22 +42980,6 @@ await addProjectLogbookEntry(
             />
           </label>
         ) : null}
-        {canUseJarvis ? (
-          <div className={styles.reportAiMenu}>
-            <button
-              type="button"
-              className={styles.reportAiButton}
-              aria-label="JARVIS öffnen"
-              onClick={openJarvis}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3.5 13.6 8l4.5 1.6-4.5 1.6L12 15.7l-1.6-4.5-4.5-1.6L10.4 8 12 3.5Z" />
-                <path d="M18.4 14.2 19.2 16.4l2.1.8-2.1.8-.8 2.2-.8-2.2-2.1-.8 2.1-.8.8-2.2Z" />
-              </svg>
-              <span>JARVIS</span>
-            </button>
-          </div>
-        ) : null}
       </div>
 
       {reportAnalyticsTab === "forecast" && (
