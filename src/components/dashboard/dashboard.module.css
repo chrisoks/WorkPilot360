@@ -24708,7 +24708,7 @@
 
 .standardModalHeader {
   align-items: center;
-  background: #202124;
+  background: linear-gradient(135deg, #0c3740 0%, #176c6b 100%);
   border-radius: 12px;
   color: #ffffff;
   display: flex;
@@ -35320,7 +35320,7 @@
 .taskModal .standardModalHeader {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.06), transparent 38%),
-    #0b1020;
+    linear-gradient(135deg, #0c3740 0%, #176c6b 100%);
   padding: 14px 18px;
 }
 
