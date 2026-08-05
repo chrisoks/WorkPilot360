@@ -25104,9 +25104,9 @@
 }
 
 .contactCategoryBadge[data-tone="person"] {
-  background: #e8f8fb;
-  border-color: #a8dfe8;
-  color: #087381;
+  background: #fff0f6;
+  border-color: #f0a5c4;
+  color: #a61e5c;
 }
 
 .contactCategoryBadge[data-tone="supplier"] {

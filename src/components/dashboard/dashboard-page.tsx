@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -23,6 +24,7 @@ import {
 import {
   getContactCategoryLabel,
   getContactCategoryTone,
+  getEffectiveContactCategory,
   getContactReachabilityError,
   getInheritedCompanyAddress,
   sortContactsByValue,
@@ -10178,7 +10180,7 @@ type ObjectAddress = {
 type ObjectAddressDraft = Omit<ObjectAddress, "id" | "createdAt" | "updatedAt">;
 
 type ContactColumnId =
-  | "type"
+  | "category"
   | "customerNumber"
   | "companyName"
   | "salutation"
@@ -10186,7 +10188,6 @@ type ContactColumnId =
   | "firstName"
   | "lastName"
   | "email"
-  | "category"
   | "location"
   | "phone"
   | "mobile"
@@ -10690,13 +10691,12 @@ type StampTimeEntry = {
 };
 
 const defaultContactColumnIds: ContactColumnId[] = [
-  "type",
+  "category",
   "customerNumber",
   "companyName",
   "firstName",
   "lastName",
   "email",
-  "category",
   "location",
   "phone",
   "mobile",
@@ -14123,7 +14123,6 @@ type ContactsListViewProps = {
 function ContactsListView({
   contacts,
   onCreateContact,
-  onEditContact,
   onOpenContactFile,
   onOpenBulkAction,
 }: ContactsListViewProps) {
@@ -14150,23 +14149,21 @@ function ContactsListView({
   const contactColumns = useMemo<ContactColumn[]>(
     () => [
       {
-        id: "type",
-        label: "Typ",
+        id: "category",
+        label: "Kategorie",
         filterType: "select",
-        options: ["Ansprechpartner", "Firma", "Privatperson"],
-        value: (contact) => {
-          if (contact.type === "company") return "Firma";
-          if (contact.type === "private") return "Privatperson";
-          return "Ansprechpartner";
-        },
+        options: ["Kunde", "Privatkunde", "Lieferant", "Partner", "Ansprechpartner"],
+        value: (contact) => getEffectiveContactCategory(contact.category, contact.type),
         render: (contact) => {
-          const label =
-            contact.type === "company"
-              ? "Firma"
-              : contact.type === "private"
-                ? "Privatperson"
-                : "Ansprechpartner";
-          return <span className={styles.contactTypeBadge}>{label}</span>;
+          const category = getEffectiveContactCategory(contact.category, contact.type);
+          return (
+            <span
+              className={styles.contactCategoryBadge}
+              data-tone={getContactCategoryTone(category)}
+            >
+              {getContactCategoryLabel(category)}
+            </span>
+          );
         },
       },
       { id: "customerNumber", label: "Kundennummer", value: (contact) => contact.customerNumber },
@@ -14174,22 +14171,6 @@ function ContactsListView({
         id: "companyName",
         label: "Firmenname",
         value: (contact) => contact.companyName || contact.parentCompanyName,
-        render: (contact) => {
-          const label = contact.companyName || contact.parentCompanyName;
-          if (!label) return "-";
-          return (
-            <button
-              type="button"
-              className={styles.tableTextLink}
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenContactFile(contact);
-              }}
-            >
-              {label}
-            </button>
-          );
-        },
       },
       { id: "salutation", label: "Anrede", value: (contact) => contact.salutation },
       {
@@ -14201,58 +14182,13 @@ function ContactsListView({
         id: "firstName",
         label: "Vorname",
         value: (contact) => contact.firstName,
-        render: (contact) => {
-          if (!contact.firstName) return "-";
-          return (
-            <button
-              type="button"
-              className={styles.tableTextLink}
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenContactFile(contact);
-              }}
-            >
-              {contact.firstName}
-            </button>
-          );
-        },
       },
       {
         id: "lastName",
         label: "Nachname",
         value: (contact) => contact.lastName,
-        render: (contact) => {
-          if (!contact.lastName) return "-";
-          return (
-            <button
-              type="button"
-              className={styles.tableTextLink}
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenContactFile(contact);
-              }}
-            >
-              {contact.lastName}
-            </button>
-          );
-        },
       },
       { id: "email", label: "E-Mail", value: (contact) => contact.email },
-      {
-        id: "category",
-        label: "Kategorie",
-        filterType: "select",
-        options: ["Kunde", "Privatkunde", "Lieferant", "Partner", "Ansprechpartner"],
-        value: (contact) => contact.category,
-        render: (contact) => (
-          <span
-            className={styles.contactCategoryBadge}
-            data-tone={getContactCategoryTone(contact.category)}
-          >
-            {getContactCategoryLabel(contact.category)}
-          </span>
-        ),
-      },
       {
         id: "location",
         label: "Ort",
@@ -14295,7 +14231,7 @@ function ContactsListView({
       { id: "priceGroup", label: "VK-Gruppe", value: (contact) => contact.priceGroup },
       { id: "leitwegId", label: "Leitweg-ID", value: (contact) => contact.leitwegId },
     ],
-    [onOpenContactFile]
+    []
   );
 
   const visibleColumns = useMemo(
@@ -14316,7 +14252,7 @@ function ContactsListView({
       const matchesCategory =
         !categoryFilter ||
         categoryFilter === "__deletion_marked__" ||
-        contact.category === categoryFilter;
+        getEffectiveContactCategory(contact.category, contact.type) === categoryFilter;
       const matchesSearch =
         !search ||
         contactColumns
@@ -14338,7 +14274,8 @@ function ContactsListView({
           counts.__deletion_marked__ = (counts.__deletion_marked__ ?? 0) + 1;
           return counts;
         }
-        counts[contact.category] = (counts[contact.category] ?? 0) + 1;
+        const category = getEffectiveContactCategory(contact.category, contact.type);
+        counts[category] = (counts[category] ?? 0) + 1;
         return counts;
       }, {}),
     [contacts]
@@ -14478,10 +14415,13 @@ function ContactsListView({
       return;
     }
 
-    setSelectedContactIds((currentIds) =>
-      currentIds.length === 1 && currentIds[0] === contact.id ? [] : [contact.id]
-    );
-    setLastSelectedContactId(contact.id);
+    onOpenContactFile(contact);
+  }
+
+  function handleRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, contact: ContactItem) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onOpenContactFile(contact);
   }
 
   function openBulkAction() {
@@ -14541,7 +14481,7 @@ function ContactsListView({
         <span>
           {selectedContactIds.length
             ? `${selectedContactIds.length} Zeilen ausgewählt`
-            : "Klicken, um Zeilen auszuwählen"}
+            : "Zeile öffnen · STRG/⌘ + Klick zum Auswählen"}
         </span>
       )}
     </div>
@@ -14774,7 +14714,9 @@ function ContactsListView({
                   data-selected={selectedContactIds.includes(contact.id)}
                   data-deletion-marked={Boolean(contact.deletionMarkedAt)}
                   onClick={(event) => handleRowClick(event, contact, pageIndex)}
-                  onDoubleClick={() => onEditContact(contact)}
+                  onKeyDown={(event) => handleRowKeyDown(event, contact)}
+                  tabIndex={0}
+                  aria-label={`${contact.companyName || [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.customerNumber || "Kontakt"} öffnen`}
                 >
                   {visibleColumns.map((column) => (
                     <td

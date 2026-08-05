@@ -3,6 +3,7 @@ import {
   CONTACT_REACHABILITY_ERROR,
   getContactCategoryLabel,
   getContactCategoryTone,
+  getEffectiveContactCategory,
   getContactReachabilityError,
   getInheritedCompanyAddress,
   sortContactsByValue,
@@ -24,6 +25,12 @@ describe("contact form safeguards", () => {
     expect(getContactCategoryTone("Kunde")).toBe("business");
     expect(getContactCategoryTone("Privatkunde")).toBe("private");
     expect(getContactCategoryTone("Ansprechpartner")).toBe("person");
+  });
+
+  it("presents person contacts unmistakably as Ansprechpartner", () => {
+    expect(getEffectiveContactCategory("Kunde", "person")).toBe("Ansprechpartner");
+    expect(getEffectiveContactCategory("Kunde", "private")).toBe("Privatkunde");
+    expect(getEffectiveContactCategory("Lieferant", "company")).toBe("Lieferant");
   });
 
   it("copies all address fields from the selected company", () => {

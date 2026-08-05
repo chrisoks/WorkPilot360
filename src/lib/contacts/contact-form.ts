@@ -24,6 +24,15 @@ export function getContactCategoryLabel(category: string) {
   return category === "Kunde" ? "Gewerbekunde" : category;
 }
 
+export function getEffectiveContactCategory(
+  category: string,
+  type: "company" | "private" | "person"
+) {
+  if (type === "person") return "Ansprechpartner";
+  if (type === "private") return "Privatkunde";
+  return category;
+}
+
 export function getContactCategoryTone(category: string) {
   if (category === "Kunde") return "business";
   if (category === "Privatkunde") return "private";
