@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="2048" viewBox="0 0 2048 2048">
+  <title>WorkPilot Signet</title>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path
+      d="M245 510 570 1530 985 735 1300 1360"
+      stroke="#0a3943"
+      stroke-width="250"
+    />
+    <path
+      d="M1300 1360 1630 685"
+      stroke="#20b8ad"
+      stroke-width="180"
+    />
+    <path d="M1810 320 1370 610 1700 875Z" fill="#20b8ad" stroke="none" />
+  </g>
+</svg>

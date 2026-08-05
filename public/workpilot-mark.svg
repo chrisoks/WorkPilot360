@@ -7,20 +7,21 @@
   </defs>
   <rect width="64" height="64" rx="15" fill="url(#background)" />
   <path
-    d="M10 17 20 46 32 23 41 40 55 13"
+    d="M10 17 20 46 32 23 41 40"
     fill="none"
-    stroke="#70e4d8"
+    stroke="#fff"
     stroke-linecap="round"
     stroke-linejoin="round"
     stroke-width="7"
   />
   <path
-    d="M44 13h11v11"
+    d="M41 40 51 20"
     fill="none"
-    stroke="#fff"
+    stroke="#70e4d8"
     stroke-linecap="round"
     stroke-linejoin="round"
     stroke-width="6"
   />
+  <path d="M59 8 39 19 54 31Z" fill="#70e4d8" />
   <circle cx="10" cy="17" r="4" fill="#fff" />
 </svg>
