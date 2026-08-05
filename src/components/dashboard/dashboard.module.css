@@ -24523,6 +24523,7 @@
 
 .contactFormTopGrid,
 .contactFormGrid {
+  align-items: start;
   display: grid;
   gap: 11px 16px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -24531,6 +24532,7 @@
 
 .contactFormTopGrid label,
 .contactFormGrid label {
+  align-self: start;
   color: #334155;
   display: grid;
   font-size: 0.78rem;
@@ -24592,7 +24594,7 @@
   border-radius: 9px;
   display: grid;
   gap: 4px;
-  grid-template-columns: minmax(100px, 0.8fr) minmax(130px, 1.05fr) minmax(165px, 1.35fr) repeat(2, minmax(112px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   padding: 4px;
 }
 
@@ -28613,6 +28615,10 @@
 
   .contactModal {
     width: min(720px, calc(100vw - 28px));
+  }
+
+  .contactTypeSwitch > div {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
