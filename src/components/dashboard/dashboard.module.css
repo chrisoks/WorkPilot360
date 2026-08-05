@@ -37690,7 +37690,16 @@
 }
 
 .headerWordmark {
+  display: inline-flex;
   font-size: 1.68rem;
+  margin-top: 0;
+}
+
+.brandBlock .headerWordmark > span {
+  display: inline;
+  font-size: inherit;
+  font-weight: inherit;
+  margin-top: 0;
 }
 
 .bootWordmark {
