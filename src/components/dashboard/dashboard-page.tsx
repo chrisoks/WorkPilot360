@@ -15529,7 +15529,7 @@ export function DashboardPage() {
   >(null);
   const [selectedProjectBottleneckKind, setSelectedProjectBottleneckKind] = useState<"oneTime" | "recurring">("oneTime");
   const [selectedSalesAnalyticsDetail, setSelectedSalesAnalyticsDetail] = useState<
-    "actions" | "offers" | "newCustomers" | "closing" | "approvals" | "recurring" | "risk" | null
+    "actions" | "offers" | "newCustomers" | "prospects" | "closing" | "approvals" | "recurring" | "risk" | null
   >(null);
   const [selectedSvsAnalyticsDetail, setSelectedSvsAnalyticsDetail] = useState<
     "average" | "coverage" | "evaluable" | "missing" | "hours" | null
@@ -38931,6 +38931,23 @@ await addProjectLogbookEntry(
       detail: "Erste Angebote im aktuellen Auswertungsmonat; neue Gewerbekundenakten werden separat ausgewiesen.",
     },
     {
+      key: "prospects",
+      detailKey: "prospects" as const,
+      icon: (
+        <>
+          <circle cx="9" cy="8" r="3" />
+          <path d="M3.5 19c.5-3.4 2.4-5.5 5.5-5.5s5 2.1 5.5 5.5" />
+          <path d="M16 8h5" />
+          <path d="M18.5 5.5v5" />
+        </>
+      ),
+      tone: salesProspectOver30Count > 0 ? "watch" : "good",
+      label: "Interessenten",
+      value: `${activeProspectContacts.length}`,
+      trend: salesProspectOver30Count > 0 ? `${salesProspectOver30Count} ab 30 Tg.` : "im Blick",
+      detail: `${salesNewProspectContacts.length} neu und ${salesConvertedProspectContacts.length} im Zeitraum umgewandelt.`,
+    },
+    {
       key: "opening-rate",
       detailKey: "approvals" as const,
       icon: (
@@ -39022,6 +39039,8 @@ await addProjectLogbookEntry(
       ? "Angebotsmotor im Detail"
       : selectedSalesAnalyticsDetail === "newCustomers"
         ? "Erstangebote und neue Gewerbekundenakten"
+        : selectedSalesAnalyticsDetail === "prospects"
+          ? "Interessentenentwicklung"
         : selectedSalesAnalyticsDetail === "closing"
           ? "Abschlusskraft im Detail"
           : selectedSalesAnalyticsDetail === "approvals"
@@ -39037,6 +39056,8 @@ await addProjectLogbookEntry(
       ? salesOfferRows.length
       : selectedSalesAnalyticsDetail === "newCustomers"
         ? salesCurrentMonthFirstCustomerOfferRows.length + salesNewCustomerContacts.length
+        : selectedSalesAnalyticsDetail === "prospects"
+          ? activeProspectContacts.length
         : selectedSalesAnalyticsDetail === "closing"
           ? salesDecisionCount
           : selectedSalesAnalyticsDetail === "approvals"
@@ -39052,6 +39073,8 @@ await addProjectLogbookEntry(
       ? "Der Angebotsmotor zählt im Monatsvergleich neu erstellte Angebote. Die Detailtabelle zeigt Angebote mit Aktivität im gewählten Zeitraum; der Verlauf trennt gewonnenes Angebotsvolumen nach Entscheidungsmonat vom neu erstellten Angebotsvolumen."
       : selectedSalesAnalyticsDetail === "newCustomers"
         ? "Ein Erstangebot ist das erste bekannte, nicht gelöschte Angebot zu einem Kundennamen. Neue Kundenakten werden nach ihrem technischen Anlagedatum ausgewiesen und deshalb nicht automatisch als tatsächlich neu gewonnene Kunden interpretiert."
+        : selectedSalesAnalyticsDetail === "prospects"
+          ? "Interessenten bleiben bewusst Kontakte ohne Angebot. Für ein Projekt oder Angebot werden sie zuerst zum Gewerbe- oder Privatkunden umgewandelt; dadurch bleibt die Entwicklung vom Erstkontakt bis zum Kunden nachvollziehbar."
         : selectedSalesAnalyticsDetail === "closing"
           ? "Die Abschlussquote verwendet nur Angebote, die im gewählten Zeitraum tatsächlich als gewonnen oder verloren entschieden wurden. Gewonnene Werte sind Angebotswerte, keine späteren Rechnungswerte."
           : selectedSalesAnalyticsDetail === "recurring"
@@ -43980,34 +44003,6 @@ await addProjectLogbookEntry(
             ))}
           </section>
 
-          <article className={styles.analyticsCard}>
-            <div className={styles.salesSectionHeader}>
-              <div>
-                <h2>Interessentenentwicklung</h2>
-                <p>Interessenten bleiben Kontakte ohne Angebot. Für ein Projekt oder Angebot werden sie zuerst bewusst zum Gewerbe- oder Privatkunden umgewandelt.</p>
-              </div>
-              <span>{activeProspectContacts.length} aktiv</span>
-            </div>
-            <div className={styles.salesAnalyticsSummaryGrid}>
-              <article><span>Neu im Zeitraum</span><strong>{salesNewProspectContacts.length}</strong><small>neu angelegte Interessenten</small></article>
-              <article><span>Umgewandelt</span><strong>{salesConvertedProspectContacts.length}</strong><small>zu Gewerbe- oder Privatkunden</small></article>
-              <article><span>Ø Interessent seit</span><strong>{salesAverageProspectAgeDays} Tg.</strong><small>{salesProspectOver30Count} seit mindestens 30 Tagen</small></article>
-            </div>
-            <div className={styles.salesAnalyticsTableScroll}>
-              <table className={styles.analyticsTable}>
-                <thead><tr><th>Interessent</th><th>Seit</th><th>Alter</th><th>Kontakt</th></tr></thead>
-                <tbody>{activeProspectContacts.length === 0 ? <tr><td colSpan={4}>Keine aktiven Interessenten.</td></tr> : activeProspectContacts.slice(0, 30).map((contact) => (
-                  <tr key={`sales-prospect-${contact.id}`}>
-                    <td>{getContactDisplayName(contact)}</td>
-                    <td>{formatDateOnly(contact.prospectSince || contact.createdAt)}</td>
-                    <td>{getContactProspectAgeDays(contact, reportNow)} Tg.</td>
-                    <td><button type="button" className={styles.secondaryButton} onClick={() => { setActiveTab("contacts"); openCustomerFile(contact); }}>Öffnen</button></td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
-          </article>
-
           {selectedSalesAnalyticsDetail ? (
             <div
               className={styles.modalOverlay}
@@ -44092,6 +44087,34 @@ await addProjectLogbookEntry(
                                   setActiveTab("contacts");
                                   openCustomerFile(contact);
                                 }}>Gewerbekunde</button></td>
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </section>
+                    </div>
+                  ) : selectedSalesAnalyticsDetail === "prospects" ? (
+                    <div className={styles.salesAnalyticsDetail}>
+                      <div className={styles.salesAnalyticsSummaryGrid}>
+                        <article><span>Neu im Zeitraum</span><strong>{salesNewProspectContacts.length}</strong><small>neu angelegte Interessenten</small></article>
+                        <article><span>Umgewandelt</span><strong>{salesConvertedProspectContacts.length}</strong><small>zu Gewerbe- oder Privatkunden</small></article>
+                        <article><span>Ø Interessent seit</span><strong>{salesAverageProspectAgeDays} Tg.</strong><small>{salesProspectOver30Count} seit mindestens 30 Tagen</small></article>
+                      </div>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Aktive Interessenten</h3>
+                        <div className={styles.salesAnalyticsTableScroll}>
+                          <table className={styles.analyticsTable}>
+                            <thead><tr><th>Interessent</th><th>Seit</th><th>Alter</th><th>Kontakt</th></tr></thead>
+                            <tbody>{activeProspectContacts.length === 0 ? <tr><td colSpan={4}>Keine aktiven Interessenten.</td></tr> : activeProspectContacts.slice(0, 100).map((contact) => (
+                              <tr key={`sales-prospect-${contact.id}`}>
+                                <td>{getContactDisplayName(contact)}</td>
+                                <td>{formatDateOnly(contact.prospectSince || contact.createdAt)}</td>
+                                <td>{getContactProspectAgeDays(contact, reportNow)} Tg.</td>
+                                <td><button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedSalesAnalyticsDetail(null);
+                                  setActiveTab("contacts");
+                                  openCustomerFile(contact);
+                                }}>Öffnen</button></td>
                               </tr>
                             ))}</tbody>
                           </table>
