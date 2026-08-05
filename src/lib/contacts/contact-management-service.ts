@@ -223,7 +223,7 @@ export async function executeContactCreation(input: { tx: Prisma.TransactionClie
     id, organizationId: input.organizationId, customerNumber, type: values.type, category: values.category || "Kunde",
     ...Object.fromEntries(CONTACT_MANAGEMENT_FIELDS.map((field) => [field, values[field] || null])),
     phoneNormalized: phoneValue(values.phone), mobileNormalized: phoneValue(values.mobile),
-    isInvoiceRecipient: Boolean(values.invoiceEmail), isActivityReportRecipient: Boolean(values.activityReportEmail),
+    isInvoiceRecipient: false, isActivityReportRecipient: Boolean(values.activityReportEmail),
   } });
   await input.tx.contactIntegrationEvent.create({ data: { organizationId: input.organizationId, contactId: id, eventType: "created", changedFields: CONTACT_MANAGEMENT_FIELDS.filter((field) => Boolean(values[field])) } });
   await input.tx.auditLog.create({ data: { organizationId: input.organizationId, actorId: input.actorId, action: "contact.created", entityType: "contact", entityId: id, payload: { source: "jarvis", requestId: clean(input.requestId, 120), customerNumber, fields: evaluation.changes.map((item) => item.field) } } });
@@ -239,7 +239,6 @@ export async function executeContactChange(input: { tx: Prisma.TransactionClient
   const data: Record<string, unknown> = { ...values, updatedAt: new Date() };
   if (Object.prototype.hasOwnProperty.call(values, "phone")) data.phoneNormalized = phoneValue(values.phone);
   if (Object.prototype.hasOwnProperty.call(values, "mobile")) data.mobileNormalized = phoneValue(values.mobile);
-  if (Object.prototype.hasOwnProperty.call(values, "invoiceEmail")) data.isInvoiceRecipient = Boolean(values.invoiceEmail);
   if (Object.prototype.hasOwnProperty.call(values, "activityReportEmail")) data.isActivityReportRecipient = Boolean(values.activityReportEmail);
   const updated = await input.tx.contact.updateMany({ where: { id: input.contactId, organizationId: input.organizationId, updatedAt: new Date(evaluation.contact.updatedAt) }, data });
   if (updated.count !== 1) throw new ContactManagementServiceError("conflict", "Der Kontakt wurde zwischenzeitlich geändert.");

@@ -1,0 +1,9 @@
+ALTER TABLE "Contact"
+  ADD COLUMN IF NOT EXISTS "hasDifferentBillingAddress" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "billingName" TEXT,
+  ADD COLUMN IF NOT EXISTS "billingStreet" TEXT,
+  ADD COLUMN IF NOT EXISTS "billingAddressLine1" TEXT,
+  ADD COLUMN IF NOT EXISTS "billingAddressLine2" TEXT,
+  ADD COLUMN IF NOT EXISTS "billingPostalCode" TEXT,
+  ADD COLUMN IF NOT EXISTS "billingCity" TEXT,
+  ADD COLUMN IF NOT EXISTS "billingCountry" TEXT;

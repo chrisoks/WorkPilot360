@@ -55,6 +55,14 @@ type ContactRow = {
   isActivityReportRecipient: boolean;
   eInvoiceRequired: boolean;
   eInvoiceRecipientType: string | null;
+  hasDifferentBillingAddress: boolean;
+  billingName: string | null;
+  billingStreet: string | null;
+  billingAddressLine1: string | null;
+  billingAddressLine2: string | null;
+  billingPostalCode: string | null;
+  billingCity: string | null;
+  billingCountry: string | null;
   parentCompanyId: string | null;
   parentCompanyName: string | null;
   mainContactName: string | null;
@@ -134,6 +142,14 @@ async function ensureContactsTable() {
       "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false,
       "eInvoiceRequired" BOOLEAN NOT NULL DEFAULT false,
       "eInvoiceRecipientType" TEXT NOT NULL DEFAULT 'business',
+      "hasDifferentBillingAddress" BOOLEAN NOT NULL DEFAULT false,
+      "billingName" TEXT,
+      "billingStreet" TEXT,
+      "billingAddressLine1" TEXT,
+      "billingAddressLine2" TEXT,
+      "billingPostalCode" TEXT,
+      "billingCity" TEXT,
+      "billingCountry" TEXT,
       "parentCompanyId" TEXT,
       "parentCompanyName" TEXT,
       "mainContactName" TEXT,
@@ -176,6 +192,14 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRequired" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRecipientType" TEXT NOT NULL DEFAULT 'business'`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "hasDifferentBillingAddress" BOOLEAN NOT NULL DEFAULT false`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "billingName" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "billingStreet" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "billingAddressLine1" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "billingAddressLine2" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "billingPostalCode" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "billingCity" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "billingCountry" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverride" TEXT NOT NULL DEFAULT 'automatic'`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideReason" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideAt" TIMESTAMP(3)`;
@@ -192,6 +216,15 @@ async function ensureContactsTable() {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getBillingAddressError(body: Record<string, unknown>, type: string) {
+  if (type === "person" || !Boolean(body.hasDifferentBillingAddress)) return "";
+  if (!cleanString(body.billingName)) return "Rechtlicher Rechnungsempfänger fehlt.";
+  if (!cleanString(body.billingStreet)) return "Straße der Rechnungsanschrift fehlt.";
+  if (!cleanString(body.billingPostalCode)) return "Postleitzahl der Rechnungsanschrift fehlt.";
+  if (!cleanString(body.billingCity)) return "Ort der Rechnungsanschrift fehlt.";
+  return "";
 }
 
 function forbiddenContactResponse() {
@@ -304,6 +337,14 @@ function formatContact(contact: ContactRow, invoiceCount = 0) {
     isActivityReportRecipient: contact.isActivityReportRecipient,
     eInvoiceRequired: Boolean(contact.eInvoiceRequired),
     eInvoiceRecipientType: cleanEInvoiceRecipientType(contact.eInvoiceRecipientType),
+    hasDifferentBillingAddress: Boolean(contact.hasDifferentBillingAddress),
+    billingName: contact.billingName ?? "",
+    billingStreet: contact.billingStreet ?? "",
+    billingAddressLine1: contact.billingAddressLine1 ?? "",
+    billingAddressLine2: contact.billingAddressLine2 ?? "",
+    billingPostalCode: contact.billingPostalCode ?? "",
+    billingCity: contact.billingCity ?? "",
+    billingCountry: contact.billingCountry ?? "",
     parentCompanyId: contact.parentCompanyId ?? "",
     parentCompanyName: contact.parentCompanyName ?? "",
     mainContactName: contact.mainContactName ?? "",
@@ -453,6 +494,8 @@ export async function POST(req: Request) {
   if (requiredContactError) {
     return NextResponse.json({ error: requiredContactError }, { status: 400 });
   }
+  const billingAddressError = getBillingAddressError(body, type);
+  if (billingAddressError) return NextResponse.json({ error: billingAddressError }, { status: 400 });
   const requestedCustomerNumber = cleanString(body.customerNumber);
   const email = cleanString(body.email);
   const invoiceEmail = cleanString(body.invoiceEmail);
@@ -494,7 +537,7 @@ export async function POST(req: Request) {
       "id", "organizationId", "category", "type", "legalForm", "customerNumber",
       "salutation", "additionalSalutation", "companyName", "firstName", "lastName", "position",
       "email", "invoiceEmail", "activityReportEmail", "phone", "phoneNormalized", "mobile", "mobileNormalized", "fax", "faxNormalized", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
-      "eInvoiceRequired", "eInvoiceRecipientType",
+      "eInvoiceRequired", "eInvoiceRecipientType", "hasDifferentBillingAddress", "billingName", "billingStreet", "billingAddressLine1", "billingAddressLine2", "billingPostalCode", "billingCity", "billingCountry",
       "parentCompanyId", "parentCompanyName", "mainContactName", "isMainContact",
       "street", "addressLine1", "addressLine2", "postalCode", "city", "country",
       "paymentTermDays", "discountPercent", "discountTermDays", "priceGroup",
@@ -506,8 +549,10 @@ export async function POST(req: Request) {
       ${nullableString(body.salutation)}, ${nullableString(body.additionalSalutation)}, ${nullableString(body.companyName)},
       ${nullableString(body.firstName)}, ${nullableString(body.lastName)}, ${nullableString(body.position)},
       ${nullableString(email)}, ${nullableString(invoiceEmail)}, ${nullableString(activityReportEmail)}, ${nullableString(phone.raw)}, ${phone.normalized}, ${nullableString(mobile.raw)}, ${mobile.normalized}, ${nullableString(fax.raw)}, ${fax.normalized},
-      ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(invoiceEmail)}, ${Boolean(activityReportEmail)},
-      ${Boolean(body.eInvoiceRequired)}, ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)},
+      ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(body.isInvoiceRecipient)}, ${Boolean(activityReportEmail)},
+      ${Boolean(body.eInvoiceRequired)}, ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)}, ${type !== "person" && Boolean(body.hasDifferentBillingAddress)},
+      ${nullableString(body.billingName)}, ${nullableString(body.billingStreet)}, ${nullableString(body.billingAddressLine1)}, ${nullableString(body.billingAddressLine2)},
+      ${nullableString(body.billingPostalCode)}, ${nullableString(body.billingCity)}, ${nullableString(body.billingCountry)},
       ${nullableString(body.parentCompanyId)}, ${nullableString(body.parentCompanyName)}, ${nullableString(body.mainContactName)}, ${Boolean(body.isMainContact)},
       ${nullableString(body.street)}, ${nullableString(body.addressLine1)}, ${nullableString(body.addressLine2)},
       ${nullableString(body.postalCode)}, ${nullableString(body.city)}, ${nullableString(body.country)},
@@ -560,6 +605,8 @@ export async function PATCH(req: Request) {
   if (requiredContactError) {
     return NextResponse.json({ error: requiredContactError }, { status: 400 });
   }
+  const billingAddressError = getBillingAddressError(body, type);
+  if (billingAddressError) return NextResponse.json({ error: billingAddressError }, { status: 400 });
   const email = cleanString(body.email);
   const invoiceEmail = cleanString(body.invoiceEmail);
   const activityReportEmail = cleanString(body.activityReportEmail);
@@ -674,10 +721,18 @@ export async function PATCH(req: Request) {
       "website" = ${nullableString(body.website)},
       "source" = ${nullableString(body.source)},
       "reachability" = ${nullableString(body.reachability)},
-      "isInvoiceRecipient" = ${Boolean(invoiceEmail)},
+      "isInvoiceRecipient" = ${Boolean(body.isInvoiceRecipient)},
       "isActivityReportRecipient" = ${Boolean(activityReportEmail)},
       "eInvoiceRequired" = ${Boolean(body.eInvoiceRequired)},
       "eInvoiceRecipientType" = ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)},
+      "hasDifferentBillingAddress" = ${type !== "person" && Boolean(body.hasDifferentBillingAddress)},
+      "billingName" = ${nullableString(body.billingName)},
+      "billingStreet" = ${nullableString(body.billingStreet)},
+      "billingAddressLine1" = ${nullableString(body.billingAddressLine1)},
+      "billingAddressLine2" = ${nullableString(body.billingAddressLine2)},
+      "billingPostalCode" = ${nullableString(body.billingPostalCode)},
+      "billingCity" = ${nullableString(body.billingCity)},
+      "billingCountry" = ${nullableString(body.billingCountry)},
       "parentCompanyId" = ${nullableString(body.parentCompanyId)},
       "parentCompanyName" = ${nullableString(body.parentCompanyName)},
       "mainContactName" = ${nullableString(body.mainContactName)},

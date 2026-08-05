@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
+import { getInvoiceMailCandidates, getRecommendedInvoiceMailRecipient } from "@/lib/contacts/invoice-routing";
 import {
   generateXRechnungXml,
   type XRechnungInvoice,
@@ -263,10 +264,11 @@ async function getBuyerReference(
         { parentCompanyId: { in: contactIds } },
       ],
     },
-    orderBy: [{ isInvoiceRecipient: "desc" }, { isMainContact: "desc" }],
-    select: { leitwegId: true },
+    select: { id: true, type: true, parentCompanyId: true, leitwegId: true },
   });
   return (
+    cleanText(contacts.find((contact) => contact.id === project.contactId && contact.type !== "person")?.leitwegId) ||
+    cleanText(contacts.find((contact) => contact.parentCompanyId === project.contactId && contact.type !== "person")?.leitwegId) ||
     contacts.map((contact) => cleanText(contact.leitwegId)).find(Boolean) ||
     project.projectNumber
   );
@@ -296,14 +298,10 @@ async function getSuggestedRecipient(
       ],
     },
     orderBy: [{ isInvoiceRecipient: "desc" }, { isMainContact: "desc" }],
-    select: { invoiceEmail: true, email: true },
+    select: { id: true, type: true, companyName: true, firstName: true, lastName: true, invoiceEmail: true, email: true, isInvoiceRecipient: true, isMainContact: true },
   });
-  return (
-    contacts
-      .flatMap((contact) => [contact.invoiceEmail, contact.email])
-      .map(cleanText)
-      .find((email) => emailSchema.safeParse(email).success) || ""
-  );
+  const candidates = getInvoiceMailCandidates(contacts).filter((candidate) => emailSchema.safeParse(candidate.email).success);
+  return getRecommendedInvoiceMailRecipient(candidates).email;
 }
 
 function toMailAttachment(

@@ -6749,6 +6749,83 @@
   position: relative;
 }
 
+.documentMailRecipientPanel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #b9d9d5;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f7fbfa 0%, #edf8f6 100%);
+}
+
+.documentMailRecipientPanel > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.documentMailRecipientPanel > div:first-child > span,
+.documentMailRecipientPanel > div:first-child > small {
+  color: #60728a;
+}
+
+.documentMailRecipientPanel > p {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff4d6;
+  color: #744d00;
+  font-weight: 700;
+}
+
+.documentMailRecipientList {
+  display: grid;
+  gap: 8px;
+}
+
+.documentMailRecipientList article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid #d8e4e7;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.documentMailRecipientList article > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.documentMailRecipientList article span,
+.documentMailRecipientList article em {
+  color: #617087;
+  font-size: 0.82rem;
+  font-style: normal;
+}
+
+.documentMailRecipientList article > div:last-child {
+  display: flex;
+  gap: 6px;
+}
+
+.documentMailRecipientList button {
+  min-width: 48px;
+  padding: 8px 12px;
+  border: 1px solid #9dbebb;
+  border-radius: 10px;
+  background: #fff;
+  color: #135b5f;
+  font-weight: 800;
+}
+
+.documentMailRecipientList button[data-active="true"] {
+  border-color: #087a78;
+  background: #087a78;
+  color: #fff;
+}
+
 .managementAiOverlay {
   align-items: stretch;
   bottom: 0;

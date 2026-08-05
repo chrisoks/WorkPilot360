@@ -794,8 +794,13 @@ async function getInvoiceBuyerReference(organizationId: string, projectId: strin
      )
     WHERE p."organizationId" = ${organizationId}
       AND p."id" = ${projectId}
+      AND c."type" <> 'person'
       AND COALESCE(c."leitwegId", '') <> ''
-    ORDER BY c."isInvoiceRecipient" DESC, c."isMainContact" DESC, c."updatedAt" DESC
+    ORDER BY CASE
+      WHEN c."id" = p."contactId" THEN 0
+      WHEN c."parentCompanyId" = p."contactId" THEN 1
+      ELSE 2
+    END, c."updatedAt" DESC
     LIMIT 1
   `;
   return cleanText(rows[0]?.leitwegId) || cleanText(fallbackReference);

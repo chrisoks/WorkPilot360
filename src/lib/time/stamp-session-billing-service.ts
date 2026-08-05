@@ -14,6 +14,9 @@ type ContactRow = {
   companyName: string | null; firstName: string | null; lastName: string | null;
   mainContactName: string | null; street: string | null; addressLine1: string | null;
   addressLine2: string | null; postalCode: string | null; city: string | null; paymentTermDays: number | null;
+  hasDifferentBillingAddress: boolean; billingName: string | null; billingStreet: string | null;
+  billingAddressLine1: string | null; billingAddressLine2: string | null; billingPostalCode: string | null;
+  billingCity: string | null;
 };
 type CatalogRow = {
   id: string; type: string; number: string; name: string; unit: string;
@@ -76,7 +79,9 @@ async function loadContact(tx: Prisma.TransactionClient, organizationId: string,
   if (!contactId && !addressContactId) return null;
   const rows = await tx.$queryRaw<ContactRow[]>`
     SELECT "companyName", "firstName", "lastName", "mainContactName", street,
-           "addressLine1", "addressLine2", "postalCode", city, "paymentTermDays"
+           "addressLine1", "addressLine2", "postalCode", city, "paymentTermDays",
+           "hasDifferentBillingAddress", "billingName", "billingStreet", "billingAddressLine1",
+           "billingAddressLine2", "billingPostalCode", "billingCity"
     FROM "Contact"
     WHERE "organizationId" = ${organizationId}
       AND id IN (${contactId || "__none__"}, ${addressContactId || "__none__"})
@@ -147,9 +152,16 @@ export async function attachStampEntryToHourlyInvoiceDraft(input: {
     if (!draft) {
       const contact = await loadContact(tx, input.organizationId, project);
       const person = [contact?.firstName, contact?.lastName].map(clean).filter(Boolean).join(" ");
-      const customerName = clean(contact?.companyName) || clean(project.customer) || person;
-      const customerStreet = [contact?.street, contact?.addressLine1, contact?.addressLine2].map(clean).filter((value, index, values) => value && values.indexOf(value) === index).join(", ") || clean(project.address).split(",")[0] || "";
-      const customerCity = [contact?.postalCode, contact?.city].map(clean).filter(Boolean).join(" ") || clean(project.address).split(",").slice(1).join(",").trim();
+      const useBillingAddress = Boolean(contact?.hasDifferentBillingAddress);
+      const customerName = clean(useBillingAddress ? contact?.billingName : contact?.companyName) || clean(project.customer) || person;
+      const customerStreet = (useBillingAddress
+        ? [contact?.billingStreet, contact?.billingAddressLine1, contact?.billingAddressLine2]
+        : [contact?.street, contact?.addressLine1, contact?.addressLine2]
+      ).map(clean).filter((value, index, values) => value && values.indexOf(value) === index).join(", ") || clean(project.address).split(",")[0] || "";
+      const customerCity = (useBillingAddress
+        ? [contact?.billingPostalCode, contact?.billingCity]
+        : [contact?.postalCode, contact?.city]
+      ).map(clean).filter(Boolean).join(" ") || clean(project.address).split(",").slice(1).join(",").trim();
       const terms = paymentDays(contact?.paymentTermDays);
       draft = { id: randomUUID(), invoiceNumber: await nextInvoiceNumber(tx, input.organizationId) };
       await tx.$executeRaw`

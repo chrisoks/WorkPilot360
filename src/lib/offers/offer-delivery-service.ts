@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
+import { getInvoiceMailCandidates, getRecommendedInvoiceMailRecipient } from "@/lib/contacts/invoice-routing";
 import { getDocumentMailTemplates } from "@/lib/company-settings/mail-templates";
 import { parseStoredMailAccount } from "@/lib/mail/microsoft";
 import { POST as sendDocumentMailRequest } from "@/app/api/document-mail/route";
@@ -189,12 +190,7 @@ async function findOfferRecipient(input: {
     if (contact.companyName === input.customerName) return true;
     return `${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim() === input.customerName;
   });
-  const selected =
-    relevant.find((contact) => cleanText(contact.invoiceEmail)) ??
-    relevant.find((contact) => contact.isInvoiceRecipient) ??
-    relevant.find((contact) => contact.isMainContact) ??
-    relevant[0];
-  return cleanText(selected?.invoiceEmail) || cleanText(selected?.email);
+  return getRecommendedInvoiceMailRecipient(getInvoiceMailCandidates(relevant.map((contact) => ({ ...contact, type: "person" })))).email;
 }
 
 export async function evaluateOfferDelivery(input: {

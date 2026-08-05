@@ -87,6 +87,13 @@ type AutoInvoiceContactRow = {
   postalCode: string | null;
   city: string | null;
   paymentTermDays: number | null;
+  hasDifferentBillingAddress: boolean;
+  billingName: string | null;
+  billingStreet: string | null;
+  billingAddressLine1: string | null;
+  billingAddressLine2: string | null;
+  billingPostalCode: string | null;
+  billingCity: string | null;
 };
 
 type CatalogInvoiceItemRow = {
@@ -341,7 +348,9 @@ async function getAutoInvoiceContact(organizationId: string, project: ProjectRow
 
   const rows = await prisma.$queryRaw<AutoInvoiceContactRow[]>`
     SELECT "companyName", "firstName", "lastName", "mainContactName", street,
-           "addressLine1", "addressLine2", "postalCode", city, "paymentTermDays"
+           "addressLine1", "addressLine2", "postalCode", city, "paymentTermDays",
+           "hasDifferentBillingAddress", "billingName", "billingStreet", "billingAddressLine1",
+           "billingAddressLine2", "billingPostalCode", "billingCity"
     FROM "Contact"
     WHERE "organizationId" = ${organizationId}
       AND id IN (${contactId || "__no_contact__"}, ${addressContactId || "__no_address_contact__"})
@@ -355,12 +364,15 @@ async function getAutoInvoiceContact(organizationId: string, project: ProjectRow
 
 function getAutoInvoiceContactDefaults(project: ProjectRow, contact: AutoInvoiceContactRow | null) {
   const contactPersonName = [contact?.firstName, contact?.lastName].map(cleanString).filter(Boolean).join(" ");
-  const customerName = cleanString(contact?.companyName) || cleanString(project.customer) || contactPersonName;
-  const customerStreet = [contact?.street, contact?.addressLine1, contact?.addressLine2]
+  const useBillingAddress = Boolean(contact?.hasDifferentBillingAddress);
+  const customerName = cleanString(useBillingAddress ? contact?.billingName : contact?.companyName) || cleanString(project.customer) || contactPersonName;
+  const customerStreet = (useBillingAddress
+    ? [contact?.billingStreet, contact?.billingAddressLine1, contact?.billingAddressLine2]
+    : [contact?.street, contact?.addressLine1, contact?.addressLine2])
     .map(cleanString)
     .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
     .join(", ") || cleanString(project.address).split(",")[0] || "";
-  const customerCity = [contact?.postalCode, contact?.city].map(cleanString).filter(Boolean).join(" ") ||
+  const customerCity = (useBillingAddress ? [contact?.billingPostalCode, contact?.billingCity] : [contact?.postalCode, contact?.city]).map(cleanString).filter(Boolean).join(" ") ||
     cleanString(project.address).split(",").slice(1).join(",").trim();
 
   return {

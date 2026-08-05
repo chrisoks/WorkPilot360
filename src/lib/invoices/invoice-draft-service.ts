@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
+import { getBillingAddressSnapshot } from "@/lib/contacts/invoice-routing";
 import {
   addInvoiceDays,
   calculateInvoiceDraftTotals,
@@ -204,7 +205,7 @@ export async function evaluateInvoiceDraft(input: { organizationId: string; draf
   if (project && isArchived(project.status)) throw new InvoiceDraftServiceError("invalid_input", "Für ein archiviertes Projekt kann kein Rechnungsentwurf angelegt werden.");
 
   const [customer, person] = project ? await Promise.all([
-    project.contactId ? db.contact.findFirst({ where: { id: project.contactId, organizationId: input.organizationId }, select: { companyName: true, firstName: true, lastName: true, addressLine1: true, street: true, postalCode: true, city: true, paymentTermDays: true } }) : null,
+    project.contactId ? db.contact.findFirst({ where: { id: project.contactId, organizationId: input.organizationId }, select: { type: true, companyName: true, firstName: true, lastName: true, addressLine1: true, addressLine2: true, street: true, postalCode: true, city: true, country: true, hasDifferentBillingAddress: true, billingName: true, billingStreet: true, billingAddressLine1: true, billingAddressLine2: true, billingPostalCode: true, billingCity: true, billingCountry: true, paymentTermDays: true } }) : null,
     project.contactPersonId ? db.contact.findFirst({ where: { id: project.contactPersonId, organizationId: input.organizationId }, select: { companyName: true, firstName: true, lastName: true } }) : null,
   ]) : [null, null];
 
@@ -311,9 +312,16 @@ export async function evaluateInvoiceDraft(input: { organizationId: string; draf
     }
   }
 
+  const billingAddress = project ? getBillingAddressSnapshot(customer ? { id: project.contactId || "", ...customer } : null, {
+    customerName: project.customer || "",
+    customerStreet: cleanInvoiceText(project.address, 500).split(",")[0] || "",
+    customerCity: cleanInvoiceText(project.address, 500).split(",").slice(1).join(",").trim(),
+    customerCountry: "Deutschland",
+  }) : null;
+
   return {
     input: { projectId, company: normalizeInvoiceCompany(input.draft.company ?? (project && isImmocare(project) ? "OK immocare" : "OK solutions")), serviceDate, plannedExecutionMonth, sourceOfferId, introText: cleanInvoiceText(input.draft.introText, 4000) || DEFAULT_INTRO, closingText: cleanInvoiceText(input.draft.closingText, 4000) || DEFAULT_CLOSING, vatRate, discountPercent, paymentTermDays, dueDate, lines },
-    project: project ? { id: project.id, projectNumber: project.projectNumber, projectTitle: project.title, customerName: contactName(customer) || project.customer || "", customerStreet: cleanInvoiceText(customer?.addressLine1 || customer?.street || project.address, 500), customerCity: [customer?.postalCode, customer?.city].map((value) => cleanInvoiceText(value, 120)).filter(Boolean).join(" "), contactName: contactName(person), projectKind: project.projectKind || "", projectType: project.projectType || "", updatedAt: project.updatedAt.toISOString() } : null,
+    project: project && billingAddress ? { id: project.id, projectNumber: project.projectNumber, projectTitle: project.title, customerName: billingAddress.customerName, customerStreet: billingAddress.customerStreet, customerCity: billingAddress.customerCity, contactName: contactName(person), projectKind: project.projectKind || "", projectType: project.projectType || "", updatedAt: project.updatedAt.toISOString() } : null,
     sourceOffer: sourceOffer ? { id: sourceOffer.id, offerNumber: sourceOffer.offerNumber, updatedAt: sourceOffer.updatedAt.toISOString() } : null,
     catalogVersions: catalogItems.map((item) => ({ id: item.id, updatedAt: item.updatedAt.toISOString() })),
     totals,

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
+import { getBillingAddressSnapshot } from "@/lib/contacts/invoice-routing";
 import {
   calculateOfferDraftTotals,
   calculateOfferLineNet,
@@ -149,23 +150,6 @@ function contactLabel(contact: {
   );
 }
 
-function contactStreet(contact: {
-  addressLine1: string | null;
-  street: string | null;
-} | null) {
-  return cleanOfferText(contact?.addressLine1 || contact?.street, 500);
-}
-
-function contactCity(contact: {
-  postalCode: string | null;
-  city: string | null;
-} | null) {
-  return [contact?.postalCode, contact?.city]
-    .map((value) => cleanOfferText(value, 120))
-    .filter(Boolean)
-    .join(" ");
-}
-
 function defaultCompanyForProject(project: {
   projectType: string | null;
   projectNumber: string;
@@ -311,13 +295,24 @@ export async function evaluateOfferDraft(input: {
                 organizationId: input.organizationId,
               },
               select: {
+                type: true,
                 companyName: true,
                 firstName: true,
                 lastName: true,
                 addressLine1: true,
+                addressLine2: true,
                 street: true,
                 postalCode: true,
                 city: true,
+                country: true,
+                hasDifferentBillingAddress: true,
+                billingName: true,
+                billingStreet: true,
+                billingAddressLine1: true,
+                billingAddressLine2: true,
+                billingPostalCode: true,
+                billingCity: true,
+                billingCountry: true,
               },
             })
           : null,
@@ -490,6 +485,13 @@ export async function evaluateOfferDraft(input: {
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
+  const billingAddress = project ? getBillingAddressSnapshot(customerContact ? { id: project.contactId || "", ...customerContact } : null, {
+    customerName: project.customer || "",
+    customerStreet: addressParts[0] || project.address || "",
+    customerCity: addressParts.slice(1).join(", "),
+    customerCountry: "Deutschland",
+  }) : null;
+
   return {
     input: {
       projectId,
@@ -507,20 +509,14 @@ export async function evaluateOfferDraft(input: {
       discountPercent,
       lines,
     },
-    project: project
+    project: project && billingAddress
       ? {
           id: project.id,
           projectNumber: project.projectNumber || project.id,
           projectTitle: project.title,
-          customerName:
-            contactLabel(customerContact) || project.customer || "",
-          customerStreet:
-            contactStreet(customerContact) ||
-            addressParts[0] ||
-            project.address ||
-            "",
-          customerCity:
-            contactCity(customerContact) || addressParts.slice(1).join(", "),
+          customerName: billingAddress.customerName,
+          customerStreet: billingAddress.customerStreet,
+          customerCity: billingAddress.customerCity,
           contactName: contactLabel(personContact),
           projectKind: project.projectKind || "",
           updatedAt: project.updatedAt.toISOString(),

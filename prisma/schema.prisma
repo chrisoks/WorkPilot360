@@ -1608,6 +1608,14 @@ model Contact {
   isActivityReportRecipient    Boolean   @default(false)
   eInvoiceRequired             Boolean   @default(false)
   eInvoiceRecipientType        String    @default("business")
+  hasDifferentBillingAddress   Boolean   @default(false)
+  billingName                  String?
+  billingStreet                String?
+  billingAddressLine1          String?
+  billingAddressLine2          String?
+  billingPostalCode            String?
+  billingCity                  String?
+  billingCountry               String?
   street                       String?
   addressLine1                 String?
   addressLine2                 String?

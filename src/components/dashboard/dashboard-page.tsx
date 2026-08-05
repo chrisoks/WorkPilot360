@@ -14,6 +14,12 @@ import {
 } from "react";
 import { getDashboardDailyImpulse } from "@/lib/dashboard-daily-impulses";
 import { getLoginErrorMessage } from "@/lib/auth/login-error";
+import {
+  getBillingAddressSnapshot,
+  getInvoiceMailCandidates,
+  getRecommendedInvoiceMailRecipient,
+  type InvoiceMailCandidate,
+} from "@/lib/contacts/invoice-routing";
 import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
 import styles from "./dashboard.module.css";
 import { JarvisComposer } from "./jarvis-composer";
@@ -8876,6 +8882,8 @@ type DocumentMailDraft = {
   activityReportBody?: string;
   hasActivityReportRecipientField?: boolean;
   activeMailTab?: "invoice" | "activityReport";
+  recipientOptions?: InvoiceMailCandidate[];
+  recipientSelectionRequired?: boolean;
 };
 
 type EInvoiceReadiness = {
@@ -10100,6 +10108,14 @@ type ContactItem = {
   isActivityReportRecipient: boolean;
   eInvoiceRequired: boolean;
   eInvoiceRecipientType: "business" | "public";
+  hasDifferentBillingAddress: boolean;
+  billingName: string;
+  billingStreet: string;
+  billingAddressLine1: string;
+  billingAddressLine2: string;
+  billingPostalCode: string;
+  billingCity: string;
+  billingCountry: string;
   parentCompanyId: string;
   parentCompanyName: string;
   mainContactName: string;
@@ -12125,6 +12141,14 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   isActivityReportRecipient: false,
   eInvoiceRequired: false,
   eInvoiceRecipientType: "business",
+  hasDifferentBillingAddress: false,
+  billingName: "",
+  billingStreet: "",
+  billingAddressLine1: "",
+  billingAddressLine2: "",
+  billingPostalCode: "",
+  billingCity: "",
+  billingCountry: "Deutschland",
   parentCompanyId: "",
   parentCompanyName: "",
   mainContactName: "",
@@ -18481,7 +18505,7 @@ export function DashboardPage() {
     const isImmocare =
       (project.projectType ?? "").toLowerCase().includes("immocare") ||
       (project.projectNumber ?? "").toLowerCase().startsWith("oki");
-    const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const billingAddress = getProjectBillingAddress(project);
     const isRecurringProject = getProjectKind(project).startsWith("Dauer");
     const recurringStartMonth = options.asAddendum
       ? `${reportNow.getFullYear()}-${String(reportNow.getMonth() + 1).padStart(2, "0")}`
@@ -18495,9 +18519,9 @@ export function DashboardPage() {
       plannedExecutionMonth: isRecurringProject ? recurringStartMonth : "",
       plannedExecutionEndMonth: isRecurringProject ? recurringEndMonth : "",
       company: isImmocare ? "OK immocare" : "OK solutions",
-      customerName: project.customer || "",
-      customerStreet: addressParts[0] || project.address || "",
-      customerCity: addressParts.slice(1).join(", "),
+      customerName: billingAddress.customerName,
+      customerStreet: billingAddress.customerStreet,
+      customerCity: billingAddress.customerCity,
       internalContactName: activeUser?.name || "Christian Eid",
       internalEmail: activeUser?.email || "",
       lines: [createEmptyOfferLine(emptyOfferDraft.vatRate)],
@@ -19025,16 +19049,16 @@ export function DashboardPage() {
 
   function openFreeInvoiceModal(project: HeroProjectPreview) {
     const isImmocare = getProjectCompany(project) === "OK immocare";
-    const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const billingAddress = getProjectBillingAddress(project);
     const firstItem = catalogItems.find((item) => item.isActive);
     const serviceDate = getProjectServiceDateSuggestion(project);
     const paymentTermDays = getInvoicePaymentTermDaysForProject(project);
     setInvoiceDraft({
       ...emptyInvoiceDraft,
       company: isImmocare ? "OK immocare" : "OK solutions",
-      customerName: project.customer || "",
-      customerStreet: addressParts[0] || project.address || "",
-      customerCity: addressParts.slice(1).join(", "),
+      customerName: billingAddress.customerName,
+      customerStreet: billingAddress.customerStreet,
+      customerCity: billingAddress.customerCity,
       internalContactName: activeUser?.name || "Christian Eid",
       internalEmail: activeUser?.email || "",
       plannedExecutionMonth: serviceDate.slice(0, 7),
@@ -19871,7 +19895,7 @@ export function DashboardPage() {
     const isImmocare =
       (project.projectType ?? "").toLowerCase().includes("immocare") ||
       (project.projectNumber ?? "").toLowerCase().startsWith("oki");
-    const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const billingAddress = getProjectBillingAddress(project);
     const previousInvoice = getAutoBillingPreviousInvoice(project, monthKey);
     const amount = previousInvoice ? roundCurrencyValue(previousInvoice.netTotal) : 0;
     const template = getAutoBillingTemplateForProject(project, monthKey);
@@ -19896,9 +19920,9 @@ export function DashboardPage() {
     return {
       ...emptyInvoiceDraft,
       company: template?.company || (isImmocare ? "OK immocare" : "OK solutions"),
-      customerName: template?.customerName || project.customer || "",
-      customerStreet: template?.customerStreet || addressParts[0] || project.address || "",
-      customerCity: template?.customerCity || addressParts.slice(1).join(", "),
+      customerName: template?.customerName || billingAddress.customerName,
+      customerStreet: template?.customerStreet || billingAddress.customerStreet,
+      customerCity: template?.customerCity || billingAddress.customerCity,
       contactName: template?.contactName || "",
       internalContactName: activeUser?.name || template?.internalContactName || "System",
       internalPhone: template?.internalPhone || "",
@@ -21222,27 +21246,34 @@ export function DashboardPage() {
     return invoices.find((invoice) => invoice.id === draft.documentId) ?? null;
   }
 
-  function getInvoiceRecipientContact(invoice: InvoiceItem | null) {
+  function getInvoiceRelatedContacts(invoice: InvoiceItem | null) {
     if (!invoice) return null;
     const project = heroProjects.find((item) => item.id === invoice.projectId) ?? null;
-    const relatedContacts = contacts.filter((contact) => {
+    return contacts.filter((contact) => {
       if (project && [project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
       if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
       return contact.companyName === invoice.customerName || getContactDisplayName(contact) === invoice.customerName;
     });
+  }
 
+  function getInvoiceRecipientContact(invoice: InvoiceItem | null) {
+    const relatedContacts = getInvoiceRelatedContacts(invoice) || [];
+    const project = invoice ? heroProjects.find((item) => item.id === invoice.projectId) ?? null : null;
     return (
-      relatedContacts.find((contact) => contact.invoiceEmail.trim()) ??
-      relatedContacts.find((contact) => contact.isInvoiceRecipient) ??
-      relatedContacts.find((contact) => contact.isMainContact) ??
-      relatedContacts[0] ??
+      relatedContacts.find((contact) => contact.id === project?.contactId && contact.type !== "person") ??
+      relatedContacts.find((contact) => contact.type !== "person") ??
       null
     );
   }
 
+  function getInvoiceMailRouting(invoice: InvoiceItem | null) {
+    const candidates = getInvoiceMailCandidates(getInvoiceRelatedContacts(invoice) || []);
+    return { candidates, recommendation: getRecommendedInvoiceMailRecipient(candidates) };
+  }
+
   function getActivityReportRecipientContactForInvoice(invoice: InvoiceItem | null) {
     if (!invoice) return null;
-    const invoiceRecipient = getInvoiceRecipientContact(invoice);
+    const invoiceRouting = getInvoiceMailRouting(invoice);
     const project = heroProjects.find((item) => item.id === invoice.projectId) ?? null;
     const relatedContacts = contacts.filter((contact) => {
       if (project && [project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
@@ -21252,27 +21283,21 @@ export function DashboardPage() {
     const recipient = relatedContacts.find((contact) => getContactActivityReportEmail(contact));
     if (!recipient) return null;
     const recipientEmail = getContactActivityReportEmail(recipient).toLowerCase();
-    const invoiceEmail = getContactInvoiceEmail(invoiceRecipient).toLowerCase();
+    const invoiceEmail = invoiceRouting.recommendation.email.toLowerCase();
     if (recipientEmail && invoiceEmail && recipientEmail === invoiceEmail) return null;
     return recipient;
   }
 
-  function getOfferRecipientContact(offer: OfferItem | null) {
-    if (!offer) return null;
+  function getOfferMailRouting(offer: OfferItem | null) {
+    if (!offer) return { candidates: [] as InvoiceMailCandidate[], recommendation: { email: "", requiresSelection: false } };
     const project = heroProjects.find((item) => item.id === offer.projectId) ?? null;
     const relatedContacts = contacts.filter((contact) => {
       if (project && [project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
       if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
       return contact.companyName === offer.customerName || getContactDisplayName(contact) === offer.customerName;
     });
-
-    return (
-      relatedContacts.find((contact) => contact.invoiceEmail.trim()) ??
-      relatedContacts.find((contact) => contact.isInvoiceRecipient) ??
-      relatedContacts.find((contact) => contact.isMainContact) ??
-      relatedContacts[0] ??
-      null
-    );
+    const candidates = getInvoiceMailCandidates(relatedContacts);
+    return { candidates, recommendation: getRecommendedInvoiceMailRecipient(candidates) };
   }
 
   function getLeitwegIdModulo97(value: string) {
@@ -21387,9 +21412,6 @@ export function DashboardPage() {
     if (!recipientContact?.taxId?.trim()) {
       missingRecommended.push("Steuer-/USt-ID des Empfängers ist nicht gepflegt.");
     }
-    if (!recipientContact?.isInvoiceRecipient) {
-      missingRecommended.push("Kein Kontakt ist ausdrücklich als Rechnungsempfänger markiert.");
-    }
     if (!recipientContact?.eInvoiceRequired) {
       missingRecommended.push("E-Rechnung ist beim Empfänger noch nicht als erforderlich markiert.");
     }
@@ -21465,8 +21487,9 @@ export function DashboardPage() {
     const documentNumber = kind === "offer" ? (document as OfferItem).offerNumber : getInvoiceDisplayNumber(document as InvoiceItem);
     const template = applyMailTemplate(kind, documentNumber);
     const invoice = kind === "invoice" ? (document as InvoiceItem) : null;
-    const invoiceRecipient = kind === "invoice" ? getInvoiceRecipientContact(invoice) : null;
-    const offerRecipient = kind === "offer" ? getOfferRecipientContact(document as OfferItem) : null;
+    const mailRouting = kind === "invoice"
+      ? getInvoiceMailRouting(invoice)
+      : getOfferMailRouting(document as OfferItem);
     const activityReportRecipient = kind === "invoice" ? getActivityReportRecipientContactForInvoice(invoice) : null;
     const activityReportTemplate =
       kind === "invoice" ? applyMailTemplate("activityReport", documentNumber) : null;
@@ -21484,7 +21507,7 @@ export function DashboardPage() {
       projectNumber: document.projectNumber,
       projectTitle: document.projectTitle,
       customerName: document.customerName,
-      to: getContactInvoiceEmail(invoiceRecipient) || getContactInvoiceEmail(offerRecipient),
+      to: mailRouting.recommendation.email,
       cc: "",
       bcc: activeMailAccount.bcc,
       subject: template.subject,
@@ -21501,6 +21524,8 @@ export function DashboardPage() {
       activityReportBody: activityReportTemplate?.body || "",
       hasActivityReportRecipientField: Boolean(getContactActivityReportEmail(activityReportRecipient)),
       activeMailTab: "invoice",
+      recipientOptions: mailRouting.candidates,
+      recipientSelectionRequired: mailRouting.recommendation.requiresSelection,
     });
     closeDocumentMailProjectAttachmentPicker();
     setDocumentMailError(
@@ -21533,8 +21558,9 @@ export function DashboardPage() {
             invoice.invoiceNumber === reminderInvoiceNumber
         ) ?? null
       : null;
-    const reminderRecipientEmail =
-      input.kind === "reminder" ? getContactInvoiceEmail(getInvoiceRecipientContact(reminderInvoice)) : "";
+    const reminderRouting = input.kind === "reminder"
+      ? getInvoiceMailRouting(reminderInvoice)
+      : { candidates: [] as InvoiceMailCandidate[], recommendation: { email: "", requiresSelection: false } };
 
     setDocumentMailDraft({
       dispatchKey: crypto.randomUUID(),
@@ -21547,7 +21573,7 @@ export function DashboardPage() {
       customerName: input.customerName || selectedProjectFile?.customer || "",
       attachmentName: input.attachmentName,
       attachmentDataUrl: input.attachmentDataUrl,
-      to: reminderRecipientEmail,
+      to: reminderRouting.recommendation.email,
       cc: "",
       bcc: activeMailAccount.bcc,
       subject: template.subject,
@@ -21557,6 +21583,8 @@ export function DashboardPage() {
       includeFeedbackLink: input.kind === "invoice",
       includeAcceptanceLink: input.kind === "offer",
       includeActivityReportFeedbackLink: input.kind === "invoice",
+      recipientOptions: reminderRouting.candidates,
+      recipientSelectionRequired: reminderRouting.recommendation.requiresSelection,
     });
     closeDocumentMailProjectAttachmentPicker();
     setDocumentMailError(
@@ -21565,6 +21593,30 @@ export function DashboardPage() {
         : "Für deinen Benutzer ist noch kein Microsoft 365 Konto verbunden. Du kannst den Versanddialog vorbereiten, aber noch nicht senden."
     );
     setDocumentMailSuccess("");
+  }
+
+  function parseMailField(value: string) {
+    return value.split(/[;,]/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  function updateMailField(value: string, email: string, selected: boolean) {
+    const normalized = email.trim().toLowerCase();
+    const current = parseMailField(value).filter((item) => item.toLowerCase() !== normalized);
+    if (selected) current.push(email.trim());
+    return current.join(", ");
+  }
+
+  function setDocumentMailRecipient(candidate: InvoiceMailCandidate, target: "to" | "cc" | "none") {
+    setDocumentMailDraft((current) => {
+      if (!current) return current;
+      const nextTo = updateMailField(current.to, candidate.email, target === "to");
+      return {
+        ...current,
+        to: nextTo,
+        cc: updateMailField(current.cc, candidate.email, target === "cc"),
+        recipientSelectionRequired: Boolean(current.recipientOptions && current.recipientOptions.length > 1 && !nextTo.trim()),
+      };
+    });
   }
 
   async function sendDocumentMail(noteConfirmed = false) {
@@ -23566,6 +23618,20 @@ export function DashboardPage() {
       contacts.find((contact) => getContactDisplayName(contact).trim().toLowerCase() === projectCustomer) ||
       null
     );
+  }
+
+  function getProjectBillingAddress(project: HeroProjectPreview) {
+    const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const direct = getProjectCustomerContact(project);
+    const customer = direct?.type === "person"
+      ? contacts.find((contact) => contact.id === direct.parentCompanyId && contact.type !== "person") ?? null
+      : direct;
+    return getBillingAddressSnapshot(customer, {
+      customerName: project.customer || "",
+      customerStreet: addressParts[0] || project.address || "",
+      customerCity: addressParts.slice(1).join(", "),
+      customerCountry: "Deutschland",
+    });
   }
 
   async function loadCustomerProjectNotes(input: { customerId?: string; projectId?: string; context?: string; userId?: string }) {
@@ -49713,7 +49779,7 @@ await addProjectLogbookEntry(
                               </div>
                               <div className={styles.customerContactBadges}>
                                 {contact.isMainContact && <strong>Hauptkontakt</strong>}
-                                {contact.isInvoiceRecipient && <strong>Rechnungsempfänger</strong>}
+                                {contact.isInvoiceRecipient && <strong>Rechnungsversand</strong>}
                               </div>
                             </div>
                             <button
@@ -66609,12 +66675,43 @@ await addProjectLogbookEntry(
             {documentMailError ? <p className={styles.formError}>{documentMailError}</p> : null}
             {documentMailSuccess ? <p className={styles.inlineSuccess}>{documentMailSuccess}</p> : null}
             <div className={styles.standardFormGrid}>
+              {documentMailDraft.recipientOptions?.length ? (
+                <section className={`${styles.standardFormWide} ${styles.documentMailRecipientPanel}`}>
+                  <div>
+                    <span>Versandkontakte</span>
+                    <strong>Empfänger bewusst auswählen</strong>
+                    <small>Ein oder mehrere Kontakte können als „An“ oder „CC“ gesetzt werden.</small>
+                  </div>
+                  {documentMailDraft.recipientSelectionRequired && !documentMailDraft.to.trim() ? (
+                    <p>Mehrere mögliche Empfänger gefunden. Bitte mindestens einen Kontakt als „An“ auswählen.</p>
+                  ) : null}
+                  <div className={styles.documentMailRecipientList}>
+                    {documentMailDraft.recipientOptions.map((candidate) => {
+                      const isTo = parseMailField(documentMailDraft.to).some((email) => email.toLowerCase() === candidate.email.toLowerCase());
+                      const isCc = parseMailField(documentMailDraft.cc).some((email) => email.toLowerCase() === candidate.email.toLowerCase());
+                      return (
+                        <article key={`${candidate.contactId}-${candidate.email}`}>
+                          <div>
+                            <strong>{candidate.label}</strong>
+                            <span>{candidate.email}</span>
+                            {candidate.preferred ? <em>Für Rechnungsversand vorgemerkt</em> : candidate.mainContact ? <em>Hauptansprechpartner</em> : null}
+                          </div>
+                          <div>
+                            <button type="button" data-active={isTo} onClick={() => setDocumentMailRecipient(candidate, isTo ? "none" : "to")}>An</button>
+                            <button type="button" data-active={isCc} onClick={() => setDocumentMailRecipient(candidate, isCc ? "none" : "cc")}>CC</button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              ) : null}
               <label className={styles.standardFormWide}>
-                {isInvoiceMail ? "Empfänger Rechnung" : "Empfänger"}
+                {isInvoiceMail ? "Empfänger Rechnung (An)" : "Empfänger (An)"}
                 <input
-                  type="email"
+                  type="text"
                   value={documentMailDraft.to}
-                  placeholder="kunde@example.de"
+                  placeholder="kunde@example.de, buchhaltung@example.de"
                   onChange={(event) =>
                     setDocumentMailDraft((current) =>
                       current ? { ...current, to: event.target.value } : current
@@ -66764,7 +66861,7 @@ await addProjectLogbookEntry(
                   </div>
                   {eInvoiceReadiness.recipientContact ? (
                     <div className={styles.eInvoiceReadinessMeta}>
-                      <span>Rechnungsempfänger</span>
+                      <span>Rechtlicher Rechnungsempfänger</span>
                       <strong>{getContactDisplayName(eInvoiceReadiness.recipientContact)}</strong>
                       <span>Leitweg-ID</span>
                       <strong>{eInvoiceReadiness.recipientContact.leitwegId || "Nicht gepflegt"}</strong>
@@ -74737,13 +74834,24 @@ await addProjectLogbookEntry(
                   />
                 </label>
                 <label>
-                  E-Mail Rechnung
+                  Abweichende E-Mail für Rechnungsversand
                   <input
                     type="email"
                     value={contactDraft.invoiceEmail}
                     placeholder={contactDraft.email || "rechnung@example.de"}
                     onChange={(event) => updateContactDraft("invoiceEmail", event.target.value)}
                   />
+                </label>
+                <label className={styles.checkboxField}>
+                  <input
+                    type="checkbox"
+                    checked={contactDraft.isInvoiceRecipient}
+                    onChange={(event) => updateContactDraft("isInvoiceRecipient", event.target.checked)}
+                  />
+                  <span>
+                    <strong>Für Rechnungsversand vorschlagen</strong>
+                    <small>Kann beim Versand als „An“ oder „CC“ ausgewählt werden.</small>
+                  </span>
                 </label>
                 <label>
                   E-Mail Tätigkeitsbericht
@@ -74903,6 +75011,7 @@ await addProjectLogbookEntry(
               )}
 
               {contactFormTab === "address" && (
+              <>
               <section className={styles.contactFormGrid}>
                 <label>
                   Straße & Hausnummer
@@ -74947,6 +75056,54 @@ await addProjectLogbookEntry(
                   />
                 </label>
               </section>
+              {contactDraft.type !== "person" ? (
+                <section className={styles.customerClassificationPanel}>
+                  <label className={styles.checkboxField}>
+                    <input
+                      type="checkbox"
+                      checked={contactDraft.hasDifferentBillingAddress}
+                      onChange={(event) => updateContactDraft("hasDifferentBillingAddress", event.target.checked)}
+                    />
+                    <span>
+                      <strong>Abweichende Rechnungsanschrift</strong>
+                      <small>Ohne Auswahl wird automatisch die oben gepflegte Kundenanschrift verwendet.</small>
+                    </span>
+                  </label>
+                  {contactDraft.hasDifferentBillingAddress ? (
+                    <div className={styles.contactFormGrid}>
+                      <label>
+                        Rechtlicher Rechnungsempfänger
+                        <input value={contactDraft.billingName} onChange={(event) => updateContactDraft("billingName", event.target.value)} />
+                      </label>
+                      <label>
+                        Straße & Hausnummer
+                        <input value={contactDraft.billingStreet} onChange={(event) => updateContactDraft("billingStreet", event.target.value)} />
+                      </label>
+                      <label>
+                        1. Adresszeile
+                        <input value={contactDraft.billingAddressLine1} onChange={(event) => updateContactDraft("billingAddressLine1", event.target.value)} />
+                      </label>
+                      <label>
+                        2. Adresszeile
+                        <input value={contactDraft.billingAddressLine2} onChange={(event) => updateContactDraft("billingAddressLine2", event.target.value)} />
+                      </label>
+                      <label>
+                        Postleitzahl
+                        <input value={contactDraft.billingPostalCode} onChange={(event) => updateContactDraft("billingPostalCode", event.target.value)} />
+                      </label>
+                      <label>
+                        Ort
+                        <input value={contactDraft.billingCity} onChange={(event) => updateContactDraft("billingCity", event.target.value)} />
+                      </label>
+                      <label>
+                        Land
+                        <input value={contactDraft.billingCountry} onChange={(event) => updateContactDraft("billingCountry", event.target.value)} />
+                      </label>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+              </>
               )}
 
               {contactFormTab === "terms" && (
