@@ -24617,6 +24617,52 @@
   color: #ffffff;
 }
 
+.contactIdentityLayout {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.contactIdentityLayoutWithHints {
+  grid-template-columns: minmax(245px, 0.92fr) minmax(0, 2fr);
+}
+
+.contactIdentityLayoutWithoutHints {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.contactIdentityHints {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.contactIdentityHints > span {
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding-left: 6px;
+}
+
+.contactIdentityFields {
+  align-items: start;
+  display: grid;
+  gap: 11px 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.contactIdentityFieldsWithHints {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.contactIdentityFieldsWithHints .contactCompanyAssignField {
+  grid-column: auto;
+}
+
 .contactPositionField {
   grid-column: span 1;
 }
@@ -28605,6 +28651,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .contactIdentityLayoutWithHints {
+    grid-template-columns: minmax(210px, 0.8fr) minmax(0, 2fr);
+  }
+
+  .contactIdentityFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .customerClassificationGrid {
     grid-template-columns: 1fr;
   }
@@ -28630,6 +28684,12 @@
   .contactToolbar,
   .contactFormTopGrid,
   .contactFormGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .contactIdentityLayoutWithHints,
+  .contactIdentityFields,
+  .contactIdentityFieldsWithHints {
     grid-template-columns: 1fr;
   }
 

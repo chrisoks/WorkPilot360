@@ -74801,138 +74801,196 @@ await addProjectLogbookEntry(
                     </div>
                 </div>
 
-              {contactDraft.type !== "person" && contactDraft.category !== "Interessent" ? (
-                <label>
-                  Kundennummer
-                  <input
-                    value={contactDraft.customerNumber}
-                    onChange={(event) => updateContactDraft("customerNumber", event.target.value)}
-                  />
-                </label>
-              ) : (
-                <div className={styles.contactNumberNotApplicable}>
-                  <span>Kundennummer</span>
-                  <strong>Nicht erforderlich</strong>
-                  <small>
-                    {contactDraft.category === "Interessent"
-                      ? "Die Kundennummer wird erst bei der Übernahme als Kunde automatisch vergeben."
-                      : "Ansprechpartner werden über ihre Firma und Kontakt-ID zugeordnet."}
-                  </small>
-                </div>
-              )}
+              <div
+                className={`${styles.contactIdentityLayout} ${
+                  contactDraft.type === "person" || contactDraft.category === "Interessent"
+                    ? styles.contactIdentityLayoutWithHints
+                    : styles.contactIdentityLayoutWithoutHints
+                }`}
+              >
+                {contactDraft.type === "person" || contactDraft.category === "Interessent" ? (
+                  <aside className={styles.contactIdentityHints}>
+                    <span>Hinweise</span>
+                    {contactDraft.category === "Interessent" ? (
+                      <div className={styles.contactNumberNotApplicable}>
+                        <span>Interessentenstatus</span>
+                        <strong>
+                          {contactDraft.prospectSince
+                            ? `Seit ${getContactProspectAgeDays({ prospectSince: contactDraft.prospectSince, createdAt: contactDraft.prospectSince })} Tagen`
+                            : "Beginnt mit dem Speichern"}
+                        </strong>
+                        <small>Vertriebsaktivitäten werden im Sales-Journal dokumentiert. Vor einem Projekt oder Angebot muss der Kontakt bewusst als Gewerbe- oder Privatkunde übernommen werden.</small>
+                      </div>
+                    ) : null}
+                    <div className={styles.contactNumberNotApplicable}>
+                      <span>Kundennummer</span>
+                      <strong>Nicht erforderlich</strong>
+                      <small>
+                        {contactDraft.category === "Interessent"
+                          ? "Die Kundennummer wird erst bei der Übernahme als Kunde automatisch vergeben."
+                          : "Ansprechpartner werden über ihre Firma und Kontakt-ID zugeordnet."}
+                      </small>
+                    </div>
+                  </aside>
+                ) : null}
 
-              {contactDraft.category === "Interessent" ? (
-                <div className={styles.contactNumberNotApplicable}>
-                  <span>Interessentenstatus</span>
-                  <strong>
-                    {contactDraft.prospectSince
-                      ? `Seit ${getContactProspectAgeDays({ prospectSince: contactDraft.prospectSince, createdAt: contactDraft.prospectSince })} Tagen`
-                      : "Beginnt mit dem Speichern"}
-                  </strong>
-                  <small>Vertriebsaktivitäten werden im Sales-Journal dokumentiert. Vor einem Projekt oder Angebot muss der Kontakt bewusst als Gewerbe- oder Privatkunde übernommen werden.</small>
-                </div>
-              ) : null}
-
-              <label>
-                Anrede
-                <select
-                  value={contactDraft.salutation}
-                  onChange={(event) => updateContactDraft("salutation", event.target.value)}
+                <div
+                  className={`${styles.contactIdentityFields} ${
+                    contactDraft.type === "person" || contactDraft.category === "Interessent"
+                      ? styles.contactIdentityFieldsWithHints
+                      : ""
+                  }`}
                 >
-                  <option value=""></option>
-                  <option value="Frau">Frau</option>
-                  <option value="Herr">Herr</option>
-                  <option value="Divers">Divers</option>
-                </select>
-              </label>
+                  {contactDraft.type !== "person" && contactDraft.category !== "Interessent" ? (
+                    <label>
+                      Kundennummer
+                      <input
+                        value={contactDraft.customerNumber}
+                        onChange={(event) => updateContactDraft("customerNumber", event.target.value)}
+                      />
+                    </label>
+                  ) : null}
 
-              <label>
-                Weitere Anrede
-                <input
-                  value={contactDraft.additionalSalutation}
-                  onChange={(event) =>
-                    updateContactDraft("additionalSalutation", event.target.value)
-                  }
-                />
-              </label>
+                  {contactDraft.type === "company" && contactDraft.category !== "Interessent" ? (
+                    <>
+                      <label>
+                        Firmenname
+                        <input
+                          value={contactDraft.companyName}
+                          onChange={(event) => updateContactDraft("companyName", event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Rechtsform
+                        <select
+                          value={contactDraft.legalForm}
+                          onChange={(event) => updateContactDraft("legalForm", event.target.value)}
+                        >
+                          <option value="">Bitte auswählen</option>
+                          {legalFormOptions.map((legalForm) => (
+                            <option key={legalForm} value={legalForm}>{legalForm}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  ) : null}
 
-              <label className={contactDraft.type === "person" ? styles.contactPositionField : undefined}>
-                Position/Funktion
-                <input
-                  value={contactDraft.position}
-                  onChange={(event) => updateContactDraft("position", event.target.value)}
-                />
-              </label>
+                  <label>
+                    Anrede
+                    <select
+                      value={contactDraft.salutation}
+                      onChange={(event) => updateContactDraft("salutation", event.target.value)}
+                    >
+                      <option value=""></option>
+                      <option value="Frau">Frau</option>
+                      <option value="Herr">Herr</option>
+                      <option value="Divers">Divers</option>
+                    </select>
+                  </label>
 
-              {contactDraft.type === "person" && (
-                <label className={styles.contactCompanyAssignField}>
-                  Firma zuordnen
-                  <select
-                    value={contactDraft.parentCompanyId}
-                    onChange={(event) => {
-                      const selectedCompany = contactCompanyOptions.find(
-                        (contact) => contact.id === event.target.value
-                      );
-                      setContactDraft((current) => ({
-                        ...current,
-                        parentCompanyId: selectedCompany?.id || "",
-                        parentCompanyName: selectedCompany?.companyName || "",
-                        ...getInheritedCompanyAddress(selectedCompany),
-                      }));
-                    }}
-                  >
-                    <option value="">Bitte Firma auswählen</option>
-                    {contactCompanyOptions.map((contact) => (
-                      <option key={contact.id} value={contact.id}>
-                        {getContactDisplayName(contact)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+                  <label>
+                    Weitere Anrede
+                    <input
+                      value={contactDraft.additionalSalutation}
+                      onChange={(event) => updateContactDraft("additionalSalutation", event.target.value)}
+                    />
+                  </label>
 
-              {contactDraft.type === "company" && (
-                <label>
-                  Firmenname
-                  <input
-                    value={contactDraft.companyName}
-                    onChange={(event) => updateContactDraft("companyName", event.target.value)}
-                  />
-                </label>
-              )}
+                  {contactDraft.type === "company" && contactDraft.category === "Interessent" ? (
+                    <>
+                      <label>
+                        Firmenname
+                        <input
+                          value={contactDraft.companyName}
+                          onChange={(event) => updateContactDraft("companyName", event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Rechtsform
+                        <select
+                          value={contactDraft.legalForm}
+                          onChange={(event) => updateContactDraft("legalForm", event.target.value)}
+                        >
+                          <option value="">Bitte auswählen</option>
+                          {legalFormOptions.map((legalForm) => (
+                            <option key={legalForm} value={legalForm}>{legalForm}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  ) : null}
 
-              {contactDraft.type === "company" && (
-                <label>
-                  Rechtsform
-                  <select
-                    value={contactDraft.legalForm}
-                    onChange={(event) => updateContactDraft("legalForm", event.target.value)}
-                  >
-                    <option value="">Bitte auswählen</option>
-                    {legalFormOptions.map((legalForm) => (
-                      <option key={legalForm} value={legalForm}>
-                        {legalForm}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+                  {contactDraft.type === "company" && contactDraft.category !== "Interessent" ? (
+                    <label className={styles.contactPositionField}>
+                      Position/Funktion
+                      <input
+                        value={contactDraft.position}
+                        onChange={(event) => updateContactDraft("position", event.target.value)}
+                      />
+                    </label>
+                  ) : null}
 
-              <label>
-                Vorname
-                <input
-                  value={contactDraft.firstName}
-                  onChange={(event) => updateContactDraft("firstName", event.target.value)}
-                />
-              </label>
+                  {contactDraft.type === "person" ? (
+                    <>
+                      <label className={styles.contactPositionField}>
+                        Position/Funktion
+                        <input
+                          value={contactDraft.position}
+                          onChange={(event) => updateContactDraft("position", event.target.value)}
+                        />
+                      </label>
+                      <label className={styles.contactCompanyAssignField}>
+                        Firma zuordnen
+                        <select
+                          value={contactDraft.parentCompanyId}
+                          onChange={(event) => {
+                            const selectedCompany = contactCompanyOptions.find(
+                              (contact) => contact.id === event.target.value
+                            );
+                            setContactDraft((current) => ({
+                              ...current,
+                              parentCompanyId: selectedCompany?.id || "",
+                              parentCompanyName: selectedCompany?.companyName || "",
+                              ...getInheritedCompanyAddress(selectedCompany),
+                            }));
+                          }}
+                        >
+                          <option value="">Bitte Firma auswählen</option>
+                          {contactCompanyOptions.map((contact) => (
+                            <option key={contact.id} value={contact.id}>{getContactDisplayName(contact)}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  ) : null}
 
-              <label>
-                Nachname
-                <input
-                  value={contactDraft.lastName}
-                  onChange={(event) => updateContactDraft("lastName", event.target.value)}
-                />
-              </label>
+                  <label>
+                    Vorname
+                    <input
+                      value={contactDraft.firstName}
+                      onChange={(event) => updateContactDraft("firstName", event.target.value)}
+                    />
+                  </label>
+
+                  <label>
+                    Nachname
+                    <input
+                      value={contactDraft.lastName}
+                      onChange={(event) => updateContactDraft("lastName", event.target.value)}
+                    />
+                  </label>
+
+                  {contactDraft.type !== "person" && (contactDraft.category === "Interessent" || contactDraft.type === "private") ? (
+                    <label className={styles.contactPositionField}>
+                      Position/Funktion
+                      <input
+                        value={contactDraft.position}
+                        onChange={(event) => updateContactDraft("position", event.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              </div>
               </section>
 
               <nav className={`${styles.contactFormTabs} ${styles.contactModalTabs}`}>
