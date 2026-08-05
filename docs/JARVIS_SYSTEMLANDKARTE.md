@@ -1,5 +1,25 @@
 # JARVIS Systemlandkarte
 
+## Sales-Journal
+
+- Der eigenständige Sidebar-Reiter `Sales-Journal` ist das einfache
+  Vertriebstagebuch in WorkPilot360. Ein manueller Eintrag enthält nur Kunde,
+  Aktivitätsart und kurze Notiz; Mitarbeiter sowie Zeitpunkt folgen sicher aus
+  der aktiven Sitzung.
+- Es gibt darin keine eigene Wiedervorlage, Aufgabe oder Zeiterfassung.
+  Nachzuverfolgende Arbeit bleibt ausschließlich im bestehenden Aufgabenmodul.
+- Manuelle Einträge werden im vorhandenen Kundenlogbuch als
+  `sales_journal_entry_created` gespeichert. Die Journalansicht ergänzt
+  bestehende OKS-Phone-, Angebots- und Zusatzverkaufsereignisse und eröffnet
+  keine zweite Vertriebsdatenwelt.
+- Nur `GESCHAEFTSFUEHRER` darf organisationsweit nach Mitarbeitern filtern.
+  Alle anderen Rollen, einschließlich Admin und Führungskraft, erhalten
+  serverseitig ausschließlich ihre eigenen Aktivitäten.
+- Automatische Ereignisse ohne eindeutig handelnden Mitarbeiter werden als
+  reine Information gekennzeichnet und nicht als persönliche Vertriebsleistung
+  gezählt. JARVIS kennt Aufbau und Rechte, schreibt aber nicht autonom in das
+  Journal.
+
 Stand: 04.08.2026
 
 ## Natürliche Sprache und gemeinsame Einsatzverfügbarkeit

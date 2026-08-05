@@ -1,5 +1,20 @@
 # WorkPilot360 Agent Handover
 
+- Sales-Journal 2026-08-05: Der neue eigenständige Sidebar-Reiter
+  `Sales-Journal` dokumentiert ausgeführte Vertriebsaktivitäten ohne eigene
+  Wiedervorlage, Aufgabe oder Zeiterfassung. Manuell werden ausschließlich
+  Kunde, Aktivitätsart und kurze Notiz erfasst; Mitarbeiter und Zeitpunkt
+  kommen aus der aktiven Sitzung. Die Einträge werden als Vertriebsmetadaten im
+  vorhandenen Kundenlogbuch (`AuditLog`, `contact-logbook`) gespeichert und
+  sind dadurch kein neues Datensilo. Das Journal bündelt zusätzlich vorhandene
+  OKS-Phone-, Angebots- und Zusatzverkaufsereignisse. Automatische
+  Ergebnis-/Systemereignisse ohne eindeutig handelnden Mitarbeiter bleiben
+  sichtbar, zählen aber nicht als persönliche Aktivität. Serverseitig sieht
+  jede Rolle ausschließlich die eigenen Einträge; nur
+  `GESCHAEFTSFUEHRER` darf alle Mitarbeitenden sehen und filtern. Auch Admin
+  und Führungskraft erhalten ohne Emulation keine Teamansicht. Keine
+  Prisma-Schemaänderung.
+
 - JARVIS vollständige Terminwunschserienentscheidung 2026-08-02:
   `planning.request.manage` unterstützt jetzt zusätzlich `approve_series` und
   `reject_series`. Führungskraft, Geschäftsführung oder Admin können die über

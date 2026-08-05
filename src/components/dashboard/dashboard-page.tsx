@@ -92,6 +92,7 @@ import {
   type OnlineRequestViewSummary as OnlineRequestSummary,
   type OnlineRequestWorkspaceFilter,
 } from "@/components/online-requests/online-requests-workspace";
+import { SalesJournalWorkspace } from "@/components/sales-journal/sales-journal-workspace";
 import type { JarvisDialogChoice } from "@/lib/jarvis/dialog";
 import type { JarvisGuidedSearchResult } from "@/lib/jarvis/guided-search";
 import type {
@@ -697,6 +698,7 @@ type AppTab =
   | "projectsSolutions"
   | "projectsImmocare"
   | "onlineRequests"
+  | "salesJournal"
   | "contacts"
   | "documents"
   | "approvals"
@@ -11393,6 +11395,7 @@ const allNavigationTabs: Array<[AppTab, string]> = [
   ["overview", "Dashboard"],
   ["reports", "Auswertungen"],
   ["onlineRequests", "Online-Anfragen"],
+  ["salesJournal", "Sales-Journal"],
   ["contacts", "Kontakte"],
   ["newsFeed", "News-Feed"],
   ["salesHub", "Meine Ziele"],
@@ -11510,7 +11513,8 @@ function isAccountingRole(role?: string) {
 }
 
 function isTabAllowedForRole(tab: AppTab, role?: string) {
-  if (isAccountingRole(role)) return tab === "reports";
+  if (isAccountingRole(role)) return tab === "reports" || tab === "salesJournal";
+  if (tab === "salesJournal" && role === "GAST") return false;
   if (
     tab === "onlineRequests" &&
     role !== "ADMIN" &&
@@ -11538,6 +11542,7 @@ function getVisibleNavigationTabs(role?: string, hasSalesRole = false) {
       "overview",
       "reports",
       "onlineRequests",
+      "salesJournal",
       "contacts",
       "newsFeed",
       "salesHub",
@@ -11601,6 +11606,7 @@ const allAppTabs: AppTab[] = [
   "projectsSolutions",
   "projectsImmocare",
   "onlineRequests",
+  "salesJournal",
   "contacts",
   "documents",
   "documentOverview",
@@ -11932,7 +11938,7 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
     );
   }
 
-  if (tab === "salesHub" || tab === "salesOpportunities" || tab === "salesTargets") {
+  if (tab === "salesJournal" || tab === "salesHub" || tab === "salesOpportunities" || tab === "salesTargets") {
     return (
       <svg {...common}>
         <path d="M4 18V8m5 10V5m5 13v-7m5 7V9" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
@@ -71570,6 +71576,22 @@ await addProjectLogbookEntry(
               </section>
             </section>
             )
+          ) : activeTab === "salesJournal" ? (
+            <SalesJournalWorkspace
+              actorId={activeUserId}
+              actorRole={activeUser?.role || ""}
+              contacts={contacts
+                .filter((contact) => contact.category === "Kunde" && !contact.deletionMarkedAt)
+                .map((contact) => ({
+                  id: contact.id,
+                  label: `${contact.customerNumber ? `${contact.customerNumber} · ` : ""}${getContactDisplayName(contact)}`,
+                }))
+                .sort((left, right) => left.label.localeCompare(right.label, APP_LOCALE))}
+              users={users
+                .filter((user) => user.isActive)
+                .map((user) => ({ id: user.id, name: user.name }))
+                .sort((left, right) => left.name.localeCompare(right.name, APP_LOCALE))}
+            />
           ) : activeTab === "salesHub" || activeTab === "salesTargets" ? (
             renderMyGoals()
           ) : activeTab === "salesOpportunities" ? (

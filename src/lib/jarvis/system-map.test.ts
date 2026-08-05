@@ -20,6 +20,7 @@ describe("JARVIS system map", () => {
       "overview",
       "reports",
       "onlineRequests",
+      "salesJournal",
       "contacts",
       "newsFeed",
       "salesHub",
@@ -56,7 +57,7 @@ describe("JARVIS system map", () => {
   });
 
   it("keeps every entry traceable and useful", () => {
-    expect(JARVIS_SYSTEM_AREAS).toHaveLength(95);
+    expect(JARVIS_SYSTEM_AREAS).toHaveLength(96);
     expect(new Set(JARVIS_SYSTEM_AREAS.map((item) => item.id)).size).toBe(JARVIS_SYSTEM_AREAS.length);
     JARVIS_SYSTEM_AREAS.forEach((item) => {
       expect(item.purpose.length).toBeGreaterThan(12);
