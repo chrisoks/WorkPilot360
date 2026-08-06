@@ -74,6 +74,7 @@ import {
   getProjectMonthWindow,
   shiftProjectMonthKey,
 } from "@/lib/projects/project-month-range";
+import { getHourlyRecurringPlanningProgressState } from "@/lib/projects/project-planning-progress";
 import {
   type WinterServiceOfferTransfer,
 } from "@/components/calculators/winter-service-calculator";
@@ -52717,6 +52718,11 @@ await addProjectLogbookEntry(
           ? projectProgressMonthState
           : projectHasOnlyLostOffers
             ? "open"
+          : isSelectedProjectHourlyRecurring
+            ? getHourlyRecurringPlanningProgressState({
+                confirmedEntries: projectProgressMonthPlanningEntries.length,
+                requestedEntries: projectProgressMonthRequestedEntries.length,
+              })
           : projectLaborComparisonRows.length === 0
             ? projectConfirmedPlanningEntries.length > 0
               ? "done"
@@ -52728,6 +52734,12 @@ await addProjectLogbookEntry(
           ? projectProgressMonthHint
           : projectHasOnlyLostOffers
         ? "Keine aktive Angebotsgrundlage für die Planung"
+          : isSelectedProjectHourlyRecurring
+            ? projectProgressMonthPlanningEntries.length > 0
+              ? `${projectProgressMonthPlanningEntries.length} bestätigte Termin(e) im ${formatMonthLabel(projectProgressMonthKey)}`
+              : projectProgressMonthRequestedEntries.length > 0
+                ? `${projectProgressMonthRequestedEntries.length} Terminwunsch/-wünsche im ${formatMonthLabel(projectProgressMonthKey)} warten auf Freigabe`
+                : `Noch kein Terminwunsch oder Termin im ${formatMonthLabel(projectProgressMonthKey)} vorhanden`
           : projectLaborComparisonRows.length === 0
             ? projectConfirmedPlanningEntries.length > 0
               ? "Projekttermine vorhanden"
