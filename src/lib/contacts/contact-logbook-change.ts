@@ -12,7 +12,7 @@ const CHANGE_GROUPS: Array<{ label: string; fields: string[] }> = [
   { label: "Weitere Kontaktdaten", fields: ["website", "source", "reachability"] },
   { label: "Ansprechpartner-Zuordnung", fields: ["parentCompanyId", "parentCompanyName", "mainContactName", "isMainContact"] },
   { label: "Anschrift", fields: ["street", "addressLine1", "addressLine2", "postalCode", "city", "country"] },
-  { label: "Rechnungsversand", fields: ["invoiceEmail", "activityReportEmail", "isInvoiceRecipient", "isActivityReportRecipient"] },
+  { label: "Dokumentenversand", fields: ["invoiceEmail", "activityReportEmail", "isInvoiceRecipient", "isActivityReportRecipient", "activityReportDesired"] },
   { label: "Rechnungsanschrift", fields: ["hasDifferentBillingAddress", "billingName", "billingStreet", "billingAddressLine1", "billingAddressLine2", "billingPostalCode", "billingCity", "billingCountry"] },
   { label: "Konditionen", fields: ["paymentTermDays", "discountPercent", "discountTermDays", "priceGroup"] },
   { label: "Zahlungsdaten", fields: ["iban", "bic", "bankName", "taxId", "debtorCreditorAccount"] },

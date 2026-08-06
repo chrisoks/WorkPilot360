@@ -56,6 +56,7 @@ type ContactRow = {
   isActivityReportRecipient: boolean | null;
   isInvoiceRecipient: boolean | null;
   isMainContact: boolean | null;
+  activityReportDesired: boolean | null;
 };
 
 type LogbookAttachment = {
@@ -114,6 +115,7 @@ function getLatestAttachmentDate(entries: ProjectLogbookEntryRow[], projectId: s
 
 function getRecipient(project: ProjectRow, contacts: ContactRow[]) {
   const projectContact = contacts.find((contact) => contact.id === project.contactId);
+  if (projectContact?.activityReportDesired === false) return "";
   const relatedContacts = contacts.filter((contact) => {
     if ([project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
     if (projectContact?.companyName && contact.parentCompanyName === projectContact.companyName) return true;
@@ -299,7 +301,7 @@ async function discoverAutomationRuns(organizationId: string): Promise<Automatio
     `,
     prisma.$queryRaw<ContactRow[]>`
       SELECT id, email, "parentCompanyId", "parentCompanyName", "companyName",
-             "isActivityReportRecipient", "isInvoiceRecipient", "isMainContact"
+             "isActivityReportRecipient", "isInvoiceRecipient", "isMainContact", "activityReportDesired"
       FROM "Contact"
       WHERE "organizationId" = ${organizationId}
     `,

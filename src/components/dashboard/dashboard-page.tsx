@@ -10145,6 +10145,7 @@ type ContactItem = {
   reachability: string;
   isInvoiceRecipient: boolean;
   isActivityReportRecipient: boolean;
+  activityReportDesired: boolean;
   eInvoiceRequired: boolean;
   eInvoiceRecipientType: "business" | "public";
   hasDifferentBillingAddress: boolean;
@@ -12183,6 +12184,7 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   reachability: "Sonstige",
   isInvoiceRecipient: false,
   isActivityReportRecipient: false,
+  activityReportDesired: true,
   eInvoiceRequired: false,
   eInvoiceRecipientType: "business",
   hasDifferentBillingAddress: false,
@@ -19631,7 +19633,7 @@ export function DashboardPage() {
       if (afterImageCount === 0) issues.push("Nachherbild");
     }
 
-    if (invoice) {
+    if (invoice && isActivityReportDesiredForProject(project)) {
       const activityReportCount = getMatchingActivityReportCount(project, monthKey, invoice.sourceOfferNumber);
       if (activityReportCount === 0) issues.push("Tätigkeitsbericht");
     }
@@ -19852,7 +19854,7 @@ export function DashboardPage() {
     const afterImageCount = getProjectProcessAttachmentCount(project, "Bilder: Nachherbilder", "Bild", invoiceMonth);
     const activityReportCount = getMatchingActivityReportCount(project, invoiceMonth, draft.sourceOfferNumber);
     const finalInspectionCount = getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", invoiceMonth);
-    const requiresActivityReport = isImmocareProject(project);
+    const requiresActivityReport = isImmocareProject(project) && isActivityReportDesiredForProject(project);
     const isWinterService = isWinterServiceProject(project);
 
     if (requiresActivityReport && activityReportCount === 0) {
@@ -21335,6 +21337,7 @@ export function DashboardPage() {
     if (!invoice) return null;
     const invoiceRouting = getInvoiceMailRouting(invoice);
     const project = heroProjects.find((item) => item.id === invoice.projectId) ?? null;
+    if (!isActivityReportDesiredForProject(project)) return null;
     const relatedContacts = contacts.filter((contact) => {
       if (project && [project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
       if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
@@ -21553,8 +21556,9 @@ export function DashboardPage() {
     const activityReportRecipient = kind === "invoice" ? getActivityReportRecipientContactForInvoice(invoice) : null;
     const activityReportTemplate =
       kind === "invoice" ? applyMailTemplate("activityReport", documentNumber) : null;
+    const invoiceProject = invoice ? heroProjects.find((item) => item.id === invoice.projectId) ?? null : null;
     const activityReportAttachments =
-      kind === "invoice"
+      kind === "invoice" && isActivityReportDesiredForProject(invoiceProject)
         ? getActivityReportMailAttachmentsForProject(document.projectId, getProjectInvoiceMonth(document as InvoiceItem))
         : [];
 
@@ -28556,7 +28560,14 @@ export function DashboardPage() {
   }
 
   function getContactActivityReportEmail(contact?: ContactItem | null) {
+    if (contact?.activityReportDesired === false) return "";
     return contact?.activityReportEmail?.trim() || contact?.email?.trim() || "";
+  }
+
+  function isActivityReportDesiredForProject(project?: HeroProjectPreview | null) {
+    if (!project) return true;
+    const customer = contacts.find((contact) => contact.id === project.contactId);
+    return customer?.activityReportDesired !== false;
   }
 
   function getCustomerFileTarget(contact: ContactItem) {
@@ -34222,7 +34233,12 @@ await addProjectLogbookEntry(
           if (beforeImageCount === 0) issues.push({ issue: "Vorherbild fehlt", target: "images" });
           if (afterImageCount === 0) issues.push({ issue: "Nachherbild fehlt", target: "images" });
         }
-        if (!isWinterServiceProject(project) && (plannedHours > 0 || stampedHours > 0 || invoice) && activityReportCount === 0) {
+        if (
+          isActivityReportDesiredForProject(project) &&
+          !isWinterServiceProject(project) &&
+          (plannedHours > 0 || stampedHours > 0 || invoice) &&
+          activityReportCount === 0
+        ) {
           issues.push({ issue: "Tätigkeitsbericht fehlt", target: "activityReport" });
         }
 
@@ -52580,6 +52596,7 @@ await addProjectLogbookEntry(
     const selectedProjectIsImmocare = selectedProjectCompany === "OK immocare";
     const selectedProjectSupportsProofImages =
       selectedProjectIsImmocare || getProjectKind(selectedProjectFile) === ONE_TIME_PROJECT_KIND;
+    const selectedProjectActivityReportDesired = isActivityReportDesiredForProject(selectedProjectFile);
     const selectedProjectVisibleDocumentTypes = selectedProjectSupportsProofImages
       ? customerDocumentTypes
       : customerDocumentTypes.filter((type) => type !== "Tätigkeitsberichte");
@@ -52790,8 +52807,10 @@ await addProjectLogbookEntry(
       {
         id: "activityReport",
         label: "T-Bericht",
-        state: hasSentActivityReport ? "done" : "open",
-        hint: hasSentActivityReport
+        state: !selectedProjectActivityReportDesired || hasSentActivityReport ? "done" : "open",
+        hint: !selectedProjectActivityReportDesired
+          ? "Kunde wünscht keinen Tätigkeitsbericht"
+          : hasSentActivityReport
           ? `${sentActivityReportDispatches.length} Tätigkeitsbericht${sentActivityReportDispatches.length === 1 ? "" : "e"} ${isSelectedProjectRecurring ? `im ${comparisonMonthLabel}` : ""} versendet`
           : activityReportDocumentEntries.length > 0
             ? "Tätigkeitsbericht vorhanden, aber noch nicht versendet"
@@ -75169,17 +75188,24 @@ await addProjectLogbookEntry(
                     onChange={(event) => updateContactDraft("invoiceEmail", event.target.value)}
                   />
                 </label>
-                <label className={styles.checkboxField}>
-                  <input
-                    type="checkbox"
-                    checked={contactDraft.isInvoiceRecipient}
-                    onChange={(event) => updateContactDraft("isInvoiceRecipient", event.target.checked)}
-                  />
-                  <span>
+                <div className={styles.contactPreferenceChecks}>
+                  <label className={styles.checkboxField}>
+                    <input
+                      type="checkbox"
+                      checked={contactDraft.isInvoiceRecipient}
+                      onChange={(event) => updateContactDraft("isInvoiceRecipient", event.target.checked)}
+                    />
                     <strong>Für Rechnungsversand vorschlagen</strong>
-                    <small>Kann beim Versand als „An“ oder „CC“ ausgewählt werden.</small>
-                  </span>
-                </label>
+                  </label>
+                  <label className={styles.checkboxField}>
+                    <input
+                      type="checkbox"
+                      checked={contactDraft.activityReportDesired}
+                      onChange={(event) => updateContactDraft("activityReportDesired", event.target.checked)}
+                    />
+                    <strong>Tätigkeitsbericht gewünscht</strong>
+                  </label>
+                </div>
                 <label>
                   E-Mail Tätigkeitsbericht
                   <input

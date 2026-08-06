@@ -1,0 +1,2 @@
+ALTER TABLE "Contact"
+  ADD COLUMN IF NOT EXISTS "activityReportDesired" BOOLEAN NOT NULL DEFAULT true;

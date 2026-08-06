@@ -44,4 +44,20 @@ describe("contact logbook master data changes", () => {
 
     expect(result.text).toBe("Ansprechpartnerdaten geändert: Telefon.");
   });
+
+  it("records a changed activity report preference without exposing its value", () => {
+    const result = getContactMasterDataChange(
+      { activityReportDesired: true },
+      { activityReportDesired: false },
+      "company"
+    );
+
+    expect(result).toEqual({
+      changedFields: ["activityReportDesired"],
+      labels: ["Dokumentenversand"],
+      text: "Kundendaten geändert: Dokumentenversand.",
+    });
+    expect(JSON.stringify(result)).not.toContain("true");
+    expect(JSON.stringify(result)).not.toContain("false");
+  });
 });

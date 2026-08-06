@@ -55,6 +55,7 @@ type ContactRow = {
   reachability: string | null;
   isInvoiceRecipient: boolean;
   isActivityReportRecipient: boolean;
+  activityReportDesired: boolean;
   eInvoiceRequired: boolean;
   eInvoiceRecipientType: string | null;
   hasDifferentBillingAddress: boolean;
@@ -144,6 +145,7 @@ async function ensureContactsTable() {
       "reachability" TEXT,
       "isInvoiceRecipient" BOOLEAN NOT NULL DEFAULT false,
       "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false,
+      "activityReportDesired" BOOLEAN NOT NULL DEFAULT true,
       "eInvoiceRequired" BOOLEAN NOT NULL DEFAULT false,
       "eInvoiceRecipientType" TEXT NOT NULL DEFAULT 'business',
       "hasDifferentBillingAddress" BOOLEAN NOT NULL DEFAULT false,
@@ -196,6 +198,7 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "invoiceEmail" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "activityReportEmail" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "activityReportDesired" BOOLEAN NOT NULL DEFAULT true`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRequired" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRecipientType" TEXT NOT NULL DEFAULT 'business'`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "hasDifferentBillingAddress" BOOLEAN NOT NULL DEFAULT false`;
@@ -344,6 +347,7 @@ function formatContact(contact: ContactRow, invoiceCount = 0) {
     reachability: contact.reachability ?? "",
     isInvoiceRecipient: contact.isInvoiceRecipient,
     isActivityReportRecipient: contact.isActivityReportRecipient,
+    activityReportDesired: contact.activityReportDesired,
     eInvoiceRequired: Boolean(contact.eInvoiceRequired),
     eInvoiceRecipientType: cleanEInvoiceRecipientType(contact.eInvoiceRecipientType),
     hasDifferentBillingAddress: Boolean(contact.hasDifferentBillingAddress),
@@ -511,6 +515,7 @@ export async function POST(req: Request) {
   const email = cleanString(body.email);
   const invoiceEmail = cleanString(body.invoiceEmail);
   const activityReportEmail = cleanString(body.activityReportEmail);
+  const activityReportDesired = body.activityReportDesired === undefined ? true : Boolean(body.activityReportDesired);
   const emailValidationError =
     getEmailValidationError("E-Mail-Adresse Kontaktperson", email) ||
     getEmailValidationError("E-Mail Rechnung", invoiceEmail) ||
@@ -558,7 +563,7 @@ export async function POST(req: Request) {
     INSERT INTO "Contact" (
       "id", "organizationId", "category", "type", "legalForm", "customerNumber",
       "salutation", "additionalSalutation", "companyName", "firstName", "lastName", "position",
-      "email", "invoiceEmail", "activityReportEmail", "phone", "phoneNormalized", "mobile", "mobileNormalized", "fax", "faxNormalized", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
+      "email", "invoiceEmail", "activityReportEmail", "phone", "phoneNormalized", "mobile", "mobileNormalized", "fax", "faxNormalized", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient", "activityReportDesired",
       "eInvoiceRequired", "eInvoiceRecipientType", "hasDifferentBillingAddress", "billingName", "billingStreet", "billingAddressLine1", "billingAddressLine2", "billingPostalCode", "billingCity", "billingCountry",
       "parentCompanyId", "parentCompanyName", "mainContactName", "isMainContact",
       "street", "addressLine1", "addressLine2", "postalCode", "city", "country",
@@ -572,7 +577,7 @@ export async function POST(req: Request) {
       ${nullableString(body.salutation)}, ${nullableString(body.additionalSalutation)}, ${nullableString(body.companyName)},
       ${nullableString(body.firstName)}, ${nullableString(body.lastName)}, ${nullableString(body.position)},
       ${nullableString(email)}, ${nullableString(invoiceEmail)}, ${nullableString(activityReportEmail)}, ${nullableString(phone.raw)}, ${phone.normalized}, ${nullableString(mobile.raw)}, ${mobile.normalized}, ${nullableString(fax.raw)}, ${fax.normalized},
-      ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(body.isInvoiceRecipient)}, ${Boolean(activityReportEmail)},
+      ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(body.isInvoiceRecipient)}, ${Boolean(activityReportEmail)}, ${activityReportDesired},
       ${Boolean(body.eInvoiceRequired)}, ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)}, ${type !== "person" && Boolean(body.hasDifferentBillingAddress)},
       ${nullableString(body.billingName)}, ${nullableString(body.billingStreet)}, ${nullableString(body.billingAddressLine1)}, ${nullableString(body.billingAddressLine2)},
       ${nullableString(body.billingPostalCode)}, ${nullableString(body.billingCity)}, ${nullableString(body.billingCountry)},
@@ -669,6 +674,9 @@ export async function PATCH(req: Request) {
     );
   }
   const previousContact = existingContacts[0];
+  const activityReportDesired = Object.prototype.hasOwnProperty.call(body, "activityReportDesired")
+    ? Boolean(body.activityReportDesired)
+    : previousContact.activityReportDesired;
   const isProspect = category === "Interessent";
   const wasProspect = previousContact.category === "Interessent";
   const isProspectConversion = wasProspect && (category === "Kunde" || category === "Privatkunde");
@@ -711,6 +719,7 @@ export async function PATCH(req: Request) {
     fax: fax.raw,
     isInvoiceRecipient: Boolean(body.isInvoiceRecipient),
     isActivityReportRecipient: Boolean(activityReportEmail),
+    activityReportDesired,
     eInvoiceRequired: Boolean(body.eInvoiceRequired),
     eInvoiceRecipientType: cleanEInvoiceRecipientType(body.eInvoiceRecipientType),
     hasDifferentBillingAddress: type !== "person" && Boolean(body.hasDifferentBillingAddress),
@@ -786,6 +795,7 @@ export async function PATCH(req: Request) {
       "reachability" = ${nullableString(body.reachability)},
       "isInvoiceRecipient" = ${Boolean(body.isInvoiceRecipient)},
       "isActivityReportRecipient" = ${Boolean(activityReportEmail)},
+      "activityReportDesired" = ${activityReportDesired},
       "eInvoiceRequired" = ${Boolean(body.eInvoiceRequired)},
       "eInvoiceRecipientType" = ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)},
       "hasDifferentBillingAddress" = ${type !== "person" && Boolean(body.hasDifferentBillingAddress)},

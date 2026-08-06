@@ -13,7 +13,7 @@ function contact(overrides: Record<string, unknown> = {}) {
     id: "contact-1", organizationId: "org-1", customerNumber: "7000049",
     type: "company", category: "Kunde", companyName: "Muster GmbH", firstName: null,
     lastName: null, position: null, email: "alt@example.de", invoiceEmail: null,
-    activityReportEmail: null, phone: "+49 511 123456", phoneNormalized: "+49511123456",
+    activityReportEmail: null, activityReportDesired: true, phone: "+49 511 123456", phoneNormalized: "+49511123456",
     mobile: null, mobileNormalized: null, website: null, source: null, reachability: null,
     street: "Altstraße 1", addressLine1: null, addressLine2: null, postalCode: "30159",
     city: "Hannover", country: "Deutschland", updatedAt: new Date("2026-08-02T01:00:00.000Z"),

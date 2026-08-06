@@ -1606,6 +1606,7 @@ model Contact {
   reachability                 String?
   isInvoiceRecipient           Boolean   @default(false)
   isActivityReportRecipient    Boolean   @default(false)
+  activityReportDesired        Boolean   @default(true)
   eInvoiceRequired             Boolean   @default(false)
   eInvoiceRecipientType        String    @default("business")
   hasDifferentBillingAddress   Boolean   @default(false)

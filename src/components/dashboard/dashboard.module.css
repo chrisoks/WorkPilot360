@@ -24547,6 +24547,20 @@
   width: 16px;
 }
 
+.contactPreferenceChecks {
+  align-self: center;
+  display: grid;
+  gap: 6px;
+}
+
+.contactPreferenceChecks .checkboxField {
+  min-height: 0;
+}
+
+.contactPreferenceChecks strong {
+  line-height: 1.25;
+}
+
 .contactModal .standardModalFooter {
   margin: 0 12px;
 }

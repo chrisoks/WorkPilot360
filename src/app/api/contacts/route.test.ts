@@ -48,7 +48,8 @@ function contactRow(phone: string | null = null) {
     salutation: null, additionalSalutation: null, companyName: "Beispiel GmbH", firstName: null, lastName: null, position: null,
     email: "info@example.test", invoiceEmail: null, activityReportEmail: null, phone, phoneNormalized: phone,
     mobile: null, mobileNormalized: null, fax: null, faxNormalized: null, website: null, source: "E-Mail", reachability: "Sonstige",
-    isInvoiceRecipient: false, isActivityReportRecipient: false, eInvoiceRequired: false, eInvoiceRecipientType: "business",
+    isInvoiceRecipient: false, isActivityReportRecipient: false, activityReportDesired: true,
+    eInvoiceRequired: false, eInvoiceRecipientType: "business",
     hasDifferentBillingAddress: false, billingName: null, billingStreet: null, billingAddressLine1: null, billingAddressLine2: null,
     billingPostalCode: null, billingCity: null, billingCountry: null, parentCompanyId: null, parentCompanyName: null,
     mainContactName: null, isMainContact: false, street: "Altweg 1", addressLine1: null, addressLine2: null,
@@ -181,7 +182,12 @@ describe("contact prospect lifecycle", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload).toMatchObject({ category: "Interessent", customerNumber: "", prospectSince: updatedAt.toISOString() });
+    expect(payload).toMatchObject({
+      category: "Interessent",
+      customerNumber: "",
+      prospectSince: updatedAt.toISOString(),
+      activityReportDesired: true,
+    });
     expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
     expect(mocks.tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
