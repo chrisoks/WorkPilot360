@@ -85,6 +85,10 @@ import {
   resolveJarvisDomain,
 } from "@/lib/jarvis/domain-router";
 import {
+  detectProjectImageContentType,
+  getProjectImageExtension,
+} from "@/lib/project-logbook/image-content-type";
+import {
   OnlineRequestsWorkspace,
   type OnlineRequestCustomerDecision,
   type OnlineRequestStatus,
@@ -28722,15 +28726,12 @@ export function DashboardPage() {
       }
 
       const reader = new FileReader();
-      const originalExtension = file.name.match(/\.[^.]+$/)?.[0]?.toLowerCase() || ".jpg";
-      const safeOriginalExtension = [".jpg", ".jpeg", ".png", ".webp"].includes(originalExtension)
-        ? originalExtension.replace(".jpeg", ".jpg")
-        : ".jpg";
       const safeNameBase = displayNameBase ? sanitizeFileNamePart(displayNameBase) : file.name.replace(/\.[^.]+$/, "");
 
       reader.onerror = () => reject(new Error(`Bild "${file.name}" konnte nicht gelesen werden.`));
       reader.onload = () => {
         const originalDataUrl = String(reader.result ?? "");
+        const detectedContentType = detectProjectImageContentType(originalDataUrl);
         const image = new Image();
 
         image.onerror = () =>
@@ -28741,11 +28742,12 @@ export function DashboardPage() {
           const width = Math.max(1, Math.round(image.width * scale));
           const height = Math.max(1, Math.round(image.height * scale));
 
-          if (!scale || (scale >= 1 && file.size <= 700_000)) {
+          if (scale >= 1 && file.size <= 700_000 && detectedContentType) {
+            const verifiedContentType = detectedContentType;
             resolve({
-              name: `${safeNameBase}${safeOriginalExtension}`,
+              name: `${safeNameBase}${getProjectImageExtension(verifiedContentType)}`,
               type: "Bild",
-              mimeType: file.type || "image/jpeg",
+              mimeType: verifiedContentType,
               size: file.size,
               dataUrl: originalDataUrl,
             });
