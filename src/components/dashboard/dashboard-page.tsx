@@ -70,6 +70,11 @@ import {
   getProjectContactPersonOptions,
 } from "@/lib/projects/project-contact-person";
 import {
+  clampProjectMonthKey,
+  getProjectMonthWindow,
+  shiftProjectMonthKey,
+} from "@/lib/projects/project-month-range";
+import {
   type WinterServiceOfferTransfer,
 } from "@/components/calculators/winter-service-calculator";
 import { CalculatorWorkspace } from "@/components/calculators/calculator-workspace";
@@ -13687,6 +13692,14 @@ function getOfferPlanningStartMonth(offer: Pick<OfferItem, "plannedExecutionMont
 
 function getProjectPlanningEndMonth(project: HeroProjectPreview) {
   return getProjectPlanningMonthKey(project.projectRuntimeUntil);
+}
+
+function getBoundedProjectMonth(project: HeroProjectPreview, monthKey: string) {
+  return clampProjectMonthKey(
+    monthKey,
+    getProjectPlanningMonthKey(project.projectRuntimeFrom),
+    getProjectPlanningEndMonth(project)
+  );
 }
 
 function getProjectBudgetMonths(project: HeroProjectPreview) {
@@ -33745,6 +33758,25 @@ await addProjectLogbookEntry(
   const selectedHeroDetail = heroProjects.find((project) => project.id === selectedHeroDetailId);
   const selectedProjectFile =
     heroProjects.find((project) => project.id === selectedProjectFileId) ?? null;
+  useEffect(() => {
+    const isProjectWorkspaceActive =
+      activeTab === "hero" || activeTab === "projectsSolutions" || activeTab === "projectsImmocare";
+    if (
+      !isProjectWorkspaceActive ||
+      !selectedProjectFile ||
+      !getProjectKind(selectedProjectFile).startsWith("Dauer")
+    ) return;
+
+    setProjectComparisonMonth((current) => {
+      const requestedMonth = /^\d{4}-\d{2}$/.test(current) ? current : getCurrentMonthKey();
+      return getBoundedProjectMonth(selectedProjectFile, requestedMonth) || requestedMonth;
+    });
+  }, [
+    activeTab,
+    selectedProjectFile?.id,
+    selectedProjectFile?.projectRuntimeFrom,
+    selectedProjectFile?.projectRuntimeUntil,
+  ]);
   function openProjectFile(
     project: HeroProjectPreview,
     options: {
@@ -33779,12 +33811,13 @@ await addProjectLogbookEntry(
     }
 
     if (/^\d{4}-\d{2}$/.test(options.month ?? "")) {
-      setProjectComparisonMonth(options.month ?? "");
+      setProjectComparisonMonth(getBoundedProjectMonth(project, options.month ?? "") || options.month || "");
       return;
     }
 
     if (!options.keepMonth && getProjectKind(project).startsWith("Dauer")) {
-      setProjectComparisonMonth(getCurrentMonthKey());
+      const currentMonth = getCurrentMonthKey();
+      setProjectComparisonMonth(getBoundedProjectMonth(project, currentMonth) || currentMonth);
     }
   }
   const isRestoringProjectFile =
@@ -51561,15 +51594,27 @@ await addProjectLogbookEntry(
       year: "numeric",
     });
     const currentCalendarMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
-    const shiftComparisonMonth = (offset: number) => {
-      const nextDate = new Date(comparisonMonthDate.getFullYear(), comparisonMonthDate.getMonth() + offset, 1);
-      setProjectComparisonMonth(
-        `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`
-      );
+    const projectContractStartMonth = getProjectPlanningMonthKey(selectedProjectFile.projectRuntimeFrom);
+    const projectContractEndMonth = getProjectPlanningEndMonth(selectedProjectFile);
+    const canNavigateToPreviousProjectMonth =
+      !projectContractStartMonth || projectComparisonMonth > projectContractStartMonth;
+    const canNavigateToNextProjectMonth =
+      !projectContractEndMonth || projectComparisonMonth < projectContractEndMonth;
+    const setBoundedProjectComparisonMonth = (monthKey: string) => {
+      const boundedMonth = getBoundedProjectMonth(selectedProjectFile, monthKey);
+      if (boundedMonth) setProjectComparisonMonth(boundedMonth);
     };
-    const projectMonthStripMonths = Array.from({ length: 13 }, (_, index) => {
-      const monthDate = new Date(comparisonMonthDate.getFullYear(), comparisonMonthDate.getMonth() - 3 + index, 1);
-      const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, "0")}`;
+    const shiftComparisonMonth = (offset: number) => {
+      const nextMonth = shiftProjectMonthKey(projectComparisonMonth, offset);
+      if (nextMonth) setBoundedProjectComparisonMonth(nextMonth);
+    };
+    const projectMonthStripMonths = getProjectMonthWindow({
+      selectedMonth: projectComparisonMonth,
+      startMonth: projectContractStartMonth,
+      endMonth: projectContractEndMonth,
+    }).map((monthKey) => {
+      const [year, month] = monthKey.split("-").map(Number);
+      const monthDate = new Date(year, month - 1, 1, 12);
       return {
         key: monthKey,
         label: monthDate.toLocaleDateString(APP_LOCALE, {
@@ -53326,8 +53371,21 @@ await addProjectLogbookEntry(
         ) : null}
 
         {isSelectedProjectRecurring ? (
-          <nav className={styles.projectMonthStrip} aria-label="Projektmonat">
-            <button type="button" onClick={() => shiftComparisonMonth(-13)}>
+          <nav
+            className={styles.projectMonthStrip}
+            aria-label="Projektmonat"
+            style={{
+              gridTemplateColumns: `minmax(76px, 0.7fr) repeat(${Math.max(
+                projectMonthStripMonths.length,
+                1
+              )}, minmax(82px, 1fr)) minmax(76px, 0.7fr)`,
+            }}
+          >
+            <button
+              type="button"
+              disabled={!canNavigateToPreviousProjectMonth}
+              onClick={() => shiftComparisonMonth(-13)}
+            >
               &lt; Monat
             </button>
             {projectMonthStripMonths.map((month) => (
@@ -53336,12 +53394,16 @@ await addProjectLogbookEntry(
                 type="button"
                 data-active={month.key === projectComparisonMonth}
                 data-current={month.key === currentCalendarMonthKey}
-                onClick={() => setProjectComparisonMonth(month.key)}
+                onClick={() => setBoundedProjectComparisonMonth(month.key)}
               >
                 {month.label}
               </button>
             ))}
-            <button type="button" onClick={() => shiftComparisonMonth(13)}>
+            <button
+              type="button"
+              disabled={!canNavigateToNextProjectMonth}
+              onClick={() => shiftComparisonMonth(13)}
+            >
               Monat &gt;
             </button>
           </nav>
@@ -54653,7 +54715,12 @@ await addProjectLogbookEntry(
                   </div>
                 </div>
                 <div className={styles.reportFilterBar}>
-                  <button type="button" className={styles.secondaryButton} onClick={() => shiftComparisonMonth(-1)}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!canNavigateToPreviousProjectMonth}
+                    onClick={() => shiftComparisonMonth(-1)}
+                  >
                     Vorheriger Monat
                   </button>
                   <label>
@@ -54661,10 +54728,17 @@ await addProjectLogbookEntry(
                     <input
                       type="month"
                       value={projectComparisonMonth}
-                      onChange={(event) => setProjectComparisonMonth(event.target.value)}
+                      min={projectContractStartMonth || undefined}
+                      max={projectContractEndMonth || undefined}
+                      onChange={(event) => setBoundedProjectComparisonMonth(event.target.value)}
                     />
                   </label>
-                  <button type="button" className={styles.secondaryButton} onClick={() => shiftComparisonMonth(1)}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!canNavigateToNextProjectMonth}
+                    onClick={() => shiftComparisonMonth(1)}
+                  >
                     Nächster Monat
                   </button>
                   <span>Stempelungen und Soll/Ist werden für denselben Monat ausgewertet.</span>
@@ -54836,7 +54910,12 @@ await addProjectLogbookEntry(
                   </span>
                 </div>
                 <div className={styles.reportFilterBar}>
-                  <button type="button" className={styles.secondaryButton} onClick={() => shiftComparisonMonth(-1)}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!canNavigateToPreviousProjectMonth}
+                    onClick={() => shiftComparisonMonth(-1)}
+                  >
                     Vorheriger Monat
                   </button>
                   <label>
@@ -54844,10 +54923,17 @@ await addProjectLogbookEntry(
                     <input
                       type="month"
                       value={projectComparisonMonth}
-                      onChange={(event) => setProjectComparisonMonth(event.target.value)}
+                      min={projectContractStartMonth || undefined}
+                      max={projectContractEndMonth || undefined}
+                      onChange={(event) => setBoundedProjectComparisonMonth(event.target.value)}
                     />
                   </label>
-                  <button type="button" className={styles.secondaryButton} onClick={() => shiftComparisonMonth(1)}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!canNavigateToNextProjectMonth}
+                    onClick={() => shiftComparisonMonth(1)}
+                  >
                     Nächster Monat
                   </button>
                   <span>
