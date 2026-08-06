@@ -6,6 +6,7 @@ export type MicrosoftMailAccount = {
   email?: string;
   displayName?: string;
   bcc?: string;
+  bccDocumentKinds?: string[];
   sendCopyToSelf?: boolean;
   connectedAt?: string;
   lastTestAt?: string;
@@ -61,6 +62,7 @@ export function sanitizeMailAccount(account: MicrosoftMailAccount, fallbackEmail
     email: account.email || fallbackEmail,
     displayName: account.displayName || "",
     bcc: account.bcc || "",
+    bccDocumentKinds: Array.isArray(account.bccDocumentKinds) ? account.bccDocumentKinds : [],
     sendCopyToSelf: account.sendCopyToSelf !== false,
     connectedAt: account.connectedAt || "",
     lastTestAt: account.lastTestAt || "",

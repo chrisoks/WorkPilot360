@@ -11,6 +11,7 @@ import {
   sendMicrosoftGraphMail,
   type MicrosoftGraphMailAttachment,
 } from "@/lib/mail/microsoft";
+import { getConfiguredDocumentBccRecipients } from "@/lib/mail/bcc-routing";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 import { canSendDocumentMails, canSendInvoiceDocuments, canSendOfferDocuments } from "@/lib/permissions";
 import { generateXRechnungXml, type XRechnungSeller } from "@/lib/e-invoice/xrechnung";
@@ -971,12 +972,16 @@ export async function POST(req: Request) {
   const senderEmail = cleanText(mailAccount.email) || actor.email;
   const recipients = parseRecipients(body.to);
   const ccRecipients = parseRecipients(body.cc);
-  const bccRecipients = parseRecipients(body.bcc);
   const kind = cleanText(body.kind);
 
   if (!["offer", "invoice", "cancellation", "reminder", "activityReport", "document"].includes(kind)) {
     return NextResponse.json({ error: "Dokumenttyp ist ungültig." }, { status: 400 });
   }
+  const bccRecipients = getConfiguredDocumentBccRecipients(mailAccount, kind);
+  const activityReportBccRecipients = getConfiguredDocumentBccRecipients(
+    mailAccount,
+    "activityReport"
+  );
 
   if (!canSendDocumentKind(actor, kind)) {
     return forbiddenDocumentMailResponse();
@@ -1345,7 +1350,7 @@ export async function POST(req: Request) {
         senderEmail,
         toRecipients: activityReportRecipients.join(", "),
         ccRecipients: "",
-        bccRecipients: bccRecipients.join(", "),
+        bccRecipients: activityReportBccRecipients.join(", "),
         subject: cleanText(body.activityReportSubject) || cleanText(body.subject),
         body: cleanText(body.activityReportBody) || rawMessageBody,
         attachPdf: true,
@@ -1376,7 +1381,7 @@ export async function POST(req: Request) {
           accessToken: mailAccount.accessToken,
           to: activityReportRecipients,
           cc: [],
-          bcc: bccRecipients,
+          bcc: activityReportBccRecipients,
           subject: cleanText(body.activityReportSubject) || cleanText(body.subject),
           body: activityReportHtml,
           attachments: [...additionalAttachments, ...activityReportManualAttachments],
@@ -1452,7 +1457,9 @@ export async function POST(req: Request) {
           ${randomUUID()}, ${organization.id}, ${"activityReport"}, ${`${cleanText(body.documentId)}:${cleanText(attachment.name)}`}, ${attachmentName || "Tätigkeitsbericht"},
           ${cleanText(body.projectId)}, ${cleanText(body.projectNumber)}, ${cleanText(body.projectTitle)},
           ${cleanText(body.customerName)}, ${actor.id}, ${actorName}, ${senderEmail},
-          ${reportHistoryRecipients.join(", ")}, ${shouldSendSeparateActivityReport ? "" : ccRecipients.join(", ")}, ${bccRecipients.join(", ")},
+          ${reportHistoryRecipients.join(", ")}, ${shouldSendSeparateActivityReport ? "" : ccRecipients.join(", ")}, ${
+            (shouldSendSeparateActivityReport ? activityReportBccRecipients : bccRecipients).join(", ")
+          },
           ${shouldSendSeparateActivityReport ? cleanText(body.activityReportSubject) || cleanText(body.subject) : cleanText(body.subject)}, ${shouldSendSeparateActivityReport ? "Separat als Tätigkeitsbericht-Mail versendet." : `Als Anhang mit Rechnung ${cleanText(body.documentNumber)} versendet.`}, ${true},
           ${"microsoft365"}, ${"sent"}, ${`ms365-${id}`}
         )

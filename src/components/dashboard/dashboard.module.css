@@ -23962,6 +23962,35 @@
   gap: 14px;
 }
 
+.mailBccRouting {
+  background: #f4fbfa;
+  border: 1px solid #b8ded9;
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 16px 16px;
+}
+
+.mailBccRouting legend {
+  color: #0f4c55;
+  font-size: 0.86rem;
+  font-weight: 750;
+  padding: 0 5px;
+}
+
+.mailBccRouting p {
+  color: #52677a;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.mailBccRouting > div {
+  display: grid;
+  gap: 10px 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .mailConnectionCard {
   align-items: center;
   background: #f8fafc;

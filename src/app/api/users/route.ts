@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db/client";
 import { canManagePersonalNumber, canManageUsers } from "@/lib/permissions";
 import { normalizePhoneNumber } from "@/lib/phone/normalize";
 import { getLeadershipStructureError } from "@/lib/users/leadership";
+import { normalizeDocumentBccKinds } from "@/lib/mail/bcc-routing";
 
 const bcrypt = require("bcryptjs") as {
   hashSync(password: string, saltRounds: number): string;
@@ -40,6 +41,7 @@ const defaultMailAccount = {
   email: "",
   displayName: "",
   bcc: "",
+  bccDocumentKinds: [],
   sendCopyToSelf: true,
   connectedAt: "",
   lastTestAt: "",
@@ -407,6 +409,7 @@ function parseMailAccount(value: unknown, fallbackEmail = "") {
     email: parseText(source.email) || fallbackEmail,
     displayName: parseText(source.displayName),
     bcc: parseText(source.bcc),
+    bccDocumentKinds: normalizeDocumentBccKinds(source.bccDocumentKinds),
     sendCopyToSelf: source.sendCopyToSelf !== false,
     connectedAt: parseText(source.connectedAt),
     lastTestAt: parseText(source.lastTestAt),

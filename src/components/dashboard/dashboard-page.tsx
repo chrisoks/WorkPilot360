@@ -8856,6 +8856,7 @@ type EmployeeMailAccount = {
   email: string;
   displayName: string;
   bcc: string;
+  bccDocumentKinds: DocumentMailKind[];
   sendCopyToSelf: boolean;
   connectedAt: string;
   lastTestAt: string;
@@ -11320,6 +11321,7 @@ const emptyEmployeeMailAccount: EmployeeMailAccount = {
   email: "",
   displayName: "",
   bcc: "",
+  bccDocumentKinds: [],
   sendCopyToSelf: true,
   connectedAt: "",
   lastTestAt: "",
@@ -21553,7 +21555,7 @@ export function DashboardPage() {
       customerName: document.customerName,
       to: mailRouting.recommendation.email,
       cc: "",
-      bcc: activeMailAccount.bcc,
+      bcc: "",
       subject: template.subject,
       body: template.body,
       attachPdf: true,
@@ -21619,7 +21621,7 @@ export function DashboardPage() {
       attachmentDataUrl: input.attachmentDataUrl,
       to: reminderRouting.recommendation.email,
       cc: "",
-      bcc: activeMailAccount.bcc,
+      bcc: "",
       subject: template.subject,
       body: template.body,
       attachPdf: Boolean(input.attachmentDataUrl),
@@ -47871,7 +47873,6 @@ await addProjectLogbookEntry(
           customerName: run.project.customer,
           to: recipientEmail,
           cc: "",
-          bcc: getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "").bcc,
           subject: template.subject,
           body: template.body,
           attachPdf: false,
@@ -48178,7 +48179,6 @@ await addProjectLogbookEntry(
             customerName: run.project.customer,
             to: recipientEmail,
             cc: "",
-            bcc: getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "").bcc,
             subject: template.subject,
             body: template.body,
             attachPdf: false,
@@ -48661,7 +48661,6 @@ await addProjectLogbookEntry(
           customerName: row.project.customer,
           to: recipientEmail,
           cc: "",
-          bcc: getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "").bcc,
           subject: template.subject,
           body: template.body,
           attachPdf: false,
@@ -58531,6 +58530,11 @@ await addProjectLogbookEntry(
       email: value?.email || fallbackEmail,
       displayName: value?.displayName || "",
       bcc: value?.bcc || "",
+      bccDocumentKinds: Array.isArray(value?.bccDocumentKinds)
+        ? value.bccDocumentKinds.filter((kind): kind is DocumentMailKind =>
+            ["offer", "invoice", "cancellation", "reminder", "activityReport", "document"].includes(kind)
+          )
+        : [],
       sendCopyToSelf: value?.sendCopyToSelf !== false,
       connectedAt: value?.connectedAt || "",
       lastTestAt: value?.lastTestAt || "",
@@ -62549,6 +62553,43 @@ await addProjectLogbookEntry(
                             }
                           />
                         </label>
+                        <fieldset className={`${styles.fullWidth} ${styles.mailBccRouting}`}>
+                          <legend>Automatische Blindkopie für</legend>
+                          <p>
+                            Wird im Versanddialog nicht angezeigt und bei den markierten Dokumenten
+                            automatisch im Hintergrund ergänzt.
+                          </p>
+                          <div>
+                            {([
+                              ["offer", "Angebote"],
+                              ["invoice", "Rechnungen"],
+                              ["cancellation", "Stornorechnungen"],
+                              ["reminder", "Mahnungen"],
+                              ["activityReport", "Tätigkeitsberichte"],
+                              ["document", "Sonstige Dokumente"],
+                            ] as Array<[DocumentMailKind, string]>).map(([kind, label]) => (
+                              <label key={kind} className={styles.checkboxField}>
+                                <input
+                                  type="checkbox"
+                                  checked={employeeMailAccount.bccDocumentKinds.includes(kind)}
+                                  disabled={!mayManageUsers}
+                                  onChange={(event) =>
+                                    setEmployeeMailAccount((current) => {
+                                      const safe = getSafeEmployeeMailAccount(current, userEmail);
+                                      return {
+                                        ...safe,
+                                        bccDocumentKinds: event.target.checked
+                                          ? Array.from(new Set([...safe.bccDocumentKinds, kind]))
+                                          : safe.bccDocumentKinds.filter((entry) => entry !== kind),
+                                      };
+                                    })
+                                  }
+                                />
+                                {label}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
                         <label className={styles.checkboxField}>
                           <input
                             type="checkbox"
@@ -66835,18 +66876,6 @@ await addProjectLogbookEntry(
                   onChange={(event) =>
                     setDocumentMailDraft((current) =>
                       current ? { ...current, cc: event.target.value } : current
-                    )
-                  }
-                />
-              </label>
-              <label>
-                BCC
-                <input
-                  value={documentMailDraft.bcc}
-                  placeholder="Optional"
-                  onChange={(event) =>
-                    setDocumentMailDraft((current) =>
-                      current ? { ...current, bcc: event.target.value } : current
                     )
                   }
                 />

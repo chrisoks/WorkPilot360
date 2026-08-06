@@ -24,6 +24,7 @@ import {
   sendMicrosoftGraphMail,
   type MicrosoftGraphMailAttachment,
 } from "@/lib/mail/microsoft";
+import { getConfiguredDocumentBccRecipients } from "@/lib/mail/bcc-routing";
 import { resolveStorageBackedBytes } from "@/lib/storage/document-file";
 import { archiveInvoiceArtifact } from "@/lib/invoices/invoice-artifact-storage";
 
@@ -854,6 +855,7 @@ export async function sendInvoiceDelivery(input: {
       "Das Microsoft-365-Konto ist nicht verbunden oder die Anmeldung ist abgelaufen."
     );
   }
+  const hiddenBccRecipients = getConfiguredDocumentBccRecipients(account, "invoice");
 
   const claimed = await claimDocumentMailDispatch({
     id: input.dispatchId,
@@ -870,7 +872,7 @@ export async function sendInvoiceDelivery(input: {
     senderEmail: evaluation.sender.email,
     toRecipients: input.payload.to.join(", "),
     ccRecipients: input.payload.cc.join(", "),
-    bccRecipients: input.payload.bcc.join(", "),
+    bccRecipients: hiddenBccRecipients.join(", "),
     subject: input.payload.subject,
     body: input.payload.body,
     attachPdf: input.payload.format !== "xrechnung",
@@ -885,7 +887,7 @@ export async function sendInvoiceDelivery(input: {
       accessToken: account.accessToken,
       to: input.payload.to,
       cc: input.payload.cc,
-      bcc: input.payload.bcc,
+      bcc: hiddenBccRecipients,
       subject: input.payload.subject,
       htmlBody: textToHtml(input.payload.body),
       attachments: packageResult.attachments,

@@ -257,6 +257,39 @@ describe("invoice delivery service", () => {
     });
   });
 
+  it("adds the configured invoice BCC invisibly at execution time", async () => {
+    mocks.refreshToken.mockResolvedValue({
+      ...actor.mailAccount,
+      bcc: "buchhaltung@example.com",
+      bccDocumentKinds: ["invoice", "cancellation"],
+    });
+    const evaluation = await evaluateInvoiceDelivery({
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      invoiceId: "invoice-1",
+    });
+
+    expect(evaluation.payload.bcc).toEqual([]);
+
+    await sendInvoiceDelivery({
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      actorName: "Christian Eid",
+      dispatchId: "dispatch-1",
+      invoiceId: "invoice-1",
+      payload: evaluation.payload,
+      expectedFingerprint: evaluation.fingerprint,
+      source: "jarvis",
+    });
+
+    expect(mocks.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ bcc: ["buchhaltung@example.com"] })
+    );
+    expect(mocks.dispatchCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ bccRecipients: "buchhaltung@example.com" }),
+    });
+  });
+
   it("does not send again when the same dispatch is already recorded", async () => {
     mocks.dispatchFindFirst.mockResolvedValue({
       id: "dispatch-1",
