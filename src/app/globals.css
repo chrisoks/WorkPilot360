@@ -36,3 +36,9 @@ option {
   font-family: var(--font-google-sans), "Google Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: inherit;
 }
+
+input,
+textarea,
+[contenteditable="true"] {
+  caret-color: #111827;
+}
