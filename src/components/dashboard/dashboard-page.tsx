@@ -17,6 +17,7 @@ import { getDashboardDailyImpulse } from "@/lib/dashboard-daily-impulses";
 import { getLoginErrorMessage } from "@/lib/auth/login-error";
 import {
   getBillingAddressSnapshot,
+  getActivityReportMailRecipients,
   getInvoiceMailCandidates,
   getRecommendedInvoiceMailRecipient,
   type InvoiceMailCandidate,
@@ -21333,22 +21334,29 @@ export function DashboardPage() {
     return { candidates, recommendation: getRecommendedInvoiceMailRecipient(candidates) };
   }
 
-  function getActivityReportRecipientContactForInvoice(invoice: InvoiceItem | null) {
-    if (!invoice) return null;
+  function getActivityReportRecipientEmailsForInvoice(invoice: InvoiceItem | null) {
+    if (!invoice) return [];
     const invoiceRouting = getInvoiceMailRouting(invoice);
     const project = heroProjects.find((item) => item.id === invoice.projectId) ?? null;
-    if (!isActivityReportDesiredForProject(project)) return null;
+    if (!project) return [];
+    return getProjectActivityReportRecipientEmails(project, invoiceRouting.recommendation.email);
+  }
+
+  function getProjectActivityReportRecipientEmails(
+    project: HeroProjectPreview,
+    excludedEmail = ""
+  ) {
+    if (!isActivityReportDesiredForProject(project)) return [];
     const relatedContacts = contacts.filter((contact) => {
       if (project && [project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
       if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
-      return contact.companyName === invoice.customerName || getContactDisplayName(contact) === invoice.customerName;
+      return false;
     });
-    const recipient = relatedContacts.find((contact) => getContactActivityReportEmail(contact));
-    if (!recipient) return null;
-    const recipientEmail = getContactActivityReportEmail(recipient).toLowerCase();
-    const invoiceEmail = invoiceRouting.recommendation.email.toLowerCase();
-    if (recipientEmail && invoiceEmail && recipientEmail === invoiceEmail) return null;
-    return recipient;
+    return getActivityReportMailRecipients(
+      relatedContacts,
+      project.contactId ?? "",
+      excludedEmail
+    );
   }
 
   function getOfferMailRouting(offer: OfferItem | null) {
@@ -21553,7 +21561,8 @@ export function DashboardPage() {
     const mailRouting = kind === "invoice"
       ? getInvoiceMailRouting(invoice)
       : getOfferMailRouting(document as OfferItem);
-    const activityReportRecipient = kind === "invoice" ? getActivityReportRecipientContactForInvoice(invoice) : null;
+    const activityReportRecipients = kind === "invoice" ? getActivityReportRecipientEmailsForInvoice(invoice) : [];
+    const activityReportRecipientField = activityReportRecipients.join(", ");
     const activityReportTemplate =
       kind === "invoice" ? applyMailTemplate("activityReport", documentNumber) : null;
     const invoiceProject = invoice ? heroProjects.find((item) => item.id === invoice.projectId) ?? null : null;
@@ -21583,10 +21592,10 @@ export function DashboardPage() {
       includeActivityReportFeedbackLink: kind === "invoice",
       attachActivityReports: activityReportAttachments.length > 0,
       additionalAttachments: activityReportAttachments,
-      activityReportTo: getContactActivityReportEmail(activityReportRecipient),
+      activityReportTo: activityReportRecipientField,
       activityReportSubject: activityReportTemplate?.subject || "",
       activityReportBody: activityReportTemplate?.body || "",
-      hasActivityReportRecipientField: Boolean(getContactActivityReportEmail(activityReportRecipient)),
+      hasActivityReportRecipientField: activityReportRecipients.length > 0,
       activeMailTab: "invoice",
       recipientOptions: mailRouting.candidates,
       recipientSelectionRequired: mailRouting.recommendation.requiresSelection,
@@ -28560,7 +28569,6 @@ export function DashboardPage() {
   }
 
   function getContactActivityReportEmail(contact?: ContactItem | null) {
-    if (contact?.activityReportDesired === false) return "";
     return contact?.activityReportEmail?.trim() || contact?.email?.trim() || "";
   }
 
@@ -47896,7 +47904,7 @@ await addProjectLogbookEntry(
       reportAttachment?: { name: string; dataUrl: string } | null;
     }) => {
       if (isSendingDocumentMail) return;
-      const recipientEmail = getContactActivityReportEmail(run.recipient);
+      const recipientEmail = getProjectActivityReportRecipientEmails(run.project).join(", ");
       if (!recipientEmail) {
         setErrorMessage("Für diesen Winterdienstbericht ist kein Tätigkeitsberichtempfänger mit E-Mail hinterlegt.");
         return;
@@ -48160,7 +48168,7 @@ await addProjectLogbookEntry(
             monthKey: run.monthKey,
             dateKey: run.dateKey,
             contextKey: run.contextKey,
-            recipientEmail: getContactActivityReportEmail(run.recipient),
+            recipientEmail: getProjectActivityReportRecipientEmails(run.project).join(", "),
             beforeImageKeys: getActivityReportImageKeys(run.project, "Vorherbilder", run.monthKey, run.dateKey),
             afterImageKeys: getActivityReportImageKeys(run.project, "Nachherbilder", run.monthKey, run.dateKey),
           })),
@@ -48208,7 +48216,7 @@ await addProjectLogbookEntry(
       const touchedProjectIds = new Set<string>();
 
       for (const run of readyRuns) {
-        const recipientEmail = getContactActivityReportEmail(run.recipient);
+        const recipientEmail = getProjectActivityReportRecipientEmails(run.project).join(", ");
         if (!recipientEmail || !run.reportAttachment?.dataUrl) {
           failedRuns.push(`${run.project.projectNumber || run.project.id} ${formatDateOnly(run.dateKey)}`);
           continue;
@@ -48644,7 +48652,7 @@ await addProjectLogbookEntry(
           dispatch.body?.toLowerCase().includes("als anhang mit rechnung")
         ).length;
         const recipient = getActivityReportRecipient(project);
-        const recipientEmail = getContactActivityReportEmail(recipient);
+        const recipientEmails = getProjectActivityReportRecipientEmails(project);
         const selectedReport = reportAttachments[0] ?? null;
         const status =
           sentReportDispatches.length > 0
@@ -48653,7 +48661,7 @@ await addProjectLogbookEntry(
               : "Manuell versendet"
             : reportAttachments.length === 0
               ? "T-Bericht fehlt"
-              : !recipientEmail
+              : recipientEmails.length === 0
                 ? "Empfänger fehlt"
                 : projectInvoices.length === 0
                   ? "Rechnung fehlt"
@@ -48671,6 +48679,7 @@ await addProjectLogbookEntry(
           sentReportDispatches,
           sentWithInvoiceCount,
           recipient,
+          recipientEmails,
           status,
         };
       })
@@ -48684,7 +48693,7 @@ await addProjectLogbookEntry(
     const missingInvoiceRows = rows.filter((row) => row.reportCount > 0 && row.projectInvoices.length === 0);
     const sendGeneralActivityReport = async (row: (typeof rows)[number]) => {
       if (isSendingDocumentMail) return;
-      const recipientEmail = getContactActivityReportEmail(row.recipient);
+      const recipientEmail = row.recipientEmails.join(", ");
       if (!recipientEmail) {
         setErrorMessage("Für diesen Tätigkeitsbericht ist kein Empfänger mit E-Mail hinterlegt.");
         return;
@@ -66974,9 +66983,9 @@ await addProjectLogbookEntry(
                 <label className={styles.standardFormWide}>
                   Empfänger Tätigkeitsbericht
                   <input
-                    type="email"
+                    type="text"
                     value={documentMailDraft.activityReportTo || ""}
-                    placeholder="bericht@example.de"
+                    placeholder="bericht@example.de, ansprechpartner@example.de"
                     onChange={(event) =>
                       setDocumentMailDraft((current) =>
                         current ? { ...current, activityReportTo: event.target.value } : current
@@ -75197,14 +75206,25 @@ await addProjectLogbookEntry(
                     />
                     <strong>Für Rechnungsversand vorschlagen</strong>
                   </label>
-                  <label className={styles.checkboxField}>
-                    <input
-                      type="checkbox"
-                      checked={contactDraft.activityReportDesired}
-                      onChange={(event) => updateContactDraft("activityReportDesired", event.target.checked)}
-                    />
-                    <strong>Tätigkeitsbericht gewünscht</strong>
-                  </label>
+                  {contactDraft.type === "person" ? (
+                    <label className={styles.checkboxField}>
+                      <input
+                        type="checkbox"
+                        checked={contactDraft.isActivityReportRecipient}
+                        onChange={(event) => updateContactDraft("isActivityReportRecipient", event.target.checked)}
+                      />
+                      <strong>Zusätzlicher Tätigkeitsberichtempfänger</strong>
+                    </label>
+                  ) : (
+                    <label className={styles.checkboxField}>
+                      <input
+                        type="checkbox"
+                        checked={contactDraft.activityReportDesired}
+                        onChange={(event) => updateContactDraft("activityReportDesired", event.target.checked)}
+                      />
+                      <strong>Tätigkeitsbericht gewünscht</strong>
+                    </label>
+                  )}
                 </div>
                 <label>
                   E-Mail Tätigkeitsbericht

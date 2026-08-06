@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getActivityReportMailRecipients,
   getBillingAddressSnapshot,
   getInvoiceMailCandidates,
   getRecommendedInvoiceMailRecipient,
@@ -29,5 +30,22 @@ describe("invoice routing", () => {
     }, { customerName: "Fallback", customerStreet: "Alt", customerCity: "Ort", customerCountry: "Deutschland" })).toEqual({
       customerName: "Kunde Holding GmbH", customerStreet: "Rechnungsweg 2", customerCity: "20000 Hamburg", customerCountry: "Deutschland",
     });
+  });
+
+  it("routes activity reports to the customer and explicitly selected additional contacts", () => {
+    expect(getActivityReportMailRecipients([
+      { id: "company", type: "company", email: "info@example.de", activityReportEmail: "bericht@example.de" },
+      { id: "person-1", type: "person", parentCompanyId: "company", email: "extra@example.de", isActivityReportRecipient: true },
+      { id: "person-2", type: "person", parentCompanyId: "company", email: "other@example.de", isActivityReportRecipient: false },
+      { id: "foreign", type: "person", parentCompanyId: "other-company", email: "foreign@example.de", isActivityReportRecipient: true },
+    ], "company")).toEqual(["bericht@example.de", "extra@example.de"]);
+  });
+
+  it("does not send a separate duplicate when the invoice recipient already receives the report", () => {
+    expect(getActivityReportMailRecipients([
+      { id: "company", type: "company", email: "info@example.de" },
+      { id: "person-1", type: "person", parentCompanyId: "company", email: "INFO@example.de", isActivityReportRecipient: true },
+      { id: "person-2", type: "person", parentCompanyId: "company", email: "extra@example.de", isActivityReportRecipient: true },
+    ], "company", "info@example.de")).toEqual(["extra@example.de"]);
   });
 });

@@ -7,6 +7,7 @@ import { getInternalAutomationHeaders, isInternalAutomationRequest } from "@/lib
 import { prisma } from "@/lib/db/client";
 import { canManageProcessAutomation } from "@/lib/permissions";
 import { getWinterServiceSchedulerStatus } from "@/lib/automation/winter-service-scheduler";
+import { getActivityReportMailRecipients } from "@/lib/contacts/invoice-routing";
 
 type AutomationRunInput = {
   projectId?: string;
@@ -49,7 +50,9 @@ type ProjectLogbookEntryRow = {
 
 type ContactRow = {
   id: string;
+  type: string;
   email: string | null;
+  activityReportEmail: string | null;
   parentCompanyId: string | null;
   parentCompanyName: string | null;
   companyName: string | null;
@@ -122,14 +125,7 @@ function getRecipient(project: ProjectRow, contacts: ContactRow[]) {
     if (project.contactId && contact.parentCompanyId === project.contactId) return true;
     return false;
   });
-  return [
-    ...relatedContacts.filter((contact) => contact.isActivityReportRecipient),
-    ...relatedContacts.filter((contact) => contact.isInvoiceRecipient),
-    ...relatedContacts.filter((contact) => contact.isMainContact),
-    contacts.find((contact) => contact.id === project.contactPersonId),
-    contacts.find((contact) => contact.id === project.addressContactId),
-    projectContact,
-  ].find((contact) => cleanText(contact?.email))?.email ?? "";
+  return getActivityReportMailRecipients(relatedContacts, project.contactId ?? "").join(", ");
 }
 
 async function ensureWinterServiceAutomationTable() {
@@ -300,7 +296,7 @@ async function discoverAutomationRuns(organizationId: string): Promise<Automatio
         )
     `,
     prisma.$queryRaw<ContactRow[]>`
-      SELECT id, email, "parentCompanyId", "parentCompanyName", "companyName",
+      SELECT id, type, email, "activityReportEmail", "parentCompanyId", "parentCompanyName", "companyName",
              "isActivityReportRecipient", "isInvoiceRecipient", "isMainContact", "activityReportDesired"
       FROM "Contact"
       WHERE "organizationId" = ${organizationId}

@@ -6,8 +6,11 @@ export type InvoiceRoutingContact = {
   lastName?: string | null;
   email?: string | null;
   invoiceEmail?: string | null;
+  activityReportEmail?: string | null;
   isInvoiceRecipient?: boolean | null;
+  isActivityReportRecipient?: boolean | null;
   isMainContact?: boolean | null;
+  parentCompanyId?: string | null;
   hasDifferentBillingAddress?: boolean | null;
   billingName?: string | null;
   billingStreet?: string | null;
@@ -75,6 +78,30 @@ export function getRecommendedInvoiceMailRecipient(candidates: InvoiceMailCandid
 
   if (candidates.length === 1) return { email: candidates[0].email, requiresSelection: false };
   return { email: "", requiresSelection: candidates.length > 1 };
+}
+
+export function getActivityReportMailRecipients(
+  contacts: InvoiceRoutingContact[],
+  customerContactId: string,
+  invoiceRecipientEmail = ""
+) {
+  const primaryContact = contacts.find((contact) => contact.id === customerContactId && contact.type !== "person");
+  const additionalContacts = contacts.filter(
+    (contact) =>
+      contact.type === "person" &&
+      contact.parentCompanyId === customerContactId &&
+      Boolean(contact.isActivityReportRecipient)
+  );
+  const excludedEmail = clean(invoiceRecipientEmail).toLowerCase();
+  const seen = new Set<string>();
+
+  return [primaryContact, ...additionalContacts].flatMap((contact) => {
+    const email = clean(contact?.activityReportEmail) || clean(contact?.email);
+    const normalized = email.toLowerCase();
+    if (!normalized || normalized === excludedEmail || seen.has(normalized)) return [];
+    seen.add(normalized);
+    return [email];
+  });
 }
 
 export function getBillingAddressSnapshot(
