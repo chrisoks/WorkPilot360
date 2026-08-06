@@ -42,3 +42,9 @@ textarea,
 [contenteditable="true"] {
   caret-color: #111827;
 }
+
+input:not([type="button"]):not([type="checkbox"]):not([type="color"]):not([type="file"]):not([type="radio"]):not([type="range"]):not([type="reset"]):not([type="submit"]):not(:disabled),
+textarea:not(:disabled),
+[contenteditable="true"] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='24' viewBox='0 0 16 24'%3E%3Cpath d='M4 1h8M8 1v22M4 23h8' fill='none' stroke='%23111827' stroke-linecap='square' stroke-width='2'/%3E%3C/svg%3E") 8 12, text;
+}
