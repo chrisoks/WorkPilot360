@@ -557,7 +557,7 @@ export async function PATCH(req: Request) {
 
   return prisma.$transaction(
     async (tx) => {
-      await tx.$queryRaw`
+      await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(
           hashtext(${`workpilot:project-logbook-attachments:${organization.id}:${entry.projectId}`})
         )
@@ -743,6 +743,23 @@ export async function PATCH(req: Request) {
     )
     RETURNING *
   `;
+
+  const removedStorageFileId = cleanString(removedAttachment.storageFileId);
+  if (removedStorageFileId) {
+    await tx.storedFile.updateMany({
+      where: {
+        id: removedStorageFileId,
+        organizationId: organization.id,
+        ownerType: "project",
+        ownerId: lockedEntry.projectId,
+        deletedAt: null,
+      },
+      data: {
+        status: "deleted",
+        deletedAt: new Date(),
+      },
+    });
+  }
 
   return NextResponse.json({
     entry: formatEntry(updatedRows[0]),

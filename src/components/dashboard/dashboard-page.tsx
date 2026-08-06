@@ -53571,7 +53571,12 @@ await addProjectLogbookEntry(
                   <h2>Bilder</h2>
                   <span>Objekt, Vorher und Nachher getrennt dokumentieren</span>
                 </div>
-                {logbookError ? <p className={styles.emptyState}>{logbookError}</p> : null}
+                {logbookError ? (
+                  <div className={styles.projectImageError} role="alert" aria-live="assertive">
+                    <strong>Bildaktion fehlgeschlagen</strong>
+                    <span>{logbookError}</span>
+                  </div>
+                ) : null}
                 <div className={styles.projectImageGrid}>
                   {projectImageCategories.map((category) => {
                     const entries = getProjectImageEntries(category.label);

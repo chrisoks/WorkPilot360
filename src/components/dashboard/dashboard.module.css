@@ -15873,6 +15873,29 @@
   gap: 14px;
 }
 
+.projectImageError {
+  align-items: flex-start;
+  background: #fff1f2;
+  border: 1px solid #fda4af;
+  border-left: 4px solid #e11d48;
+  border-radius: 10px;
+  color: #881337;
+  display: grid;
+  gap: 3px;
+  padding: 11px 14px;
+}
+
+.projectImageError strong {
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.projectImageError span {
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .projectImageGrid {
   display: grid;
   gap: 12px;
