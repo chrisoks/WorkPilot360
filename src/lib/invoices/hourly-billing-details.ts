@@ -155,7 +155,11 @@ export function updateHourlyBillingDayCustomerText(
 ) {
   return normalizeHourlyBillingDays(currentValue).map((day) =>
     day.date === date
-      ? { ...day, customerText: cleanText(customerText), customerTextEdited: true }
+      ? {
+          ...day,
+          customerText: String(customerText ?? "").slice(0, 4_000),
+          customerTextEdited: true,
+        }
       : day
   );
 }

@@ -1241,6 +1241,13 @@ export async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber
   const descriptionSize = 7.5;
   const titleSize = 7.8;
   const descriptionIndent = 8;
+  const hourlyDetailLayout = {
+    bulletX: table.titleX + 2,
+    dateX: table.titleX + 10,
+    hoursX: table.titleX + 57,
+    customerTextX: table.titleX + 103,
+    customerTextWidth: 94,
+  };
   const bottomLimit = 96;
 
   let page = await addTemplatePage(pdfDoc, templateDoc, 0);
@@ -1331,7 +1338,12 @@ export async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber
     const titleLines = wrapText(cleanInvoiceLineTitle(line.title) || "-", bold, titleSize, table.titleWidth);
     const hourlyCustomerLines = getHourlyBillingCustomerLines(line.hourlyBillingDetails).map((detail) => ({
       ...detail,
-      textLines: wrapText(detail.customerText, regular, descriptionSize, 245),
+      textLines: wrapText(
+        detail.customerText,
+        regular,
+        descriptionSize,
+        hourlyDetailLayout.customerTextWidth
+      ),
     }));
     const hourlyDetailsHeight = hourlyCustomerLines.reduce(
       (sum, detail) => sum + Math.max(11, detail.textLines.length * 9),
@@ -1375,21 +1387,21 @@ export async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber
     });
     hourlyCustomerLines.forEach((detail) => {
       page.drawText("•", {
-        x: table.titleX + descriptionIndent,
+        x: hourlyDetailLayout.bulletX,
         y: textY,
         size: descriptionSize,
         font: bold,
         color: INK,
       });
       page.drawText(detail.date, {
-        x: table.titleX + 18,
+        x: hourlyDetailLayout.dateX,
         y: textY,
         size: descriptionSize,
         font: regular,
         color: INK,
       });
       page.drawText(detail.hoursLabel, {
-        x: table.titleX + 72,
+        x: hourlyDetailLayout.hoursX,
         y: textY,
         size: descriptionSize,
         font: regular,
@@ -1397,7 +1409,7 @@ export async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber
       });
       detail.textLines.forEach((customerTextLine, textLineIndex) => {
         page.drawText(customerTextLine, {
-          x: table.titleX + 132,
+          x: hourlyDetailLayout.customerTextX,
           y: textY - textLineIndex * 9,
           size: descriptionSize,
           font: regular,

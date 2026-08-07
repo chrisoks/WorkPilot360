@@ -58,6 +58,23 @@ describe("hourly invoice billing details", () => {
     expect(updated[0].entries).toHaveLength(2);
   });
 
+  it("preserves a trailing space while the customer text is being typed", () => {
+    const initial = reconcileHourlyBillingDays([], [entry()]);
+    const withSpace = updateHourlyBillingDayCustomerText(
+      initial,
+      "2026-08-03",
+      "Das ist ein "
+    );
+    expect(withSpace[0].customerText).toBe("Das ist ein ");
+
+    const completed = updateHourlyBillingDayCustomerText(
+      withSpace,
+      "2026-08-03",
+      "Das ist ein Test"
+    );
+    expect(completed[0].customerText).toBe("Das ist ein Test");
+  });
+
   it("removes no longer selected time entries while keeping the day text", () => {
     const initial = updateHourlyBillingDayCustomerText(
       reconcileHourlyBillingDays([], [entry(), entry({ timeEntryId: "time-2" })]),

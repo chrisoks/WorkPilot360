@@ -17,7 +17,10 @@
   fail-closed, wenn ein vorhandener Tagesnachweis keinen Kundentext besitzt.
   Storno übernimmt den unveränderten Tagesnachweis. Additive Prisma-Spalte:
   `InvoiceLine.hourlyBillingDetails`; Migration
-  `20260807152000_add_invoice_hourly_billing_details`.
+  `20260807152000_add_invoice_hourly_billing_details`. Nachkorrektur desselben
+  Blocks: Leerzeichen bleiben während der Kundentexteingabe erhalten; die
+  Kundenzeilen im PDF sind kompakter eingerückt und brechen vor dem Preis- und
+  Summenbereich um.
 
 - Interessenten im bestehenden CRM/Sales-Journal 2026-08-05: Die neue
   Kontaktkategorie `Interessent` ist bewusst kein separates Lead- oder
