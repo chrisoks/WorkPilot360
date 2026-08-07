@@ -15,6 +15,7 @@ import {
 } from "react";
 import { getDashboardDailyImpulse } from "@/lib/dashboard-daily-impulses";
 import { getLoginErrorMessage } from "@/lib/auth/login-error";
+import { hasEmployeeWorkspaceAccess } from "@/lib/navigation/employee-workspaces";
 import {
   getBillingAddressSnapshot,
   getActivityReportMailRecipients,
@@ -8527,6 +8528,7 @@ type PersonalDataView =
   | "disg"
   | "tasks"
   | "documents"
+  | "mail"
   | "masterData";
 type EmployeeSideTab =
   | "personal"
@@ -11529,7 +11531,9 @@ function isAccountingRole(role?: string) {
 }
 
 function isTabAllowedForRole(tab: AppTab, role?: string) {
-  if (isAccountingRole(role)) return tab === "reports" || tab === "salesJournal";
+  if (isAccountingRole(role)) {
+    return tab === "reports" || tab === "salesJournal" || hasEmployeeWorkspaceAccess(tab, role);
+  }
   if (tab === "salesJournal" && role === "GAST") return false;
   if (
     tab === "onlineRequests" &&
@@ -11540,13 +11544,7 @@ function isTabAllowedForRole(tab: AppTab, role?: string) {
   ) {
     return false;
   }
-  if (
-    role &&
-    tab === "processAutomation" &&
-    role !== "ADMIN" &&
-    role !== "GESCHAEFTSFUEHRER" &&
-    role !== "FUEHRUNGSKRAFT"
-  ) {
+  if (tab === "processAutomation" && !hasEmployeeWorkspaceAccess(tab, role)) {
     return false;
   }
   return true;
@@ -11565,8 +11563,11 @@ function getVisibleNavigationTabs(role?: string, hasSalesRole = false) {
       "projectsSolutions",
       "projectsImmocare",
       "articles",
+      "calculators",
       "salesOpportunities",
       "dashboard",
+      "planningBoard",
+      "processAutomation",
       "personalData",
     ]);
     return navigationTabs.filter(([tab]) => allowedSalesTabs.has(tab));
@@ -28184,6 +28185,25 @@ export function DashboardPage() {
       const nextTab = appTabs.includes(params.get("view") as AppTab)
         ? (params.get("view") as AppTab)
         : "overview";
+      const nextPersonalDataView = params.get("personalSection") as PersonalDataView | null;
+      if (
+        nextPersonalDataView &&
+        [
+          "overview",
+          "absences",
+          "time",
+          "stamps",
+          "performance",
+          "development",
+          "disg",
+          "tasks",
+          "documents",
+          "mail",
+          "masterData",
+        ].includes(nextPersonalDataView)
+      ) {
+        setPersonalDataView(nextPersonalDataView);
+      }
       const allowedNavigationTabs = getVisibleNavigationTabs(activeUser?.role, activeUserHasSalesRole);
       const allowedNavigationActiveTabs = getVisibleNavigationActiveTabs(activeUser?.role, activeUserHasSalesRole);
       const allowedNextTab = allowedNavigationActiveTabs.has(nextTab)
@@ -59372,6 +59392,11 @@ await addProjectLogbookEntry(
     const currentUser = canSwitchPersonalUser
       ? selectedPersonalUser ?? activeUser ?? users.find((user) => user.id === activeUserId) ?? users[0]
       : activeUser ?? users.find((user) => user.id === activeUserId) ?? users[0];
+    const currentMailAccount = getSafeEmployeeMailAccount(
+      currentUser?.mailAccount,
+      currentUser?.email || ""
+    );
+    const isOwnPersonalMailAccount = currentUser?.id === activeUserId;
     const today = new Date();
     const todayKey = formatDateKey(today);
     const currentYear = today.getFullYear();
@@ -59395,6 +59420,7 @@ await addProjectLogbookEntry(
       { id: "disg", label: "DISG" },
       { id: "tasks", label: "Meine Aufgaben" },
       { id: "documents", label: "Dokumente" },
+      { id: "mail", label: "E-Mail & Versand" },
       { id: "masterData", label: "Stammdaten" },
     ];
     const personalAbsences = absences.filter((absence) => absence.userId === currentUser?.id);
@@ -60273,6 +60299,59 @@ await addProjectLogbookEntry(
                   </article>
                 );
               })}
+            </div>
+          </section>
+        ) : null}
+
+        {personalDataView === "mail" ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Persönlicher Mailversand</p>
+                <h2>Microsoft 365 verbinden</h2>
+                <p>
+                  Hier verbindest du ausschließlich dein eigenes Microsoft-365-Konto mit WorkPilot360.
+                  Zugangsdaten anderer Mitarbeiter sind nicht einsehbar.
+                </p>
+              </div>
+            </div>
+            <div className={styles.mailSettingsPanel}>
+              <article className={styles.mailConnectionCard} data-status={currentMailAccount.status}>
+                <div>
+                  <span>Microsoft 365</span>
+                  <strong>
+                    {currentMailAccount.status === "connected"
+                      ? "Verbunden"
+                      : currentMailAccount.status === "expired"
+                        ? "Verbindung abgelaufen"
+                        : "Nicht verbunden"}
+                  </strong>
+                  <p>
+                    {currentMailAccount.status === "connected"
+                      ? `Aktiver Absender: ${currentMailAccount.email || currentUser?.email || "-"}`
+                      : "Nach der Verbindung kann WorkPilot360 freigegebene E-Mails über dein persönliches Konto versenden."}
+                  </p>
+                </div>
+                {isOwnPersonalMailAccount ? (
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => {
+                      if (!currentUser?.id || !activeUserId || typeof window === "undefined") return;
+                      const returnUrl = new URL(window.location.href);
+                      returnUrl.searchParams.set("view", "personalData");
+                      returnUrl.searchParams.set("personalSection", "mail");
+                      window.location.href = `/api/mail/oauth/start?userId=${encodeURIComponent(currentUser.id)}&actorId=${encodeURIComponent(activeUserId)}&returnTo=${encodeURIComponent(`${returnUrl.pathname}${returnUrl.search}`)}`;
+                    }}
+                  >
+                    {currentMailAccount.status === "connected"
+                      ? "Verbindung erneuern"
+                      : "Microsoft 365 verbinden"}
+                  </button>
+                ) : (
+                  <p>Die persönliche OAuth-Verbindung kann nur der jeweilige Mitarbeiter selbst herstellen.</p>
+                )}
+              </article>
             </div>
           </section>
         ) : null}
