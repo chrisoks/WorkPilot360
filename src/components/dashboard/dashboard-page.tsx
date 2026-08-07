@@ -33,6 +33,10 @@ import {
   type ContactSortDirection,
 } from "@/lib/contacts/contact-form";
 import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
+import {
+  getActivityReportDeliveryStatus,
+  type ActivityReportDeliveryStatus,
+} from "@/lib/activity-reports/delivery-status";
 import styles from "./dashboard.module.css";
 import { JarvisComposer } from "./jarvis-composer";
 import {
@@ -8918,6 +8922,11 @@ type DocumentMailDraft = {
   includeActivityReportFeedbackLink?: boolean;
   attachActivityReports?: boolean;
   additionalAttachments?: Array<{ name: string; dataUrl: string }>;
+  activityReportAttachments?: Array<{
+    name: string;
+    dataUrl: string;
+    deliveryStatus: ActivityReportDeliveryStatus | null;
+  }>;
   manualAttachments?: Array<{ name: string; dataUrl: string; target?: "invoice" | "activityReport" | "both" }>;
   activityReportTo?: string;
   activityReportSubject?: string;
@@ -13697,6 +13706,20 @@ function getOfferPlanningStartMonth(offer: Pick<OfferItem, "plannedExecutionMont
 
 function getProjectPlanningEndMonth(project: HeroProjectPreview) {
   return getProjectPlanningMonthKey(project.projectRuntimeUntil);
+}
+
+function formatGermanDateTimeWithClock(value: string) {
+  const formatted = formatDeadline(value);
+  return formatted === "-" ? formatted : `${formatted} Uhr`;
+}
+
+function getActivityReportDeliveryLabel(status: ActivityReportDeliveryStatus | null) {
+  if (!status) return "Noch nicht versendet";
+  const route =
+    status.mode === "invoice"
+      ? `mit Rechnung${status.invoiceNumber ? ` ${status.invoiceNumber}` : ""}`
+      : "separat";
+  return `Bereits versendet am ${formatGermanDateTimeWithClock(status.createdAt)} (${route})`;
 }
 
 function getBoundedProjectMonth(project: HeroProjectPreview, monthKey: string) {
@@ -21572,6 +21595,17 @@ export function DashboardPage() {
       kind === "invoice" && isActivityReportDesiredForProject(invoiceProject)
         ? getActivityReportMailAttachmentsForProject(document.projectId, getProjectInvoiceMonth(document as InvoiceItem))
         : [];
+    const activityReportAttachmentOptions = activityReportAttachments.map((attachment) => ({
+      ...attachment,
+      deliveryStatus: getActivityReportDeliveryStatus(
+        attachment.name,
+        document.projectId,
+        documentMailDispatches
+      ),
+    }));
+    const unsentActivityReportAttachments = activityReportAttachmentOptions
+      .filter((attachment) => !attachment.deliveryStatus)
+      .map(({ name, dataUrl }) => ({ name, dataUrl }));
 
     setDocumentMailDraft({
       dispatchKey: crypto.randomUUID(),
@@ -21592,8 +21626,9 @@ export function DashboardPage() {
       includeFeedbackLink: kind === "invoice",
       includeAcceptanceLink: kind === "offer",
       includeActivityReportFeedbackLink: kind === "invoice",
-      attachActivityReports: activityReportAttachments.length > 0,
-      additionalAttachments: activityReportAttachments,
+      attachActivityReports: unsentActivityReportAttachments.length > 0,
+      additionalAttachments: unsentActivityReportAttachments,
+      activityReportAttachments: activityReportAttachmentOptions,
       activityReportTo: activityReportRecipientField,
       activityReportSubject: activityReportTemplate?.subject || "",
       activityReportBody: activityReportTemplate?.body || "",
@@ -21728,12 +21763,13 @@ export function DashboardPage() {
     setIsSendingDocumentMail(true);
     setDocumentMailError("");
     setDocumentMailSuccess("");
+    const { activityReportAttachments: _activityReportAttachments, ...documentMailPayload } = documentMailDraft;
 
     const res = await fetch("/api/document-mail", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...documentMailDraft,
+        ...documentMailPayload,
         actorId: activeUserId,
       }),
     });
@@ -54287,6 +54323,7 @@ await addProjectLogbookEntry(
                               <th>Dokument</th>
                               <th>Datum</th>
                               <th>Typ</th>
+                              {selectedProjectDocumentType === "Tätigkeitsberichte" ? <th>Versandstatus</th> : null}
                               <th>Aktion</th>
                             </tr>
                           </thead>
@@ -54312,12 +54349,30 @@ await addProjectLogbookEntry(
                                       invoice.invoiceNumber === reminderInvoiceNumber
                                   )
                                 : null;
+                              const activityReportDeliveryStatus =
+                                mailKind === "activityReport"
+                                  ? getActivityReportDeliveryStatus(
+                                      documentName,
+                                      selectedProjectFile.id,
+                                      documentMailDispatches
+                                    )
+                                  : null;
 
                               return (
                                 <tr key={`${document.entryId}-${document.name}-${index}`}>
                                   <td className={styles.number}>{document.name || documentNumber}</td>
                                   <td>{formatDeadline(document.date)}</td>
                                   <td>{selectedProjectDocumentType}</td>
+                                  {selectedProjectDocumentType === "Tätigkeitsberichte" ? (
+                                    <td>
+                                      <span
+                                        className={styles.activityReportDeliveryStatus}
+                                        data-status={activityReportDeliveryStatus ? "sent" : "open"}
+                                      >
+                                        {getActivityReportDeliveryLabel(activityReportDeliveryStatus)}
+                                      </span>
+                                    </td>
+                                  ) : null}
                                   <td>
                                     <div className={styles.tableActionGroup}>
                                       {document.dataUrl ? (
@@ -56870,8 +56925,6 @@ await addProjectLogbookEntry(
                         <span className={styles.projectRuntimeMarker} style={{ left: "100%" }} title="Projektende" />
                       </div>
                       <div className={styles.projectRuntimeLegend}>
-                        <i style={{ left: "15%" }} />
-                        <i style={{ left: "86%" }} />
                         {showProjectCreatedMarker && (
                           <span
                             data-edge="start"
@@ -56884,6 +56937,7 @@ await addProjectLogbookEntry(
                           </span>
                         )}
                         <span
+                          data-lane="lower"
                           data-tooltip="Projektstart ist der geplante Beginn der Leistung."
                           style={{ left: `${projectStartMarkerPercent}%` }}
                           tabIndex={0}
@@ -56902,6 +56956,7 @@ await addProjectLogbookEntry(
                         </span>
                         <span
                           data-edge="end"
+                          data-lane="lower"
                           data-tooltip="Projektende ist das hinterlegte Laufzeitende des Projekts."
                           style={{ left: `${projectEndMarkerPercent}%` }}
                           tabIndex={0}
@@ -67394,32 +67449,54 @@ await addProjectLogbookEntry(
                   </span>
                 </label>
               ) : null}
-              {isInvoiceMail && documentMailDraft.additionalAttachments?.length && (!hasSeparateActivityReportRecipient || isActivityReportPackageTab) ? (
-                <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(documentMailDraft.attachActivityReports)}
-                    onChange={(event) =>
-                      setDocumentMailDraft((current) =>
-                        current ? { ...current, attachActivityReports: event.target.checked } : current
+              {isInvoiceMail &&
+              documentMailDraft.activityReportAttachments?.length &&
+              (!hasSeparateActivityReportRecipient || isActivityReportPackageTab) ? (
+                <div className={`${styles.standardFormWide} ${styles.activityReportAttachmentList}`}>
+                  <strong>Tätigkeitsberichte</strong>
+                  {documentMailDraft.activityReportAttachments.map((attachment) => {
+                    const isSelected = Boolean(
+                      documentMailDraft.additionalAttachments?.some(
+                        (selectedAttachment) =>
+                          selectedAttachment.name === attachment.name &&
+                          selectedAttachment.dataUrl === attachment.dataUrl
                       )
-                    }
-                  />
-                  <span className={styles.attachmentCheckboxText}>
-                    <strong>
-                      {documentMailDraft.additionalAttachments.length} Tätigkeitsbericht
-                      {documentMailDraft.additionalAttachments.length === 1 ? "" : "e"} als PDF anhängen
-                    </strong>
-                    <small>
-                      {hasSeparateActivityReportRecipient
-                        ? "Wird nur mit der Tätigkeitsbericht-Mail versendet"
-                        : "Bereits ausgewählter Zusatzanhang zur Rechnung"}
-                    </small>
-                    <span className={styles.attachmentNameList}>
-                      {documentMailDraft.additionalAttachments.map((attachment) => attachment.name).join(", ")}
-                    </span>
-                  </span>
-                </label>
+                    );
+                    return (
+                      <label className={styles.checkboxField} key={`${attachment.name}-${attachment.dataUrl}`}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(event) =>
+                            setDocumentMailDraft((current) => {
+                              if (!current) return current;
+                              const currentAttachments = current.additionalAttachments || [];
+                              const nextAttachments = event.target.checked
+                                ? [...currentAttachments, { name: attachment.name, dataUrl: attachment.dataUrl }]
+                                : currentAttachments.filter(
+                                    (selectedAttachment) =>
+                                      selectedAttachment.name !== attachment.name ||
+                                      selectedAttachment.dataUrl !== attachment.dataUrl
+                                  );
+                              return {
+                                ...current,
+                                additionalAttachments: nextAttachments,
+                                attachActivityReports: nextAttachments.length > 0,
+                              };
+                            })
+                          }
+                        />
+                        <span className={styles.attachmentCheckboxText}>
+                          <strong>{attachment.name}</strong>
+                          <small>{getActivityReportDeliveryLabel(attachment.deliveryStatus)}</small>
+                          {hasSeparateActivityReportRecipient ? (
+                            <small>Die Auswahl wird mit der separaten Tätigkeitsbericht-Mail versendet.</small>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
               ) : null}
               <div className={`${styles.standardFormWide} ${styles.mailAdditionalAttachments}`}>
                 <div>

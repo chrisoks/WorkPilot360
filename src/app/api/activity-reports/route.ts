@@ -888,7 +888,7 @@ export async function POST(req: Request) {
       { status: 413 }
     );
   }
-  const reportCreatedAt = useMonth ? new Date(`${month}-01T12:00:00`) : new Date();
+  const reportCreatedAt = new Date();
   const contextNote = reportContextKey
     ? ` Zuordnung: ${reportContextKey}${reportContextLabel ? ` (${reportContextLabel})` : ""}.`
     : "";
@@ -939,7 +939,8 @@ export async function POST(req: Request) {
           "attachments" = EXCLUDED."attachments",
           "body" = EXCLUDED."body",
           "author" = EXCLUDED."author",
-          "projectMonth" = EXCLUDED."projectMonth"
+          "projectMonth" = EXCLUDED."projectMonth",
+          "createdAt" = EXCLUDED."createdAt"
         WHERE "ProjectLogbookEntry"."organizationId" = ${organization.id}
           AND "ProjectLogbookEntry"."projectId" = ${projectId}
         RETURNING *
