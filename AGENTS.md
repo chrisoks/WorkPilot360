@@ -18,7 +18,8 @@
   Storno übernimmt den unveränderten Tagesnachweis. Additive Prisma-Spalte:
   `InvoiceLine.hourlyBillingDetails`; Migration
   `20260807152000_add_invoice_hourly_billing_details`. Nachkorrektur desselben
-  Blocks: Leerzeichen bleiben während der Kundentexteingabe erhalten; die
+  Blocks: Leerzeichen bleiben sowohl im Eingabezustand als auch bei der
+  erneuten Render-Normalisierung des Kundentexts erhalten; die
   Kundenzeilen im PDF sind kompakter eingerückt und brechen vor dem Preis- und
   Summenbereich um.
 

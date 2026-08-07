@@ -22,6 +22,10 @@ function cleanText(value: unknown, maxLength = 4_000) {
   return String(value ?? "").trim().slice(0, maxLength);
 }
 
+function cleanEditableText(value: unknown, maxLength = 4_000) {
+  return String(value ?? "").slice(0, maxLength);
+}
+
 function cleanHours(value: unknown) {
   const hours = Number(value ?? 0);
   return Number.isFinite(hours) ? Math.max(0, Number(hours.toFixed(2))) : 0;
@@ -79,11 +83,12 @@ export function normalizeHourlyBillingDays(value: unknown): HourlyBillingDaySnap
         : [];
       if (entries.length === 0) return [];
       const customerTextEdited = day.customerTextEdited === true;
-      const normalizedCustomerText = cleanText(day.customerText);
+      const editableCustomerText = cleanEditableText(day.customerText);
+      const normalizedCustomerText = editableCustomerText.trim();
       return [{
         date,
         customerText: customerTextEdited
-          ? normalizedCustomerText
+          ? editableCustomerText
           : normalizedCustomerText || suggestedCustomerText(entries),
         customerTextEdited,
         entries: entries.sort((first, second) =>
@@ -157,7 +162,7 @@ export function updateHourlyBillingDayCustomerText(
     day.date === date
       ? {
           ...day,
-          customerText: String(customerText ?? "").slice(0, 4_000),
+          customerText: cleanEditableText(customerText),
           customerTextEdited: true,
         }
       : day
@@ -185,7 +190,7 @@ export function getHourlyBillingCustomerLines(value: unknown) {
     date: formatGermanBillingDate(day.date),
     hours: getHourlyBillingDayHours(day),
     hoursLabel: `${formatGermanBillingHours(getHourlyBillingDayHours(day))} Std.`,
-    customerText: day.customerText,
+    customerText: day.customerText.trim(),
   }));
 }
 

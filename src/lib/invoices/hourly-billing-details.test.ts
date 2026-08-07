@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendHourlyBillingCustomerDescription,
   getHourlyBillingCustomerLines,
+  normalizeHourlyBillingDays,
   reconcileHourlyBillingDays,
   updateHourlyBillingDayCustomerText,
   upsertHourlyBillingEntry,
@@ -66,6 +67,7 @@ describe("hourly invoice billing details", () => {
       "Das ist ein "
     );
     expect(withSpace[0].customerText).toBe("Das ist ein ");
+    expect(normalizeHourlyBillingDays(withSpace)[0].customerText).toBe("Das ist ein ");
 
     const completed = updateHourlyBillingDayCustomerText(
       withSpace,
