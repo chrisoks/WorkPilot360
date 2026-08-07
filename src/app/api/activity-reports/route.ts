@@ -11,6 +11,7 @@ import { isInternalAutomationRequest } from "@/lib/auth/internal-automation";
 import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
 import { buildActivityReportEntryId } from "@/lib/activity-reports/report-identity";
 import { getReportImages } from "@/lib/activity-reports/image-selection";
+import { layoutPdfValue } from "@/lib/activity-reports/pdf-value-layout";
 import {
   cleanupStorageBackedPayload,
   persistStorageBackedPayload,
@@ -614,7 +615,7 @@ async function generateActivityReportPdf(input: {
 
   const documentDate = formatDate(today);
   const infoRows = [
-    ["Dokumentenbezeichnung", input.reportName],
+    ["Dokumentenbezeichnung", input.reportName.replaceAll("_", " ")],
     ["Projektnummer", input.project.projectNumber],
     ...(input.reportContextLabel ? [["Zuordnung", input.reportContextLabel]] : []),
     ["Datum", documentDate],
@@ -622,10 +623,29 @@ async function generateActivityReportPdf(input: {
     ["Telefon", input.contactPerson?.phone || input.contactPerson?.mobile || ""],
     ["E-Mail", input.contactPerson?.email || ""],
   ];
-  infoRows.forEach(([label, value], index) => {
-    const rowY = 676 - index * 13;
-    drawText(firstPage, label, 313, rowY, fonts.bold, 8.5, MUTED);
-    drawRightAlignedText(firstPage, value || "-", 552, rowY, fonts.regular, 8.5, INK);
+  let infoRowY = 676;
+  infoRows.forEach(([label, value]) => {
+    drawText(firstPage, label, 313, infoRowY, fonts.bold, 8.5, MUTED);
+    const valueLayout = layoutPdfValue(value || "-", (text, fontSize) => (
+      fonts.regular.widthOfTextAtSize(text, fontSize)
+    ), {
+      maxWidth: 139,
+      preferredFontSize: 8.5,
+      minimumFontSize: 7.25,
+      maxLines: 2,
+    });
+    valueLayout.lines.forEach((line, lineIndex) => {
+      drawRightAlignedText(
+        firstPage,
+        line,
+        552,
+        infoRowY - lineIndex * 10,
+        fonts.regular,
+        valueLayout.fontSize,
+        INK
+      );
+    });
+    infoRowY -= 13 + (valueLayout.lines.length - 1) * 10;
   });
 
   drawText(firstPage, `Betreff: ${input.project.title || "-"}`, 71, 544, fonts.bold, 10.7, INK);
