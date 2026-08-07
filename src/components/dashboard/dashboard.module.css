@@ -27625,6 +27625,22 @@
   margin-left: auto;
 }
 
+.standardInvoiceModal .invoicePositionTitleBar {
+  background: linear-gradient(135deg, #0f5f63 0%, #147a78 100%);
+  box-shadow: 0 6px 14px rgba(15, 95, 99, 0.18);
+}
+
+.standardInvoiceModal .invoicePositionTitleBar em {
+  background: rgba(236, 253, 250, 0.94);
+  border-color: rgba(255, 255, 255, 0.58);
+  color: #115e59;
+}
+
+.standardInvoiceModal .invoicePositionColumnHeaderRow th {
+  background: #164e57;
+  border-color: #c7d9dc;
+}
+
 .invoiceModal .invoicePositionDetailRow td {
   border-top: 0;
 }
@@ -27635,6 +27651,16 @@
 
 .invoiceModal .invoicePositionDetailRow .offerLineHeader {
   display: none;
+}
+
+.invoiceStandardLaborRow > td {
+  background: #f8fbfb !important;
+  border-top: 0;
+  padding: 0 12px 12px;
+}
+
+.invoiceStandardLaborRow .offerInternalCalculation {
+  margin-top: 0;
 }
 
 .offerLinesTable th:nth-child(7),

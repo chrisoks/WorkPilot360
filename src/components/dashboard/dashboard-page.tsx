@@ -57376,7 +57376,11 @@ await addProjectLogbookEntry(
 
     return (
       <div className={styles.modalOverlay}>
-        <div className={`${styles.standardModal} ${styles.catalogModal} ${styles.offerModal} ${styles.invoiceModal}`}>
+        <div
+          className={`${styles.standardModal} ${styles.catalogModal} ${styles.offerModal} ${styles.invoiceModal} ${
+            isHourlyRecurringInvoiceModal ? "" : styles.standardInvoiceModal
+          }`}
+        >
           <div className={styles.standardModalHeader}>
             <div>
               <h2>{editingInvoiceId ? "Rechnung bearbeiten" : "Neue Rechnung erstellen"}</h2>
@@ -57675,7 +57679,40 @@ await addProjectLogbookEntry(
                               )}
                               <input value={line.title} onChange={(event) => updateInvoiceLine(index, { title: event.target.value })} />
                               <textarea rows={2} value={line.description} onChange={(event) => updateInvoiceLine(index, { description: event.target.value })} />
-                              {canPlanOfferLineLabor(line) && !isHourlyRecurringInvoiceModal ? (
+                            </td>
+                            <td><input type="number" min="0" step="0.25" value={line.quantity} disabled={canPlanOfferLineLabor(line)} onChange={(event) => updateInvoiceLine(index, { quantity: Number(event.target.value) })} /></td>
+                            <td>
+                              <select value={line.unit} onChange={(event) => updateInvoiceLine(index, { unit: event.target.value })}>
+                                {getUnitOptions(line.unit).map((unit) => (
+                                  <option key={unit} value={unit}>{unit}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td><input type="number" step="0.01" value={line.unitPrice} onChange={(event) => updateInvoiceLine(index, { unitPrice: Number(event.target.value) })} /></td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={line.discountPercent ?? 0}
+                                onChange={(event) =>
+                                  updateInvoiceLine(index, { discountPercent: clampPercent(Number(event.target.value) || 0) })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <strong>{formatMoney(getInvoiceLineTotalNet(line))}</strong>
+                              {getInvoiceLineDiscountAmount(line) > 0 ? (
+                                <small className={styles.offerLineDiscountHint}>
+                                  Rabatt {formatHours(getInvoiceLineDiscountPercent(line))}% / {formatMoney(getInvoiceLineDiscountAmount(line))}
+                                </small>
+                              ) : null}
+                            </td>
+                          </tr>
+                          {canPlanOfferLineLabor(line) && !isHourlyRecurringInvoiceModal ? (
+                            <tr className={styles.invoiceStandardLaborRow}>
+                              <td colSpan={6}>
                                 <div className={styles.offerInternalCalculation}>
                                   <div className={styles.offerInternalHeader}>
                                     <strong>Abrechnungsgrundlage intern</strong>
@@ -57748,38 +57785,9 @@ await addProjectLogbookEntry(
                                     wird als Menge der Leistungsposition fakturiert. Diese Angaben bleiben intern.
                                   </small>
                                 </div>
-                              ) : null}
-                            </td>
-                            <td><input type="number" min="0" step="0.25" value={line.quantity} disabled={canPlanOfferLineLabor(line)} onChange={(event) => updateInvoiceLine(index, { quantity: Number(event.target.value) })} /></td>
-                            <td>
-                              <select value={line.unit} onChange={(event) => updateInvoiceLine(index, { unit: event.target.value })}>
-                                {getUnitOptions(line.unit).map((unit) => (
-                                  <option key={unit} value={unit}>{unit}</option>
-                                ))}
-                              </select>
-                            </td>
-                            <td><input type="number" step="0.01" value={line.unitPrice} onChange={(event) => updateInvoiceLine(index, { unitPrice: Number(event.target.value) })} /></td>
-                            <td>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                value={line.discountPercent ?? 0}
-                                onChange={(event) =>
-                                  updateInvoiceLine(index, { discountPercent: clampPercent(Number(event.target.value) || 0) })
-                                }
-                              />
-                            </td>
-                            <td>
-                              <strong>{formatMoney(getInvoiceLineTotalNet(line))}</strong>
-                              {getInvoiceLineDiscountAmount(line) > 0 ? (
-                                <small className={styles.offerLineDiscountHint}>
-                                  Rabatt {formatHours(getInvoiceLineDiscountPercent(line))}% / {formatMoney(getInvoiceLineDiscountAmount(line))}
-                                </small>
-                              ) : null}
-                            </td>
-                          </tr>
+                              </td>
+                            </tr>
+                          ) : null}
                           {canPlanOfferLineLabor(line) && isHourlyRecurringInvoiceModal ? (() => {
                             const lineStampEntries = getInvoiceLineStampEntries(
                               selectedProjectFile!.id,
