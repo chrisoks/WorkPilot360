@@ -281,7 +281,7 @@ export function canSendOfferDocuments(user: RoleCarrier): boolean {
 }
 
 export function canSendInvoiceDocuments(user: RoleCarrier): boolean {
-  return canManageInvoices(user);
+  return canManageInvoices(user) || hasSalesAccess(user);
 }
 
 export function canReadCustomerFeedback(user: RoleCarrier): boolean {

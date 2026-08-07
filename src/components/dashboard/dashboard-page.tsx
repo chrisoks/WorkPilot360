@@ -27542,7 +27542,9 @@ export function DashboardPage() {
       void loadDocumentTypes();
       void loadDocumentTexts();
       void loadLegacyInvoices();
-      void loadMonthlyFinancialReportValues();
+      if (visibleReportTabs.some((tab) => tab.id === "monthlyReport")) {
+        void loadMonthlyFinancialReportValues();
+      }
       void loadDeadlineSettings();
       void loadMailTemplates();
       void loadWinterServiceAutomationSettings();
