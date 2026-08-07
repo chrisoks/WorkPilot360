@@ -1290,10 +1290,12 @@ const TOPICS: JarvisTopic[] = [
       "nächste monatsrechnung erzeugt",
       "dauerläufer nächste monatsrechnung",
       "wie wird die nächste monatsrechnung erzeugt",
+      "kundentext stundenrechnung",
+      "stempelungen auf rechnung zusammenfassen",
     ],
     surfaces: ["Projektakte", "Buchhaltung"],
     answer:
-      "Bei einem Stunden-Dauerläufer erzeugt die erste vollständig zugeordnete Stempelung eines Leistungsmonats genau einen Rechnungsentwurf; weitere passende Zeiten werden diesem Entwurf zugeordnet. Bei einer Monatspauschale folgt die Monatskette der aktiven Rechnung des direkten Vormonats und darf keinen Monat überspringen. Prüfe vor dem Fertigstellen immer Projektart, Abrechnungsmodell, Leistungsmonat und den vorhandenen Entwurf, damit keine Doppelrechnung entsteht.",
+      "Bei einem Stunden-Dauerläufer erzeugt die erste vollständig zugeordnete Stempelung eines Leistungsmonats genau einen Rechnungsentwurf; weitere passende Zeiten werden diesem Entwurf und der passenden Leistungsposition zugeordnet. In der internen Abrechnungsgrundlage bleiben die einzelnen Stempelungen nachvollziehbar. Auf der Kundenrechnung werden Zeiten derselben Leistungsposition pro Kalendertag zusammengefasst; unterschiedliche Tage bleiben getrennt. Prüfe beziehungsweise ergänze vor dem Fakturieren den Kundentext jedes Leistungstags. Bei einer Monatspauschale folgt die Monatskette der aktiven Rechnung des direkten Vormonats und darf keinen Monat überspringen. Prüfe vor dem Fertigstellen immer Projektart, Abrechnungsmodell, Leistungsmonat und den vorhandenen Entwurf, damit keine Doppelrechnung entsteht.",
   },
   {
     id: "stamp.interruption-comment",

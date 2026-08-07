@@ -27,6 +27,7 @@ import {
 import { getConfiguredDocumentBccRecipients } from "@/lib/mail/bcc-routing";
 import { resolveStorageBackedBytes } from "@/lib/storage/document-file";
 import { archiveInvoiceArtifact } from "@/lib/invoices/invoice-artifact-storage";
+import { appendHourlyBillingCustomerDescription } from "@/lib/invoices/hourly-billing-details";
 
 type InvoiceDeliveryDb = Prisma.TransactionClient | typeof prisma;
 
@@ -561,7 +562,10 @@ async function buildInvoiceDeliveryPackage(input: {
         quantity: line.quantity,
         unit: line.unit || "Stk",
         title: cleanInvoiceLineTitle(line.title) || "Position",
-        description: line.description || "",
+        description: appendHourlyBillingCustomerDescription(
+          line.description,
+          line.hourlyBillingDetails
+        ),
         unitPrice: line.unitPrice,
         discountPercent: line.discountPercent,
         vatRate: line.vatRate,

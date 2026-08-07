@@ -1,5 +1,24 @@
 # WorkPilot360 Agent Handover
 
+- Stunden-Dauerläufer Tagesnachweise 2026-08-07: Die automatische
+  Stempel-zu-Rechnungsentwurf-Kette bleibt unverändert führend: Die erste
+  passende Stempelung eines Leistungsmonats erzeugt den Entwurf, weitere
+  Stempelungen werden weiterhin anhand der Abrechnungsleistung derselben
+  Position zugeordnet. Die positionsbezogene `Abrechnungsgrundlage intern`
+  nutzt in der Rechnungsmaske nun die volle Tabellenbreite und zeigt je
+  Stempelung Mitarbeiter, deutsche Datums-/Zeitdarstellung, gestempelte und
+  fakturierte Stunden, Stempelkommentar sowie die unveränderliche
+  Terminbeschreibung. Unter derselben Leistungsposition werden ausgewählte
+  Stempelungen kundenwirksam pro Kalendertag zusammengefasst; unterschiedliche
+  Tage bleiben getrennt. Je Leistungstag wird ein editierbarer `Kundentext auf
+  der Rechnung` persistiert. Nur Tagesdatum, summierte fakturierte Stunden und
+  dieser Kundentext erscheinen in Kunden-PDF und E-Rechnung; interne Namen,
+  Zeiten und Kommentare bleiben intern. UI- und JARVIS-Fakturierung blockieren
+  fail-closed, wenn ein vorhandener Tagesnachweis keinen Kundentext besitzt.
+  Storno übernimmt den unveränderten Tagesnachweis. Additive Prisma-Spalte:
+  `InvoiceLine.hourlyBillingDetails`; Migration
+  `20260807152000_add_invoice_hourly_billing_details`.
+
 - Interessenten im bestehenden CRM/Sales-Journal 2026-08-05: Die neue
   Kontaktkategorie `Interessent` ist bewusst kein separates Lead- oder
   Wiedervorlagemodul. Interessenten besitzen zunächst keine Kundennummer und

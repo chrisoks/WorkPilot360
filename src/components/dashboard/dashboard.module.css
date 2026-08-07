@@ -28139,6 +28139,79 @@
   color: #9a3412;
 }
 
+.invoiceBillingBasisRow > td {
+  background: #f8fbfe;
+  padding: 0 12px 12px;
+}
+
+.invoiceBillingBasisRow .invoiceLineStampBasis {
+  margin-top: 0;
+}
+
+.invoiceBillingDays {
+  display: grid;
+  gap: 10px;
+}
+
+.invoiceBillingDay {
+  background: #ffffff;
+  border: 1px solid #d8e5f0;
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+}
+
+.invoiceBillingDay > header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.invoiceBillingDay > header strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.invoiceBillingDay > header span {
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.invoiceModal .invoiceBillingBasisRow .invoiceLineStampRow {
+  grid-template-columns:
+    24px
+    minmax(150px, 0.9fr)
+    minmax(82px, 0.42fr)
+    minmax(82px, 0.42fr)
+    minmax(150px, 1fr)
+    minmax(180px, 1.2fr);
+}
+
+.invoiceBillingCustomerText {
+  display: grid;
+  gap: 5px;
+}
+
+.invoiceBillingCustomerText > span {
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.invoiceBillingCustomerText textarea {
+  background: #f8fafc;
+  border: 1px solid #99d5cf;
+  border-radius: 9px;
+  color: #0f172a;
+  min-height: 58px;
+  padding: 8px 10px;
+  resize: vertical;
+  width: 100%;
+}
+
 .projectPipelineStatusCell {
   display: grid;
   gap: 5px;

@@ -176,6 +176,42 @@ describe("invoice finalization service", () => {
     );
   });
 
+  it("blocks UI and JARVIS finalization when a daily customer text is missing", async () => {
+    const hourlyInvoice = {
+      ...invoice,
+      lines: invoice.lines.map((line) => ({
+        ...line,
+        hourlyBillingDetails: [{
+          date: "2026-08-03",
+          customerText: "",
+          customerTextEdited: true,
+          entries: [{
+            timeEntryId: "time-1",
+            planningEntryId: "planning-1",
+            date: "2026-08-03",
+            startTime: "08:00",
+            endTime: "09:00",
+            employeeName: "Hendrik Eid",
+            stampedHours: 1,
+            billedHours: 1,
+            stampComment: "Rasen gemäht",
+            appointmentDescription: "Innenhof",
+          }],
+        }],
+      })),
+    };
+    const result = await evaluateInvoiceFinalization({
+      organizationId: "org-1",
+      invoiceId: "invoice-1",
+      db: {
+        invoice: { findFirst: vi.fn().mockResolvedValue(hourlyInvoice) },
+      } as never,
+    });
+    expect(result.blockingIssues).toContain(
+      "Bitte Kundentext für Leistung am 03.08.26 ergänzen."
+    );
+  });
+
   it("finalizes exactly one draft and records that no send was triggered", async () => {
     const findFirst = vi.fn().mockResolvedValue(invoice);
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });

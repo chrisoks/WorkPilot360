@@ -64,6 +64,13 @@ import {
   resolveStorageBackedBytes,
 } from "@/lib/storage/document-file";
 import { archiveAndResolveInvoiceArtifact } from "@/lib/invoices/invoice-artifact-storage";
+import {
+  appendHourlyBillingCustomerDescription,
+  getHourlyBillingCustomerLines,
+  getMissingHourlyBillingCustomerTextDates,
+  normalizeHourlyBillingDays,
+  type HourlyBillingDaySnapshot,
+} from "@/lib/invoices/hourly-billing-details";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -82,6 +89,7 @@ type InvoiceLineInput = {
   laborUnitCostSnapshot?: number;
   laborCostSnapshot?: number;
   packageComponentsSnapshot?: CatalogPackageComponentSnapshot[];
+  hourlyBillingDetails?: HourlyBillingDaySnapshot[];
   catalogCostSnapshotVersion?: number;
   vatRate?: number;
   laborItems?: InvoiceLineLaborInput[];
@@ -94,6 +102,14 @@ type InvoiceLineLaborInput = {
   hourlyCostRate?: number;
   totalCost?: number;
 };
+
+function getMissingHourlyCustomerTextLabels(lines: Required<InvoiceLineInput>[]) {
+  return lines.flatMap((line) =>
+    getMissingHourlyBillingCustomerTextDates(line.hourlyBillingDetails).map(
+      (date) => `${cleanInvoiceLineTitle(line.title) || "Position"}: ${date}`
+    )
+  );
+}
 
 type InvoiceInput = {
   actorId?: string;
@@ -192,6 +208,7 @@ type InvoiceLineRow = {
   laborUnitCostSnapshot: number;
   laborCostSnapshot: number;
   packageComponentsSnapshot: Prisma.JsonValue;
+  hourlyBillingDetails: Prisma.JsonValue;
   catalogCostSnapshotVersion: number;
   costSnapshotAt: Date | null;
   vatRate: number;
@@ -398,6 +415,7 @@ async function ensureInvoiceTables() {
       "unit" TEXT NOT NULL DEFAULT 'Stk',
       "title" TEXT NOT NULL DEFAULT '',
       "description" TEXT NOT NULL DEFAULT '',
+      "hourlyBillingDetails" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "unitPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
@@ -416,6 +434,11 @@ async function ensureInvoiceTables() {
   await prisma.$executeRaw`
     ALTER TABLE "InvoiceLine"
     ADD COLUMN IF NOT EXISTS "isLaborPosition" BOOLEAN NOT NULL DEFAULT false
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "InvoiceLine"
+    ADD COLUMN IF NOT EXISTS "hourlyBillingDetails" JSONB NOT NULL DEFAULT '[]'::jsonb
   `;
 
   await prisma.$executeRaw`
@@ -1196,7 +1219,7 @@ function drawRightAlignedText(
   });
 }
 
-async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: string }, lines: Required<InvoiceLineInput>[]) {
+export async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: string }, lines: Required<InvoiceLineInput>[]) {
   const company = Invoice.company === "OK immocare" ? "OK immocare" : "OK solutions";
   const templateBytes = await readFile(getTemplatePath(company));
   const templateDoc = await PDFDocument.load(templateBytes);
@@ -1306,11 +1329,20 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
   for (const [index, line] of lines.entries()) {
     const descriptionLines = wrapText(line.description || "", regular, descriptionSize, table.titleWidth - descriptionIndent);
     const titleLines = wrapText(cleanInvoiceLineTitle(line.title) || "-", bold, titleSize, table.titleWidth);
+    const hourlyCustomerLines = getHourlyBillingCustomerLines(line.hourlyBillingDetails).map((detail) => ({
+      ...detail,
+      textLines: wrapText(detail.customerText, regular, descriptionSize, 245),
+    }));
+    const hourlyDetailsHeight = hourlyCustomerLines.reduce(
+      (sum, detail) => sum + Math.max(11, detail.textLines.length * 9),
+      0
+    );
     const lineDiscountAmount = getLineDiscountAmount(line);
     const lineTotalNet = getLineTotalNet(line);
     const rowHeight = Math.max(
       31,
-      14 + titleLines.length * 10 + descriptionLines.length * 9 + (line.discountPercent > 0 ? 10 : 0)
+      14 + titleLines.length * 10 + descriptionLines.length * 9 + hourlyDetailsHeight +
+        (line.discountPercent > 0 ? 10 : 0)
     );
 
     if (y - rowHeight < bottomLimit) {
@@ -1340,6 +1372,39 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
         color: INK,
       });
       textY -= 9;
+    });
+    hourlyCustomerLines.forEach((detail) => {
+      page.drawText("•", {
+        x: table.titleX + descriptionIndent,
+        y: textY,
+        size: descriptionSize,
+        font: bold,
+        color: INK,
+      });
+      page.drawText(detail.date, {
+        x: table.titleX + 18,
+        y: textY,
+        size: descriptionSize,
+        font: regular,
+        color: INK,
+      });
+      page.drawText(detail.hoursLabel, {
+        x: table.titleX + 72,
+        y: textY,
+        size: descriptionSize,
+        font: regular,
+        color: INK,
+      });
+      detail.textLines.forEach((customerTextLine, textLineIndex) => {
+        page.drawText(customerTextLine, {
+          x: table.titleX + 132,
+          y: textY - textLineIndex * 9,
+          size: descriptionSize,
+          font: regular,
+          color: INK,
+        });
+      });
+      textY -= Math.max(11, detail.textLines.length * 9);
     });
     drawRightAlignedText(page, formatEuro(line.unitPrice), table.unitPriceRightX, y, {
       size: rowSize,
@@ -1469,6 +1534,7 @@ function normalizeInvoiceLines(lines: InvoiceLineInput[] = []) {
         laborUnitCostSnapshot: cleanNumber(line.laborUnitCostSnapshot, 0),
         laborCostSnapshot: cleanNumber(line.laborCostSnapshot, 0),
         packageComponentsSnapshot: cleanPackageComponentsSnapshot(line.packageComponentsSnapshot),
+        hourlyBillingDetails: normalizeHourlyBillingDays(line.hourlyBillingDetails),
         catalogCostSnapshotVersion: Math.max(0, Math.floor(cleanNumber(line.catalogCostSnapshotVersion, 0))),
         vatRate: cleanNumber(line.vatRate, 19),
         laborItems,
@@ -1542,6 +1608,7 @@ function serializeInvoice(
       packageComponentsSnapshot: includeInternalCosts
         ? cleanPackageComponentsSnapshot(line.packageComponentsSnapshot)
         : [],
+      hourlyBillingDetails: normalizeHourlyBillingDays(line.hourlyBillingDetails),
       catalogCostSnapshotVersion: includeInternalCosts ? Number(line.catalogCostSnapshotVersion ?? 0) : 0,
       costSnapshotAt: includeInternalCosts ? line.costSnapshotAt?.toISOString?.() ?? line.costSnapshotAt ?? "" : "",
       isLaborPosition: Boolean(line.isLaborPosition),
@@ -1637,14 +1704,15 @@ async function persistInvoiceLines(
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
         "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
         "materialUnitCostSnapshot", "materialCostSnapshot", "laborUnitCostSnapshot", "laborCostSnapshot",
-        "packageComponentsSnapshot", "catalogCostSnapshotVersion", "costSnapshotAt",
+        "packageComponentsSnapshot", "hourlyBillingDetails", "catalogCostSnapshotVersion", "costSnapshotAt",
         "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${input.organizationId}, ${input.invoiceId}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
         ${line.unitPrice}, ${line.discountPercent},
         ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, ${line.laborUnitCostSnapshot}, ${line.laborCostSnapshot},
-        ${JSON.stringify(line.packageComponentsSnapshot)}::jsonb, ${line.catalogCostSnapshotVersion}, CURRENT_TIMESTAMP,
+        ${JSON.stringify(line.packageComponentsSnapshot)}::jsonb, ${JSON.stringify(line.hourlyBillingDetails)}::jsonb,
+        ${line.catalogCostSnapshotVersion}, CURRENT_TIMESTAMP,
         ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
@@ -1926,7 +1994,10 @@ export async function GET(req: Request) {
       quantity: Number(line.quantity ?? 0),
       unit: line.unit || "Stk",
       title: cleanInvoiceLineTitle(line.title) || "Position",
-      description: line.description || "",
+      description: appendHourlyBillingCustomerDescription(
+        line.description,
+        line.hourlyBillingDetails
+      ),
       unitPrice: Number(line.unitPrice ?? 0),
       discountPercent: Number(line.discountPercent ?? 0),
       vatRate: Number(line.vatRate ?? invoice.vatRate ?? 19),
@@ -2090,8 +2161,9 @@ export async function GET(req: Request) {
         materialCostSnapshot: Number(line.materialCostSnapshot ?? 0),
         laborUnitCostSnapshot: Number(line.laborUnitCostSnapshot ?? 0),
         laborCostSnapshot: Number(line.laborCostSnapshot ?? 0),
-        packageComponentsSnapshot: cleanPackageComponentsSnapshot(line.packageComponentsSnapshot),
-        catalogCostSnapshotVersion: Number(line.catalogCostSnapshotVersion ?? 0),
+         packageComponentsSnapshot: cleanPackageComponentsSnapshot(line.packageComponentsSnapshot),
+         hourlyBillingDetails: normalizeHourlyBillingDays(line.hourlyBillingDetails),
+         catalogCostSnapshotVersion: Number(line.catalogCostSnapshotVersion ?? 0),
         vatRate: Number(line.vatRate ?? Invoice.vatRate ?? 19),
         laborItems: [],
       })) as Required<InvoiceLineInput>[];
@@ -2256,6 +2328,13 @@ export async function POST(req: Request) {
 
   if (!saveAsDraft && lines.length === 0) {
     return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
+  }
+  const missingHourlyCustomerTexts = getMissingHourlyCustomerTextLabels(lines);
+  if (!saveAsDraft && missingHourlyCustomerTexts.length > 0) {
+    return NextResponse.json(
+      { error: `Bitte Kundentext für diese Tagesleistungen ergänzen: ${missingHourlyCustomerTexts.join(", ")}.` },
+      { status: 400 }
+    );
   }
 
   const billedStampEntryIds = saveAsDraft ? [] : getBilledStampEntryIds(body.billedStampEntryIds);
@@ -2504,10 +2583,18 @@ export async function PATCH(req: Request) {
           packageComponentsSnapshot: cleanPackageComponentsSnapshot(
             line.packageComponentsSnapshot
           ),
+          hourlyBillingDetails: normalizeHourlyBillingDays(line.hourlyBillingDetails),
           catalogCostSnapshotVersion: line.catalogCostSnapshotVersion,
           vatRate: line.vatRate,
         }))
       );
+      const missingHourlyCustomerTexts = getMissingHourlyCustomerTextLabels(storedLines);
+      if (missingHourlyCustomerTexts.length > 0) {
+        return NextResponse.json(
+          { error: `Bitte Kundentext für diese Tagesleistungen ergänzen: ${missingHourlyCustomerTexts.join(", ")}.` },
+          { status: 400 }
+        );
+      }
       const { lines: _storedInvoiceLines, ...storedInvoiceData } =
         storedDraft;
       const finalizedPdf = await generateInvoicePdf(
@@ -2756,6 +2843,13 @@ export async function PATCH(req: Request) {
 
   if (!saveAsDraft && lines.length === 0) {
     return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
+  }
+  const missingHourlyCustomerTexts = getMissingHourlyCustomerTextLabels(lines);
+  if (!saveAsDraft && missingHourlyCustomerTexts.length > 0) {
+    return NextResponse.json(
+      { error: `Bitte Kundentext für diese Tagesleistungen ergänzen: ${missingHourlyCustomerTexts.join(", ")}.` },
+      { status: 400 }
+    );
   }
 
   const billedStampEntryIds = saveAsDraft ? [] : getBilledStampEntryIds(body.billedStampEntryIds);

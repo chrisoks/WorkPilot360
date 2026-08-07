@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { PDFDocument, StandardFonts, type PDFFont, type PDFPage, rgb } from "pdf-lib";
 import { prisma } from "@/lib/db/client";
 import { syncInvoiceInventoryMovements } from "@/lib/inventory/catalog-inventory";
+import { appendHourlyBillingCustomerDescription } from "@/lib/invoices/hourly-billing-details";
 
 type CancellationDb = Prisma.TransactionClient | typeof prisma;
 
@@ -463,7 +464,10 @@ export async function createInvoiceCancellation(input: {
       quantity: line.quantity,
       unit: line.unit,
       title: line.title,
-      description: [line.description, `Storno zu Rechnung ${original.invoiceNumber}`].filter(Boolean).join(" · "),
+      description: [
+        appendHourlyBillingCustomerDescription(line.description, line.hourlyBillingDetails),
+        `Storno zu Rechnung ${original.invoiceNumber}`,
+      ].filter(Boolean).join(" · "),
       unitPrice: -Math.abs(line.unitPrice),
       totalNet: -Math.abs(line.totalNet),
     }))
@@ -517,6 +521,7 @@ export async function createInvoiceCancellation(input: {
           laborUnitCostSnapshot: line.laborUnitCostSnapshot,
           laborCostSnapshot: -Math.abs(line.laborCostSnapshot),
           packageComponentsSnapshot: line.packageComponentsSnapshot as Prisma.InputJsonValue,
+          hourlyBillingDetails: line.hourlyBillingDetails as Prisma.InputJsonValue,
           catalogCostSnapshotVersion: line.catalogCostSnapshotVersion,
           costSnapshotAt: line.costSnapshotAt,
           vatRate: line.vatRate,

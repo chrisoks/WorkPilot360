@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { prisma } from "@/lib/db/client";
 import type { StampSessionStopEntry } from "@/lib/time/stamp-session-stop-service";
+import { upsertHourlyBillingEntry } from "@/lib/invoices/hourly-billing-details";
 
 type ProjectRow = {
   id: string; projectNumber: string; title: string; customer: string | null;
@@ -185,8 +186,8 @@ export async function attachStampEntryToHourlyInvoiceDraft(input: {
       `;
     }
     const title = `${catalog.number} | ${catalog.name}`;
-    const lines = await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT id FROM "InvoiceLine"
+    const lines = await tx.$queryRaw<Array<{ id: string; hourlyBillingDetails: Prisma.JsonValue }>>`
+      SELECT id, "hourlyBillingDetails" FROM "InvoiceLine"
       WHERE "organizationId" = ${input.organizationId} AND "invoiceId" = ${draft.id}
         AND "catalogItemId" = ${catalog.id} AND title = ${title}
       ORDER BY position ASC LIMIT 1
@@ -216,8 +217,30 @@ export async function attachStampEntryToHourlyInvoiceDraft(input: {
       FROM "InvoiceLineLabor" WHERE "organizationId" = ${input.organizationId} AND "invoiceLineId" = ${lineId}
     `;
     const quantity = Number(aggregate[0]?.hours || 0);
+    const planningDescription = input.entry.planningEntryId
+      ? await tx.$queryRaw<Array<{ description: string | null }>>`
+          SELECT description FROM "PlanningEntry"
+          WHERE "organizationId" = ${input.organizationId}
+            AND id = ${input.entry.planningEntryId}
+            AND "deletedAt" IS NULL
+          LIMIT 1
+        `
+      : [];
+    const hourlyBillingDetails = upsertHourlyBillingEntry(lines[0]?.hourlyBillingDetails ?? [], {
+      timeEntryId: input.entry.id,
+      planningEntryId: input.entry.planningEntryId || "",
+      date: input.entry.date,
+      startTime: input.entry.startTime,
+      endTime: input.entry.endTime,
+      employeeName: input.entry.employee || "Mitarbeiter",
+      stampedHours: Number((Number(input.entry.durationMs || 0) / 3_600_000).toFixed(2)),
+      billedHours: Number(hours.toFixed(2)),
+      stampComment: input.entry.comment || "",
+      appointmentDescription: planningDescription[0]?.description || "",
+    });
     await tx.$executeRaw`
       UPDATE "InvoiceLine" SET quantity = ${quantity}, "materialCostSnapshot" = ${roundMoney(Number(aggregate[0]?.cost || 0))},
+        "hourlyBillingDetails" = ${JSON.stringify(hourlyBillingDetails)}::jsonb,
         "totalNet" = ${roundMoney(quantity * Number(catalog.salesPrice || 0))}, "updatedAt" = CURRENT_TIMESTAMP
       WHERE "organizationId" = ${input.organizationId} AND id = ${lineId}
     `;

@@ -6,6 +6,7 @@ import {
   InvoiceDraftServiceError,
   type InvoiceDraftInput,
 } from "@/lib/invoices/invoice-draft-service";
+import { getMissingHourlyBillingCustomerTextDates } from "@/lib/invoices/hourly-billing-details";
 
 type InvoiceFinalizationDb = Prisma.TransactionClient | typeof prisma;
 
@@ -152,6 +153,16 @@ export async function evaluateInvoiceFinalization(input: {
   }
 
   const blockingIssues = [...evaluated.missingFields, ...evaluated.errors];
+  for (const line of invoice.lines) {
+    const missingDates = getMissingHourlyBillingCustomerTextDates(
+      line.hourlyBillingDetails
+    );
+    if (missingDates.length > 0) {
+      blockingIssues.push(
+        `Bitte Kundentext für ${line.title || "Position"} am ${missingDates.join(", ")} ergänzen.`
+      );
+    }
+  }
   const totalsChanged =
     Math.abs(evaluated.totals.netTotal - invoice.netTotal) > 0.005 ||
     Math.abs(evaluated.totals.grossTotal - invoice.grossTotal) > 0.005 ||

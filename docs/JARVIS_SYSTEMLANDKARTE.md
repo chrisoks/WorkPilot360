@@ -1067,6 +1067,11 @@ Prompts, Antworten und Telemetrie ausgeschlossen.
   `src/lib/time/stamp-session-billing-service.ts`: Monatsentwurf,
   Leistungszeile und Mitarbeiterzeit werden organisationsgebunden gesperrt,
   auf die Zeitbuchung zurückverknüpft und bei Replay nur wiederverwendet.
+  Zusätzlich wird an der Leistungszeile ein revisionsfester Tagesnachweis
+  gespeichert. Intern bleiben die einzelnen Stempelungen, Kommentare und
+  Terminbeschreibungen sichtbar; kundenwirksam werden nur deutsches
+  Tagesdatum, summierte fakturierte Stunden und der editierbare Kundentext
+  ausgegeben. Fehlender Kundentext blockiert auch die JARVIS-Fakturierung.
 - Unterbrechungen nutzen
   `src/lib/time/stamp-session-interruption-service.ts` sowie den gemeinsamen
   Projektstatus-Service. Verantwortliche Aufgabe, Beteiligte und Hinweise an

@@ -34,6 +34,15 @@ import {
 } from "@/lib/contacts/contact-form";
 import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
 import {
+  getHourlyBillingDayHours,
+  getMissingHourlyBillingCustomerTextDates,
+  normalizeHourlyBillingDays,
+  reconcileHourlyBillingDays,
+  updateHourlyBillingDayCustomerText,
+  type HourlyBillingEntrySnapshot,
+  type HourlyBillingDaySnapshot,
+} from "@/lib/invoices/hourly-billing-details";
+import {
   getActivityReportDeliveryStatus,
   type ActivityReportDeliveryStatus,
 } from "@/lib/activity-reports/delivery-status";
@@ -9444,6 +9453,7 @@ type OfferLineDraft = {
   laborUnitCostSnapshot?: number;
   laborCostSnapshot?: number;
   packageComponentsSnapshot?: CatalogPackageComponentSnapshot[];
+  hourlyBillingDetails?: HourlyBillingDaySnapshot[];
   catalogCostSnapshotVersion?: number;
   costSnapshotAt?: string;
   laborCostRateKey?: string;
@@ -18669,6 +18679,7 @@ export function DashboardPage() {
               unit: line.unit,
               title: line.title,
               description: line.description,
+              hourlyBillingDetails: normalizeHourlyBillingDays(line.hourlyBillingDetails),
               unitPrice: line.unitPrice,
               discountPercent: line.discountPercent ?? 0,
               laborCostRateKey: line.laborCostRateKey || "",
@@ -20161,11 +20172,38 @@ export function DashboardPage() {
     setInvoiceError("");
     setInvoiceLineSearchTerms({});
     setOpenInvoiceLinePickerId("");
-    const linkedStampEntryIds = stampEntries
-      .filter((entry) => String(entry.invoiceId ?? "") === String(invoice.id) && !entry.deletedAt)
-      .map((entry) => entry.id);
+    const snapshotStampEntryIds = invoice.lines.flatMap((line) =>
+      normalizeHourlyBillingDays(line.hourlyBillingDetails).flatMap((day) =>
+        day.entries.map((entry) => entry.timeEntryId)
+      )
+    );
+    const linkedStampEntryIds = Array.from(new Set([
+      ...stampEntries
+        .filter((entry) => String(entry.invoiceId ?? "") === String(invoice.id) && !entry.deletedAt)
+        .map((entry) => entry.id),
+      ...snapshotStampEntryIds,
+    ]));
     setInvoiceStampEntryIds(linkedStampEntryIds);
     setInvoiceBillableStampEntryIds(linkedStampEntryIds);
+    if (invoice.billingSource === "hourly-recurring" && invoice.status === "Entwurf") {
+      const linkedIds = new Set(linkedStampEntryIds);
+      setInvoiceDraft((current) => ({
+        ...current,
+        lines: current.lines.map((line) => {
+          const entries = getInvoiceLineStampEntries(invoiceProject.id, current, line, invoice.id)
+            .filter((entry) => linkedIds.has(entry.id));
+          return entries.length > 0
+            ? {
+                ...line,
+                hourlyBillingDetails: reconcileHourlyBillingDays(
+                  line.hourlyBillingDetails,
+                  entries.map(getHourlyBillingEntrySnapshot)
+                ),
+              }
+            : line;
+        }),
+      }));
+    }
     setIsInvoiceSourcePickerOpen(false);
     setIsInvoiceModalOpen(true);
   }
@@ -20401,6 +20439,43 @@ export function DashboardPage() {
     return Number((Math.ceil(rawHours / roundingFactor) * roundingFactor).toFixed(2));
   }
 
+  function updateInvoiceLineHourlyCustomerText(lineIndex: number, date: string, customerText: string) {
+    setInvoiceDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, currentLineIndex) =>
+        currentLineIndex === lineIndex
+          ? {
+              ...line,
+              hourlyBillingDetails: updateHourlyBillingDayCustomerText(
+                line.hourlyBillingDetails,
+                date,
+                customerText
+              ),
+            }
+          : line
+      ),
+    }));
+  }
+
+  function getHourlyBillingEntrySnapshot(entry: StampTimeEntry): HourlyBillingEntrySnapshot {
+    const planningEntry = entry.planningEntryId
+      ? planningEntries.find((candidate) => candidate.id === entry.planningEntryId)
+      : null;
+    const { activityComment } = getStampCommentDetails(entry);
+    return {
+      timeEntryId: entry.id,
+      planningEntryId: entry.planningEntryId || "",
+      date: normalizeDateKeyValue(entry.date),
+      startTime: entry.startTime || "",
+      endTime: entry.endTime || "",
+      employeeName: entry.employee || "Mitarbeiter",
+      stampedHours: Number((Number(entry.durationMs || 0) / 3_600_000).toFixed(2)),
+      billedHours: getRoundedBillableStampHours(entry),
+      stampComment: activityComment || "",
+      appointmentDescription: planningEntry?.description || "",
+    };
+  }
+
   function cleanInvoiceStampLabel(value?: string | null) {
     return String(value ?? "")
       .replace(/\s*\([^)]+\/\s*Std\.\)\s*$/i, "")
@@ -20500,6 +20575,10 @@ export function DashboardPage() {
           ...line,
           quantity: Number(invoiceHours.toFixed(2)),
           laborItems,
+          hourlyBillingDetails: reconcileHourlyBillingDays(
+            line.hourlyBillingDetails,
+            lineEntries.map(getHourlyBillingEntrySnapshot)
+          ),
         };
       }),
     }));
@@ -20898,6 +20977,21 @@ export function DashboardPage() {
       );
       if (!confirmedWithoutStampLinks) {
         setIsSavingInvoice(false);
+        return;
+      }
+    }
+
+    if (!saveAsDraft && isHourlyRecurringProject(selectedProjectFile)) {
+      const missingCustomerTexts = draftToSave.lines.flatMap((line) =>
+        getMissingHourlyBillingCustomerTextDates(line.hourlyBillingDetails).map(
+          (date) => `${line.title || "Position"}: ${date}`
+        )
+      );
+      if (missingCustomerTexts.length > 0) {
+        setIsSavingInvoice(false);
+        setInvoiceError(
+          `Bitte den Kundentext für diese Tagesleistungen ergänzen: ${missingCustomerTexts.join(", ")}.`
+        );
         return;
       }
     }
@@ -57581,102 +57675,7 @@ await addProjectLogbookEntry(
                               )}
                               <input value={line.title} onChange={(event) => updateInvoiceLine(index, { title: event.target.value })} />
                               <textarea rows={2} value={line.description} onChange={(event) => updateInvoiceLine(index, { description: event.target.value })} />
-                              {canPlanOfferLineLabor(line) && isHourlyRecurringInvoiceModal ? (() => {
-                                const lineStampEntries = getInvoiceLineStampEntries(
-                                  selectedProjectFile.id,
-                                  invoiceDraft,
-                                  line,
-                                  editingInvoiceId
-                                );
-                                const selectedLineStampEntries = lineStampEntries.filter((entry) =>
-                                  invoiceStampEntryIds.includes(entry.id)
-                                );
-                                const selectedLineHours = selectedLineStampEntries.reduce(
-                                  (sum, entry) => sum + getRoundedBillableStampHours(entry),
-                                  0
-                                );
-                                const rawLineHours = selectedLineStampEntries.reduce(
-                                  (sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000,
-                                  0
-                                );
-                                const allLineEntriesSelected =
-                                  lineStampEntries.length > 0 &&
-                                  lineStampEntries.every((entry) => invoiceStampEntryIds.includes(entry.id));
-
-                                return (
-                                  <div className={styles.invoiceLineStampBasis}>
-                                    <div className={styles.offerInternalHeader}>
-                                      <strong>Abrechnungsgrundlage intern</strong>
-                                      <button
-                                        type="button"
-                                        className={styles.secondaryButton}
-                                        disabled={lineStampEntries.length === 0 || allLineEntriesSelected}
-                                        onClick={() => takeOverInvoiceLineStampEntries(index, lineStampEntries)}
-                                      >
-                                        Alle dieser Position übernehmen
-                                      </button>
-                                    </div>
-                                    {lineStampEntries.length === 0 ? (
-                                      <p>Keine passenden Stempelungen für diese Position.</p>
-                                    ) : (
-                                      <div className={styles.invoiceLineStampRows}>
-                                        {lineStampEntries.map((entry) => {
-                                          const isLinked = invoiceStampEntryIds.includes(entry.id);
-                                          const rawHours = Number(entry.durationMs || 0) / 3_600_000;
-                                          const roundedHours = getRoundedBillableStampHours(entry);
-                                          const { activityComment, interruptionReason } = getStampCommentDetails(entry);
-                                          return (
-                                            <label
-                                              key={`invoice-line-stamp-${line.id}-${entry.id}`}
-                                              className={styles.invoiceLineStampRow}
-                                              data-linked={isLinked ? "true" : "false"}
-                                            >
-                                              <input
-                                                className={styles.invoiceStampCheckbox}
-                                                type="checkbox"
-                                                checked={isLinked}
-                                                onChange={(event) =>
-                                                  toggleInvoiceLineStampEntry(index, entry.id, event.target.checked)
-                                                }
-                                              />
-                                              <span>
-                                                <strong>{entry.employee || "Mitarbeiter"}</strong>
-                                                <small>{entry.date} | {entry.startTime} - {entry.endTime}</small>
-                                              </span>
-                                              <span>
-                                                <small>Gestempelt</small>
-                                                <strong>{formatHours(rawHours)} Std.</strong>
-                                              </span>
-                                              <span>
-                                                <small>Fakturiert</small>
-                                                <strong>{formatHours(roundedHours)} Std.</strong>
-                                              </span>
-                                              <span className={styles.invoiceLineStampComment}>
-                                                <small>{interruptionReason ? "Tätigkeitsnotiz" : "Kommentar"}</small>
-                                                <strong>{activityComment || "-"}</strong>
-                                                {interruptionReason ? (
-                                                  <>
-                                                    <small className={styles.invoiceLineStampInterruptionLabel}>
-                                                      Unterbrechungsgrund
-                                                    </small>
-                                                    <strong className={styles.invoiceLineStampInterruptionReason}>
-                                                      {interruptionReason}
-                                                    </strong>
-                                                  </>
-                                                ) : null}
-                                              </span>
-                                            </label>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                    <small>
-                                      Intern: {formatHours(rawLineHours)} Std. gestempelt. Rechnung:{" "}
-                                      {formatHours(selectedLineHours)} Std. für diese Position.
-                                    </small>
-                                  </div>
-                                );
-                              })() : canPlanOfferLineLabor(line) ? (
+                              {canPlanOfferLineLabor(line) && !isHourlyRecurringInvoiceModal ? (
                                 <div className={styles.offerInternalCalculation}>
                                   <div className={styles.offerInternalHeader}>
                                     <strong>Abrechnungsgrundlage intern</strong>
@@ -57781,6 +57780,147 @@ await addProjectLogbookEntry(
                               ) : null}
                             </td>
                           </tr>
+                          {canPlanOfferLineLabor(line) && isHourlyRecurringInvoiceModal ? (() => {
+                            const lineStampEntries = getInvoiceLineStampEntries(
+                              selectedProjectFile!.id,
+                              invoiceDraft,
+                              line,
+                              editingInvoiceId
+                            );
+                            const entriesByDate = new Map<string, StampTimeEntry[]>();
+                            for (const entry of lineStampEntries) {
+                              const date = normalizeDateKeyValue(entry.date);
+                              entriesByDate.set(date, [...(entriesByDate.get(date) ?? []), entry]);
+                            }
+                            const allLineEntriesSelected =
+                              lineStampEntries.length > 0 &&
+                              lineStampEntries.every((entry) => invoiceStampEntryIds.includes(entry.id));
+                            const billingDays = normalizeHourlyBillingDays(line.hourlyBillingDetails);
+                            const selectedLineEntries = lineStampEntries.filter((entry) =>
+                              invoiceStampEntryIds.includes(entry.id)
+                            );
+                            const rawLineHours = selectedLineEntries.reduce(
+                              (sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000,
+                              0
+                            );
+                            const selectedLineHours = selectedLineEntries.reduce(
+                              (sum, entry) => sum + getRoundedBillableStampHours(entry),
+                              0
+                            );
+
+                            return (
+                              <tr className={styles.invoiceBillingBasisRow}>
+                                <td colSpan={6}>
+                                  <div className={styles.invoiceLineStampBasis}>
+                                    <div className={styles.offerInternalHeader}>
+                                      <strong>Abrechnungsgrundlage intern</strong>
+                                      <button
+                                        type="button"
+                                        className={styles.secondaryButton}
+                                        disabled={lineStampEntries.length === 0 || allLineEntriesSelected}
+                                        onClick={() => takeOverInvoiceLineStampEntries(index, lineStampEntries)}
+                                      >
+                                        Alle dieser Position übernehmen
+                                      </button>
+                                    </div>
+                                    {lineStampEntries.length === 0 ? (
+                                      <p>Keine passenden Stempelungen für diese Position.</p>
+                                    ) : (
+                                      <div className={styles.invoiceBillingDays}>
+                                        {Array.from(entriesByDate.entries()).map(([date, dayEntries]) => {
+                                          const selectedDayEntries = dayEntries.filter((entry) =>
+                                            invoiceStampEntryIds.includes(entry.id)
+                                          );
+                                          const billingDay = billingDays.find((day) => day.date === date);
+                                          const billedDayHours = billingDay
+                                            ? getHourlyBillingDayHours(billingDay)
+                                            : selectedDayEntries.reduce(
+                                                (sum, entry) => sum + getRoundedBillableStampHours(entry),
+                                                0
+                                              );
+                                          return (
+                                            <section className={styles.invoiceBillingDay} key={`${line.id}-${date}`}>
+                                              <header>
+                                                <strong>{formatPlainDate(date)}</strong>
+                                                <span>
+                                                  {selectedDayEntries.length > 0
+                                                    ? `${formatHours(billedDayHours)} Std. für die Rechnung`
+                                                    : "Noch keine Stempelung ausgewählt"}
+                                                </span>
+                                              </header>
+                                              <div className={styles.invoiceLineStampRows}>
+                                                {dayEntries.map((entry) => {
+                                                  const isLinked = invoiceStampEntryIds.includes(entry.id);
+                                                  const rawHours = Number(entry.durationMs || 0) / 3_600_000;
+                                                  const roundedHours = getRoundedBillableStampHours(entry);
+                                                  const { activityComment, interruptionReason } = getStampCommentDetails(entry);
+                                                  const appointmentDescription = getHourlyBillingEntrySnapshot(entry).appointmentDescription;
+                                                  return (
+                                                    <label
+                                                      key={`invoice-line-stamp-${line.id}-${entry.id}`}
+                                                      className={styles.invoiceLineStampRow}
+                                                      data-linked={isLinked ? "true" : "false"}
+                                                    >
+                                                      <input
+                                                        className={styles.invoiceStampCheckbox}
+                                                        type="checkbox"
+                                                        checked={isLinked}
+                                                        onChange={(event) =>
+                                                          toggleInvoiceLineStampEntry(index, entry.id, event.target.checked)
+                                                        }
+                                                      />
+                                                      <span>
+                                                        <strong>{entry.employee || "Mitarbeiter"}</strong>
+                                                        <small>{entry.startTime}–{entry.endTime} Uhr</small>
+                                                      </span>
+                                                      <span>
+                                                        <small>Gestempelt</small>
+                                                        <strong>{formatHours(rawHours)} Std.</strong>
+                                                      </span>
+                                                      <span>
+                                                        <small>Fakturiert</small>
+                                                        <strong>{formatHours(roundedHours)} Std.</strong>
+                                                      </span>
+                                                      <span className={styles.invoiceLineStampComment}>
+                                                        <small>{interruptionReason ? "Tätigkeitsnotiz" : "Stempelkommentar"}</small>
+                                                        <strong>{activityComment || "-"}</strong>
+                                                      </span>
+                                                      <span className={styles.invoiceLineStampComment}>
+                                                        <small>Terminbeschreibung</small>
+                                                        <strong>{appointmentDescription || "Kein Termintext hinterlegt"}</strong>
+                                                      </span>
+                                                    </label>
+                                                  );
+                                                })}
+                                              </div>
+                                              {selectedDayEntries.length > 0 ? (
+                                                <label className={styles.invoiceBillingCustomerText}>
+                                                  <span>Kundentext auf der Rechnung</span>
+                                                  <textarea
+                                                    rows={2}
+                                                    maxLength={4_000}
+                                                    value={billingDay?.customerText || ""}
+                                                    placeholder="Bitte eintragen, was der Kunde für diesen Tag auf der Rechnung liest."
+                                                    onChange={(event) =>
+                                                      updateInvoiceLineHourlyCustomerText(index, date, event.target.value)
+                                                    }
+                                                  />
+                                                </label>
+                                              ) : null}
+                                            </section>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    <small>
+                                      Intern: {formatHours(rawLineHours)} Std. gestempelt. Rechnung: {" "}
+                                      {formatHours(selectedLineHours)} Std. für diese Position.
+                                    </small>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })() : null}
                           </Fragment>
                         ))}
                       </tbody>

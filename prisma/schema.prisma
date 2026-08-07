@@ -1081,6 +1081,7 @@ model InvoiceLine {
   laborUnitCostSnapshot      Float              @default(0)
   laborCostSnapshot          Float              @default(0)
   packageComponentsSnapshot  Json               @default("[]")
+  hourlyBillingDetails       Json               @default("[]")
   catalogCostSnapshotVersion Int                @default(0)
   costSnapshotAt             DateTime?
   vatRate                    Float              @default(19)
