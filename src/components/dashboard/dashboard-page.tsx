@@ -16306,6 +16306,7 @@ export function DashboardPage() {
     activeUser?.role === "ADMIN" ||
     activeUser?.role === "GESCHAEFTSFUEHRER" ||
     activeUser?.role === "FUEHRUNGSKRAFT";
+  const mayCreateFixedPlanningEntries = mayManagePlanningEntries || activeUserHasSalesRole;
   const canViewSensitiveOverviewFinancials = canViewFullOverviewAnalytics;
   const personalAssessmentTargetUserId =
     canManageEmployeeAssessments && selectedPersonalUserId ? selectedPersonalUserId : activeUserId;
@@ -25135,7 +25136,7 @@ export function DashboardPage() {
     requireManualGroup: boolean;
   }> = {}) {
     const approvalStatus = options.approvalStatus ?? "confirmed";
-    if (!mayManagePlanningEntries && approvalStatus !== "requested") {
+    if (!mayCreateFixedPlanningEntries && approvalStatus !== "requested") {
       setErrorMessage("Mitarbeiter können nur eigene Terminwünsche anlegen.");
       return;
     }
@@ -52351,7 +52352,7 @@ await addProjectLogbookEntry(
       row: (typeof projectLaborComparisonRows)[number],
       approvalStatus: PlanningEntryApprovalStatus = "confirmed"
     ) => {
-      if (!mayManagePlanningEntries && approvalStatus !== "requested") {
+      if (!mayCreateFixedPlanningEntries && approvalStatus !== "requested") {
         setErrorMessage("Mitarbeiter können nur eigene Terminwünsche anlegen.");
         return;
       }
@@ -52416,7 +52417,7 @@ await addProjectLogbookEntry(
       setIsPlanningEntryModalOpen(true);
     };
     const openManualProjectPlanning = (approvalStatus: PlanningEntryApprovalStatus = "confirmed") => {
-      if (!mayManagePlanningEntries && approvalStatus !== "requested") {
+      if (!mayCreateFixedPlanningEntries && approvalStatus !== "requested") {
         setErrorMessage("Mitarbeiter können nur eigene Terminwünsche anlegen.");
         return;
       }
@@ -52502,7 +52503,7 @@ await addProjectLogbookEntry(
     ) =>
       projectPlanningChoiceMenuKey === menuKey ? (
         <div className={styles.projectPlanningCapacityMenu} data-kind="choice">
-          {mayManagePlanningEntries ? (
+          {mayCreateFixedPlanningEntries ? (
             <button type="button" onClick={onConfirmed}>
               + Termin
             </button>
@@ -55813,7 +55814,7 @@ await addProjectLogbookEntry(
                           }`
                         : ""}
                     </span>
-                    {mayManagePlanningEntries ? (
+                    {mayCreateFixedPlanningEntries ? (
                       <button
                         type="button"
                         className={styles.primaryButton}
@@ -60839,7 +60840,7 @@ await addProjectLogbookEntry(
               >
                 + Terminwunsch
               </button>
-            {mayManagePlanningEntries ? (
+            {mayCreateFixedPlanningEntries ? (
               <button
                 type="button"
                 className={styles.primaryButton}
@@ -61141,7 +61142,7 @@ await addProjectLogbookEntry(
               </div>
               <div className={styles.planningDayActions}>
                 <div className={styles.planningDayPrimaryActions}>
-                {mayManagePlanningEntries ? (
+                {mayCreateFixedPlanningEntries ? (
                   <button
                     type="button"
                     className={styles.primaryButton}
@@ -61361,7 +61362,7 @@ await addProjectLogbookEntry(
             </p>
           </div>
           <div className={styles.planningBoardHeroActions}>
-            {mayManagePlanningEntries ? (
+            {mayCreateFixedPlanningEntries ? (
               <button
                 type="button"
                 className={styles.primaryButton}
@@ -73388,7 +73389,7 @@ await addProjectLogbookEntry(
 
             <div className={`${styles.standardModalBody} ${styles.planningSlotActionBody}`}>
               <div className={styles.planningSlotActionChoices}>
-                {mayManagePlanningEntries ? (
+                {mayCreateFixedPlanningEntries ? (
                   <button
                     type="button"
                     data-active={planningSlotAction.approvalStatus === "confirmed"}
@@ -73512,7 +73513,11 @@ await addProjectLogbookEntry(
                   Planungsboard
                   <select
                     value={planningEntryBoard}
-                    disabled={!mayManagePlanningEntries}
+                    disabled={
+                      planningEntryApprovalStatus === "requested"
+                        ? !mayManagePlanningEntries
+                        : !mayCreateFixedPlanningEntries
+                    }
                     onChange={(event) => {
                       const nextBoard = event.target.value as PlanningBoardCompany | "";
                       setPlanningEntryBoard(nextBoard);
@@ -73532,7 +73537,11 @@ await addProjectLogbookEntry(
                   Planungsgruppe
                   <select
                     value={planningEntryGroup}
-                    disabled={!mayManagePlanningEntries}
+                    disabled={
+                      planningEntryApprovalStatus === "requested"
+                        ? !mayManagePlanningEntries
+                        : !mayCreateFixedPlanningEntries
+                    }
                     onChange={(event) => {
                       const nextGroup = event.target.value;
                       setPlanningEntryGroup(nextGroup);
@@ -73552,7 +73561,11 @@ await addProjectLogbookEntry(
                   Mitarbeiter
                   <select
                     value={planningEntryUserId}
-                    disabled={!mayManagePlanningEntries}
+                    disabled={
+                      planningEntryApprovalStatus === "requested"
+                        ? !mayManagePlanningEntries
+                        : !mayCreateFixedPlanningEntries
+                    }
                     onChange={(event) => setPlanningEntryUserId(event.target.value)}
                   >
                     <option value="">Noch nicht zugewiesen</option>
@@ -73560,7 +73573,9 @@ await addProjectLogbookEntry(
                       .filter(
                         (user) =>
                           user.isActive &&
-                          (mayManagePlanningEntries || user.id === activeUserId) &&
+                          ((planningEntryApprovalStatus === "confirmed" && mayCreateFixedPlanningEntries) ||
+                            mayManagePlanningEntries ||
+                            user.id === activeUserId) &&
                           (user.planningBoard ?? "OK solutions") === planningEntryBoard &&
                           (user.planningGroup ?? "") === planningEntryGroup
                       )

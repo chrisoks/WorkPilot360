@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import { Prisma, Role, type User } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
-import { canManagePlanningEntries } from "@/lib/permissions";
+import { canCreateFixedPlanningEntries, canManagePlanningEntries } from "@/lib/permissions";
 import {
   generatePlanningDateKeys,
   getNetPlanningMinutes,
@@ -383,7 +383,8 @@ async function evaluateInternal(input: {
   const { organizationId, actor, request, users, timezone } = input;
   const db = input.db ?? prisma;
   const actorCanManage = canManagePlanningEntries(actor);
-  if (!actorCanManage) {
+  const actorCanCreateFixed = canCreateFixedPlanningEntries(actor);
+  if (!actorCanManage && !(actorCanCreateFixed && request.approvalStatus === "confirmed")) {
     if (
       request.approvalStatus !== "requested" ||
       request.assigneeIds.length !== 1 ||

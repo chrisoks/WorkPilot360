@@ -4,7 +4,7 @@ import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
-import { canManagePlanningEntries } from "@/lib/permissions";
+import { canCreateFixedPlanningEntries, canManagePlanningEntries } from "@/lib/permissions";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import { sendPushToUserSafely } from "@/lib/push/web-push";
 import {
@@ -914,6 +914,7 @@ export async function POST(req: Request) {
   const actorUserId = actor.id;
   const actorName = getUserName(actor);
   const actorCanManagePlanning = canManagePlanningEntries(actor);
+  const actorCanCreateFixedPlanning = canCreateFixedPlanningEntries(actor);
   const id = cleanString(body.id) || randomUUID();
   const rawSource = cleanString(body.source);
   const source = rawSource === "offer" || rawSource === "marketingContent" ? rawSource : "manual";
@@ -1121,7 +1122,9 @@ export async function POST(req: Request) {
 
   const employeeName = getUserName(plannedUser);
 
-  if (!actorCanManagePlanning) {
+  const mayCreateFixedEntry =
+    !existingEntry && actorCanCreateFixedPlanning && approvalStatus === "confirmed";
+  if (!actorCanManagePlanning && !mayCreateFixedEntry) {
     const ownsExistingEntry =
       existingEntry && (existingEntry.userId === actor.id || existingEntry.requestedByUserId === actor.id);
 

@@ -182,6 +182,10 @@ export function canManagePlanningEntries(user: RoleCarrier): boolean {
   return canRunStatusEscalations(user);
 }
 
+export function canCreateFixedPlanningEntries(user: RoleCarrier): boolean {
+  return canManagePlanningEntries(user) || hasSalesAccess(user);
+}
+
 export function canManageSalesPipeline(user: RoleCarrier): boolean {
   return (
     user.role === Role.ADMIN ||
