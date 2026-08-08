@@ -33,6 +33,7 @@ import {
   type ContactSortDirection,
 } from "@/lib/contacts/contact-form";
 import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
+import { openPdfPreviewInNewTab } from "@/lib/documents/pdf-preview";
 import {
   getNetWorkDurationMs,
   getScheduledBreakOverlapMinutes,
@@ -58019,7 +58020,13 @@ await addProjectLogbookEntry(
                     </table>
                   </div>
                   <div className={styles.offerTotals}>
-                    <div>
+                    <div className={styles.offerTotalsMain}>
+                      {invoiceDiscountAmount > 0 ? (
+                        <div className={styles.offerDiscountBreakdown}>
+                          <span>Netto vor Rabatt <strong>{formatMoney(invoiceNetBeforeInvoiceDiscount)}</strong></span>
+                          <span>Rabatt {formatHours(invoiceDiscountPercent)}% <strong>-{formatMoney(invoiceDiscountAmount)}</strong></span>
+                        </div>
+                      ) : null}
                       <label className={styles.offerTotalDiscountField}>
                         Rechnungsrabatt %
                         <input
@@ -58036,21 +58043,9 @@ await addProjectLogbookEntry(
                           }
                         />
                       </label>
-                      {invoiceDiscountAmount > 0 ? (
-                        <>
-                          <article>
-                            <span>Netto vor Rabatt</span>
-                            <strong>{formatMoney(invoiceNetBeforeInvoiceDiscount)}</strong>
-                          </article>
-                          <article>
-                            <span>Rabatt {formatHours(invoiceDiscountPercent)}%</span>
-                            <strong>-{formatMoney(invoiceDiscountAmount)}</strong>
-                          </article>
-                        </>
-                      ) : null}
-                      <article><span>Netto</span><strong>{formatMoney(invoiceNetTotal)}</strong></article>
-                      <article><span>MwSt.</span><strong>{formatMoney(invoiceGrossTotal - invoiceNetTotal)}</strong></article>
-                      <article><span>Brutto</span><strong>{formatMoney(invoiceGrossTotal)}</strong></article>
+                      <article data-summary="net"><span>Netto</span><strong>{formatMoney(invoiceNetTotal)}</strong></article>
+                      <article data-summary="vat"><span>MwSt.</span><strong>{formatMoney(invoiceGrossTotal - invoiceNetTotal)}</strong></article>
+                      <article data-summary="gross"><span>Brutto</span><strong>{formatMoney(invoiceGrossTotal)}</strong></article>
                     </div>
                   </div>
                 </section>
@@ -58063,7 +58058,7 @@ await addProjectLogbookEntry(
                       {isGeneratingInvoicePreview ? "Aktualisiere..." : "Vorschau aktualisieren"}
                     </button>
                     {invoicePreviewDataUrl ? (
-            <button type="button" className={styles.secondaryButton} onClick={() => window.open(invoicePreviewDataUrl, "_blank")}>Groß öffnen</button>
+            <button type="button" className={styles.secondaryButton} onClick={() => void openPdfPreviewInNewTab(invoicePreviewDataUrl, "Rechnungsvorschau")}>Groß öffnen</button>
                     ) : null}
                   </div>
                 </div>
@@ -58757,7 +58752,13 @@ await addProjectLogbookEntry(
             </section>
 
             <section className={styles.offerTotals}>
-              <div>
+              <div className={styles.offerTotalsMain}>
+                {offerDiscountAmount > 0 ? (
+                  <div className={styles.offerDiscountBreakdown}>
+                    <span>Netto vor Rabatt <strong>{formatMoney(offerNetBeforeOfferDiscount)}</strong></span>
+                    <span>Rabatt {formatHours(offerDiscountPercent)}% <strong>-{formatMoney(offerDiscountAmount)}</strong></span>
+                  </div>
+                ) : null}
                 <label className={styles.offerTotalDiscountField}>
                   Angebotsrabatt %
                   <input
@@ -58774,32 +58775,20 @@ await addProjectLogbookEntry(
                     }
                   />
                 </label>
-                {offerDiscountAmount > 0 ? (
-                  <>
-                    <article>
-                      <span>Netto vor Rabatt</span>
-                      <strong>{formatMoney(offerNetBeforeOfferDiscount)}</strong>
-                    </article>
-                    <article>
-                      <span>Rabatt {formatHours(offerDiscountPercent)}%</span>
-                      <strong>-{formatMoney(offerDiscountAmount)}</strong>
-                    </article>
-                  </>
-                ) : null}
-                <article>
+                <article data-summary="net">
                   <span>Netto</span>
                   <strong>{formatMoney(offerNetTotal)}</strong>
                 </article>
-                <article>
+                <article data-summary="vat">
                   <span>MwSt.</span>
                   <strong>{formatMoney(offerGrossTotal - offerNetTotal)}</strong>
                 </article>
-                <article>
+                <article data-summary="gross">
                   <span>Brutto</span>
                   <strong>{formatMoney(offerGrossTotal)}</strong>
                 </article>
               </div>
-              <div>
+              <div className={styles.offerInternalSummary}>
                 <table className={styles.offerInternalSummaryTable}>
                   <thead>
                     <tr>
@@ -58871,7 +58860,7 @@ await addProjectLogbookEntry(
                     <button
                       type="button"
                       className={styles.secondaryButton}
-                      onClick={() => offerPreviewDataUrl && window.open(offerPreviewDataUrl, "_blank")}
+                      onClick={() => offerPreviewDataUrl && void openPdfPreviewInNewTab(offerPreviewDataUrl, "Angebotsvorschau")}
                       disabled={!offerPreviewDataUrl}
                     >
                       Groß öffnen
