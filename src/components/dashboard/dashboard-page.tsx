@@ -15522,6 +15522,19 @@ export function DashboardPage() {
   const [openInvoiceLinePickerId, setOpenInvoiceLinePickerId] = useState("");
   const [invoiceStampEntryIds, setInvoiceStampEntryIds] = useState<string[]>([]);
   const [invoiceBillableStampEntryIds, setInvoiceBillableStampEntryIds] = useState<string[]>([]);
+  const [invoiceCustomerTextAutosaveState, setInvoiceCustomerTextAutosaveState] = useState<
+    "idle" | "dirty" | "saving" | "saved" | "error"
+  >("idle");
+  const [invoiceCustomerTextAutosaveMessage, setInvoiceCustomerTextAutosaveMessage] = useState("");
+  const invoiceCustomerTextAutosaveTimerRef = useRef<number | null>(null);
+  const invoiceCustomerTextAutosavePendingRef = useRef(new Map<string, {
+    invoiceId: string;
+    lineId: string;
+    date: string;
+    customerText: string;
+  }>());
+  const invoiceCustomerTextAutosavePromiseRef = useRef<Promise<boolean> | null>(null);
+  const invoiceCustomerTextExpectedUpdatedAtRef = useRef("");
   const [pendingFinalizeInvoice, setPendingFinalizeInvoice] = useState<
     { source: "list"; invoice: InvoiceItem } | { source: "modal" } | null
   >(null);
@@ -20162,6 +20175,7 @@ export function DashboardPage() {
               unitPrice: line.unitPrice,
               discountPercent: line.discountPercent ?? 0,
               vatRate: line.vatRate,
+              hourlyBillingDetails: normalizeHourlyBillingDays(line.hourlyBillingDetails),
               laborItems: (line.laborItems ?? []).map((labor) => ({
                 id: labor.id || crypto.randomUUID(),
                 userId: labor.userId,
@@ -20174,6 +20188,14 @@ export function DashboardPage() {
           : [createEmptyOfferLine(invoice.vatRate || 19)],
     });
     setEditingInvoiceId(invoice.id);
+    invoiceCustomerTextExpectedUpdatedAtRef.current = invoice.updatedAt || "";
+    invoiceCustomerTextAutosavePendingRef.current.clear();
+    if (invoiceCustomerTextAutosaveTimerRef.current !== null) {
+      window.clearTimeout(invoiceCustomerTextAutosaveTimerRef.current);
+      invoiceCustomerTextAutosaveTimerRef.current = null;
+    }
+    setInvoiceCustomerTextAutosaveState("idle");
+    setInvoiceCustomerTextAutosaveMessage("");
     setInvoicePreviewDataUrl(invoice.pdfAvailable ? getInvoicePdfUrl(invoice.id) : "");
     setInvoiceError("");
     setInvoiceLineSearchTerms({});
@@ -20445,7 +20467,150 @@ export function DashboardPage() {
     return Number((Math.ceil(rawHours / roundingFactor) * roundingFactor).toFixed(2));
   }
 
-  function updateInvoiceLineHourlyCustomerText(lineIndex: number, date: string, customerText: string) {
+  function queueInvoiceHourlyCustomerTextAutosave(lineId: string, date: string, customerText: string) {
+    const invoice = invoices.find((candidate) => candidate.id === editingInvoiceId);
+    if (!invoice || invoice.status !== "Entwurf" || invoice.billingSource !== "hourly-recurring" || !lineId) {
+      setInvoiceCustomerTextAutosaveState("dirty");
+      setInvoiceCustomerTextAutosaveMessage("Entwurf noch nicht gespeichert");
+      return;
+    }
+    if (!invoiceCustomerTextExpectedUpdatedAtRef.current) {
+      invoiceCustomerTextExpectedUpdatedAtRef.current = invoice.updatedAt || "";
+    }
+    invoiceCustomerTextAutosavePendingRef.current.set(`${lineId}:${date}`, {
+      invoiceId: invoice.id,
+      lineId,
+      date,
+      customerText,
+    });
+    setInvoiceCustomerTextAutosaveState("dirty");
+    setInvoiceCustomerTextAutosaveMessage("Noch nicht gespeichert");
+    if (invoiceCustomerTextAutosaveTimerRef.current !== null) {
+      window.clearTimeout(invoiceCustomerTextAutosaveTimerRef.current);
+    }
+    invoiceCustomerTextAutosaveTimerRef.current = window.setTimeout(() => {
+      invoiceCustomerTextAutosaveTimerRef.current = null;
+      void flushInvoiceHourlyCustomerTextAutosaves();
+    }, 700);
+  }
+
+  async function flushInvoiceHourlyCustomerTextAutosaves(): Promise<boolean> {
+    if (invoiceCustomerTextAutosavePromiseRef.current) {
+      return invoiceCustomerTextAutosavePromiseRef.current;
+    }
+    if (invoiceCustomerTextAutosaveTimerRef.current !== null) {
+      window.clearTimeout(invoiceCustomerTextAutosaveTimerRef.current);
+      invoiceCustomerTextAutosaveTimerRef.current = null;
+    }
+    if (invoiceCustomerTextAutosavePendingRef.current.size === 0) {
+      return invoiceCustomerTextAutosaveState !== "error";
+    }
+
+    const savePromise = (async () => {
+      setInvoiceCustomerTextAutosaveState("saving");
+      setInvoiceCustomerTextAutosaveMessage("Speichert …");
+      while (invoiceCustomerTextAutosavePendingRef.current.size > 0) {
+        const next = invoiceCustomerTextAutosavePendingRef.current.entries().next().value as
+          | [string, { invoiceId: string; lineId: string; date: string; customerText: string }]
+          | undefined;
+        if (!next) break;
+        const [key, payload] = next;
+        invoiceCustomerTextAutosavePendingRef.current.delete(key);
+        try {
+          const response = await fetch("/api/invoices", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "save-hourly-customer-text",
+              actorId: activeUserId,
+              id: payload.invoiceId,
+              lineId: payload.lineId,
+              date: payload.date,
+              customerText: payload.customerText,
+              expectedUpdatedAt: invoiceCustomerTextExpectedUpdatedAtRef.current,
+            }),
+          });
+          const result = await response.json().catch(() => null) as {
+            error?: string;
+            updatedAt?: string;
+          } | null;
+          if (!response.ok || !result?.updatedAt) {
+            if (!invoiceCustomerTextAutosavePendingRef.current.has(key)) {
+              invoiceCustomerTextAutosavePendingRef.current.set(key, payload);
+            }
+            setInvoiceCustomerTextAutosaveState("error");
+            setInvoiceCustomerTextAutosaveMessage("Speichern fehlgeschlagen");
+            setInvoiceError(result?.error || "Kundentext konnte nicht automatisch gespeichert werden.");
+            return false;
+          }
+          invoiceCustomerTextExpectedUpdatedAtRef.current = result.updatedAt;
+          setInvoices((currentInvoices) => currentInvoices.map((currentInvoice) =>
+            currentInvoice.id === payload.invoiceId
+              ? {
+                  ...currentInvoice,
+                  updatedAt: result.updatedAt!,
+                  lines: currentInvoice.lines.map((currentLine) =>
+                    currentLine.id === payload.lineId
+                      ? {
+                          ...currentLine,
+                          hourlyBillingDetails: updateHourlyBillingDayCustomerText(
+                            currentLine.hourlyBillingDetails,
+                            payload.date,
+                            payload.customerText
+                          ),
+                        }
+                      : currentLine
+                  ),
+                }
+              : currentInvoice
+          ));
+        } catch {
+          if (!invoiceCustomerTextAutosavePendingRef.current.has(key)) {
+            invoiceCustomerTextAutosavePendingRef.current.set(key, payload);
+          }
+          setInvoiceCustomerTextAutosaveState("error");
+          setInvoiceCustomerTextAutosaveMessage("Speichern fehlgeschlagen");
+          setInvoiceError("Kundentext konnte nicht automatisch gespeichert werden.");
+          return false;
+        }
+      }
+      setInvoiceCustomerTextAutosaveState("saved");
+      setInvoiceCustomerTextAutosaveMessage("Gespeichert");
+      return true;
+    })();
+    invoiceCustomerTextAutosavePromiseRef.current = savePromise;
+    try {
+      return await savePromise;
+    } finally {
+      invoiceCustomerTextAutosavePromiseRef.current = null;
+    }
+  }
+
+  async function requestCloseInvoiceModal() {
+    if (!editingInvoiceId && invoiceCustomerTextAutosaveState === "dirty") {
+      const closeWithoutSaving = window.confirm(
+        "Der Kundentext gehört zu einem noch nicht gespeicherten Rechnungsentwurf. Möchtest du die Maske wirklich ohne Speichern schließen?"
+      );
+      if (!closeWithoutSaving) return;
+      setInvoiceCustomerTextAutosaveState("idle");
+      setInvoiceCustomerTextAutosaveMessage("");
+      setIsInvoiceModalOpen(false);
+      return;
+    }
+    const saved = await flushInvoiceHourlyCustomerTextAutosaves();
+    if (!saved) {
+      const closeWithoutSaving = window.confirm(
+        "Der Kundentext konnte nicht gespeichert werden. Möchtest du die Rechnungsmaske wirklich ohne Speichern schließen?"
+      );
+      if (!closeWithoutSaving) return;
+    }
+    invoiceCustomerTextAutosavePendingRef.current.clear();
+    setInvoiceCustomerTextAutosaveState("idle");
+    setInvoiceCustomerTextAutosaveMessage("");
+    setIsInvoiceModalOpen(false);
+  }
+
+  function updateInvoiceLineHourlyCustomerText(lineIndex: number, lineId: string, date: string, customerText: string) {
     setInvoiceDraft((current) => ({
       ...current,
       lines: current.lines.map((line, currentLineIndex) =>
@@ -20461,6 +20626,7 @@ export function DashboardPage() {
           : line
       ),
     }));
+    queueInvoiceHourlyCustomerTextAutosave(lineId, date, customerText);
   }
 
   function getHourlyBillingEntrySnapshot(entry: StampTimeEntry): HourlyBillingEntrySnapshot {
@@ -20830,6 +20996,7 @@ export function DashboardPage() {
               unitPrice: line.unitPrice,
               discountPercent: line.discountPercent ?? 0,
               vatRate: line.vatRate,
+              hourlyBillingDetails: normalizeHourlyBillingDays(line.hourlyBillingDetails),
               laborItems: (line.laborItems ?? []).map((labor) => ({
                 id: labor.id || crypto.randomUUID(),
                 userId: labor.userId,
@@ -20880,6 +21047,9 @@ export function DashboardPage() {
         setNoteError("");
         return;
       }
+    }
+    if (editingInvoiceId && !(await flushInvoiceHourlyCustomerTextAutosaves())) {
+      return;
     }
     const normalizedServiceDate =
       invoiceDraft.serviceDate || getProjectServiceDateSuggestion(selectedProjectFile, invoiceDraft.plannedExecutionMonth);
@@ -21008,7 +21178,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: editingInvoiceId,
         actorId: activeUserId,
-        expectedUpdatedAt: editingInvoice?.updatedAt || "",
+        expectedUpdatedAt: invoiceCustomerTextExpectedUpdatedAtRef.current || editingInvoice?.updatedAt || "",
         ...draftToSave,
         saveAsDraft,
         billedStampEntryIds,
@@ -21065,6 +21235,9 @@ export function DashboardPage() {
     setSelectedProjectDocumentType("Rechnungen");
     setProjectFileTab("documents");
     setIsInvoiceModalOpen(false);
+    invoiceCustomerTextAutosavePendingRef.current.clear();
+    setInvoiceCustomerTextAutosaveState("idle");
+    setInvoiceCustomerTextAutosaveMessage("");
     setEditingInvoiceId("");
     setInvoiceStampEntryIds([]);
     setInvoiceBillableStampEntryIds([]);
@@ -57471,7 +57644,7 @@ await addProjectLogbookEntry(
               <h2>{editingInvoiceId ? "Rechnung bearbeiten" : "Neue Rechnung erstellen"}</h2>
               <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
             </div>
-            <button type="button" className={styles.iconButton} onClick={() => setIsInvoiceModalOpen(false)}>X</button>
+            <button type="button" className={styles.iconButton} onClick={() => void requestCloseInvoiceModal()}>X</button>
           </div>
           <div className={`${styles.standardModalBody} ${styles.offerModalBody}`}>
             {invoiceError ? <p className={styles.formError}>{invoiceError}</p> : null}
@@ -57988,15 +58161,23 @@ await addProjectLogbookEntry(
                                               </div>
                                               {selectedDayEntries.length > 0 ? (
                                                 <label className={styles.invoiceBillingCustomerText}>
-                                                  <span>Kundentext auf der Rechnung</span>
+                                                  <span>
+                                                    Kundentext auf der Rechnung
+                                                    {invoiceCustomerTextAutosaveState !== "idle" ? (
+                                                      <small data-state={invoiceCustomerTextAutosaveState}>
+                                                        {invoiceCustomerTextAutosaveMessage}
+                                                      </small>
+                                                    ) : null}
+                                                  </span>
                                                   <textarea
                                                     rows={2}
                                                     maxLength={4_000}
                                                     value={billingDay?.customerText || ""}
                                                     placeholder="Bitte eintragen, was der Kunde für diesen Tag auf der Rechnung liest."
                                                     onChange={(event) =>
-                                                      updateInvoiceLineHourlyCustomerText(index, date, event.target.value)
+                                                      updateInvoiceLineHourlyCustomerText(index, line.id, date, event.target.value)
                                                     }
+                                                    onBlur={() => void flushInvoiceHourlyCustomerTextAutosaves()}
                                                   />
                                                 </label>
                                               ) : null}
@@ -58077,7 +58258,7 @@ await addProjectLogbookEntry(
           </div>
           <div className={styles.standardModalFooter}>
             <div className={styles.modalActions}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setIsInvoiceModalOpen(false)}>Abbrechen</button>
+              <button type="button" className={styles.secondaryButton} onClick={() => void requestCloseInvoiceModal()}>Abbrechen</button>
               <button
                 type="button"
                 className={styles.secondaryButton}

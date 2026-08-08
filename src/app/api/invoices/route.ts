@@ -60,6 +60,10 @@ import {
 } from "@/lib/invoices/invoice-lifecycle-service";
 import { runInvoiceCrudTransaction } from "@/lib/invoices/invoice-crud-transaction";
 import {
+  HourlyCustomerTextServiceError,
+  saveHourlyCustomerText,
+} from "@/lib/invoices/hourly-customer-text-service";
+import {
   externalizePdfPayload,
   resolveStorageBackedBytes,
 } from "@/lib/storage/document-file";
@@ -2520,7 +2524,15 @@ export async function PUT(req: Request) {
 export async function PATCH(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
-  const body = (await req.json()) as InvoiceInput & { id?: string; action?: string; actorName?: string; reason?: string };
+  const body = (await req.json()) as InvoiceInput & {
+    id?: string;
+    action?: string;
+    actorName?: string;
+    reason?: string;
+    lineId?: string;
+    date?: string;
+    customerText?: string;
+  };
   const actorResult = await getSessionBoundActor(req, users, body.actorId);
   if (!actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
@@ -2536,6 +2548,31 @@ export async function PATCH(req: Request) {
 
   if (!id) {
     return NextResponse.json({ error: "Rechnung fehlt." }, { status: 400 });
+  }
+
+  if (cleanString(body.action) === "save-hourly-customer-text") {
+    const lineId = cleanString(body.lineId);
+    const date = cleanString(body.date);
+    if (!lineId || !date || typeof body.customerText !== "string") {
+      return NextResponse.json({ error: "Kundentext oder Tagesleistung fehlt." }, { status: 400 });
+    }
+    try {
+      const result = await saveHourlyCustomerText({
+        prisma,
+        organizationId: organization.id,
+        invoiceId: id,
+        invoiceLineId: lineId,
+        date,
+        customerText: body.customerText,
+        expectedUpdatedAt: cleanString(body.expectedUpdatedAt),
+      });
+      return NextResponse.json(result);
+    } catch (error) {
+      if (error instanceof HourlyCustomerTextServiceError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
   }
 
   if (cleanString(body.action) === "cancel") {
@@ -2856,6 +2893,7 @@ export async function PATCH(req: Request) {
   if (!saveAsDraft && lines.length === 0) {
     return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
   }
+
   const missingHourlyCustomerTexts = getMissingHourlyCustomerTextLabels(lines);
   if (!saveAsDraft && missingHourlyCustomerTexts.length > 0) {
     return NextResponse.json(
