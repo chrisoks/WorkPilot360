@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import { getDashboardDailyImpulse } from "@/lib/dashboard-daily-impulses";
+import { IsolatedFormTextControl } from "./isolated-form-text-control";
 import { getLoginErrorMessage } from "@/lib/auth/login-error";
 import { hasEmployeeWorkspaceAccess } from "@/lib/navigation/employee-workspaces";
 import {
@@ -57668,19 +57669,31 @@ await addProjectLogbookEntry(
                     </label>
                     <label>
                       Kunde
-                      <input value={invoiceDraft.customerName} onChange={(event) => setInvoiceDraft((current) => ({ ...current, customerName: event.target.value }))} />
+                      <IsolatedFormTextControl
+                        value={invoiceDraft.customerName}
+                        onChange={(value) => setInvoiceDraft((current) => ({ ...current, customerName: value }))}
+                      />
                     </label>
                     <label>
                       Bearbeiter/in
-                      <input value={invoiceDraft.internalContactName} onChange={(event) => setInvoiceDraft((current) => ({ ...current, internalContactName: event.target.value }))} />
+                      <IsolatedFormTextControl
+                        value={invoiceDraft.internalContactName}
+                        onChange={(value) => setInvoiceDraft((current) => ({ ...current, internalContactName: value }))}
+                      />
                     </label>
                     <label>
                     Straße
-                      <input value={invoiceDraft.customerStreet} onChange={(event) => setInvoiceDraft((current) => ({ ...current, customerStreet: event.target.value }))} />
+                      <IsolatedFormTextControl
+                        value={invoiceDraft.customerStreet}
+                        onChange={(value) => setInvoiceDraft((current) => ({ ...current, customerStreet: value }))}
+                      />
                     </label>
                     <label>
                       PLZ / Ort
-                      <input value={invoiceDraft.customerCity} onChange={(event) => setInvoiceDraft((current) => ({ ...current, customerCity: event.target.value }))} />
+                      <IsolatedFormTextControl
+                        value={invoiceDraft.customerCity}
+                        onChange={(value) => setInvoiceDraft((current) => ({ ...current, customerCity: value }))}
+                      />
                     </label>
                     <label>
                       MwSt. %
@@ -57728,11 +57741,21 @@ await addProjectLogbookEntry(
                     </label>
                     <label className={styles.fullWidth}>
                       Einleitung
-                      <textarea rows={2} value={invoiceDraft.introText} onChange={(event) => setInvoiceDraft((current) => ({ ...current, introText: event.target.value }))} />
+                      <IsolatedFormTextControl
+                        as="textarea"
+                        rows={2}
+                        value={invoiceDraft.introText}
+                        onChange={(value) => setInvoiceDraft((current) => ({ ...current, introText: value }))}
+                      />
                     </label>
                     <label className={styles.fullWidth}>
                       Schlusstext
-                      <textarea rows={2} value={invoiceDraft.closingText} onChange={(event) => setInvoiceDraft((current) => ({ ...current, closingText: event.target.value }))} />
+                      <IsolatedFormTextControl
+                        as="textarea"
+                        rows={2}
+                        value={invoiceDraft.closingText}
+                        onChange={(value) => setInvoiceDraft((current) => ({ ...current, closingText: value }))}
+                      />
                     </label>
                   </div>
                 </section>
@@ -57875,7 +57898,7 @@ await addProjectLogbookEntry(
                               </div>
                               {!line.catalogItemId || openInvoiceLinePickerId === line.id ? (
                               <div className={styles.offerLinePicker}>
-                                <input
+                                <IsolatedFormTextControl
                                   value={
                                     openInvoiceLinePickerId === line.id
                                       ? invoiceLineSearchTerms[line.id] ?? ""
@@ -57887,11 +57910,11 @@ await addProjectLogbookEntry(
                                   }
                                   onFocus={() => setOpenInvoiceLinePickerId(line.id)}
                                   onBlur={() => window.setTimeout(() => setOpenInvoiceLinePickerId(""), 120)}
-                                  onChange={(event) => {
+                                  onChange={(value) => {
                                     setOpenInvoiceLinePickerId(line.id);
                                     setInvoiceLineSearchTerms((current) => ({
                                       ...current,
-                                      [line.id]: event.target.value,
+                                      [line.id]: value,
                                     }));
                                   }}
                                   placeholder="Artikel, Leistung oder Paket suchen..."
@@ -57935,8 +57958,16 @@ await addProjectLogbookEntry(
                                   {"Leistung \u00e4ndern"}
                                 </button>
                               )}
-                              <input value={line.title} onChange={(event) => updateInvoiceLine(index, { title: event.target.value })} />
-                              <textarea rows={2} value={line.description} onChange={(event) => updateInvoiceLine(index, { description: event.target.value })} />
+                              <IsolatedFormTextControl
+                                value={line.title}
+                                onChange={(value) => updateInvoiceLine(index, { title: value })}
+                              />
+                              <IsolatedFormTextControl
+                                as="textarea"
+                                rows={2}
+                                value={line.description}
+                                onChange={(value) => updateInvoiceLine(index, { description: value })}
+                              />
                             </td>
                             <td><input type="number" min="0" step="0.25" value={line.quantity} disabled={canPlanOfferLineLabor(line)} onChange={(event) => updateInvoiceLine(index, { quantity: Number(event.target.value) })} /></td>
                             <td>
@@ -58169,13 +58200,14 @@ await addProjectLogbookEntry(
                                                       </small>
                                                     ) : null}
                                                   </span>
-                                                  <textarea
+                                                  <IsolatedFormTextControl
+                                                    as="textarea"
                                                     rows={2}
                                                     maxLength={4_000}
                                                     value={billingDay?.customerText || ""}
                                                     placeholder="Bitte eintragen, was der Kunde für diesen Tag auf der Rechnung liest."
-                                                    onChange={(event) =>
-                                                      updateInvoiceLineHourlyCustomerText(index, line.id, date, event.target.value)
+                                                    onChange={(value) =>
+                                                      updateInvoiceLineHourlyCustomerText(index, line.id, date, value)
                                                     }
                                                     onBlur={() => void flushInvoiceHourlyCustomerTextAutosaves()}
                                                   />
@@ -58467,53 +58499,55 @@ await addProjectLogbookEntry(
                 </label>
                 <label>
                   Kunde
-                  <input
+                  <IsolatedFormTextControl
                     value={offerDraft.customerName}
-                    onChange={(event) => setOfferDraft((current) => ({ ...current, customerName: event.target.value }))}
+                    onChange={(value) => setOfferDraft((current) => ({ ...current, customerName: value }))}
                   />
                 </label>
                 <label>
                   Ansprechpartner/in
-                  <input
+                  <IsolatedFormTextControl
                     value={offerDraft.contactName}
-                    onChange={(event) => setOfferDraft((current) => ({ ...current, contactName: event.target.value }))}
+                    onChange={(value) => setOfferDraft((current) => ({ ...current, contactName: value }))}
                   />
                 </label>
                 <label>
                   Straße
-                  <input
+                  <IsolatedFormTextControl
                     value={offerDraft.customerStreet}
-                    onChange={(event) => setOfferDraft((current) => ({ ...current, customerStreet: event.target.value }))}
+                    onChange={(value) => setOfferDraft((current) => ({ ...current, customerStreet: value }))}
                   />
                 </label>
                 <label>
                   PLZ / Ort
-                  <input
+                  <IsolatedFormTextControl
                     value={offerDraft.customerCity}
-                    onChange={(event) => setOfferDraft((current) => ({ ...current, customerCity: event.target.value }))}
+                    onChange={(value) => setOfferDraft((current) => ({ ...current, customerCity: value }))}
                   />
                 </label>
                 <label>
                   Bearbeiter/in
-                  <input
+                  <IsolatedFormTextControl
                     value={offerDraft.internalContactName}
-                    onChange={(event) =>
-                      setOfferDraft((current) => ({ ...current, internalContactName: event.target.value }))
+                    onChange={(value) =>
+                      setOfferDraft((current) => ({ ...current, internalContactName: value }))
                     }
                   />
                 </label>
                 <label>
                   Telefon
-                  <input
+                  <IsolatedFormTextControl
+                    type="tel"
                     value={offerDraft.internalPhone}
-                    onChange={(event) => setOfferDraft((current) => ({ ...current, internalPhone: event.target.value }))}
+                    onChange={(value) => setOfferDraft((current) => ({ ...current, internalPhone: value }))}
                   />
                 </label>
                 <label>
                   E-Mail
-                  <input
+                  <IsolatedFormTextControl
+                    type="email"
                     value={offerDraft.internalEmail}
-                    onChange={(event) => setOfferDraft((current) => ({ ...current, internalEmail: event.target.value }))}
+                    onChange={(value) => setOfferDraft((current) => ({ ...current, internalEmail: value }))}
                   />
                 </label>
                 <label>
@@ -58695,16 +58729,18 @@ await addProjectLogbookEntry(
                 ) : null}
                 <label className={styles.catalogWideField}>
                   Einleitung
-                  <textarea
+                  <IsolatedFormTextControl
+                    as="textarea"
                     value={offerDraft.introText}
-                    onChange={(event) => setOfferDraft((current) => ({ ...current, introText: event.target.value }))}
+                    onChange={(value) => setOfferDraft((current) => ({ ...current, introText: value }))}
                   />
                 </label>
                 <label>
                   Schlusstext
-                  <textarea
+                  <IsolatedFormTextControl
+                    as="textarea"
                     value={offerDraft.closingText}
-                    onChange={(event) => setOfferDraft((current) => ({ ...current, closingText: event.target.value }))}
+                    onChange={(value) => setOfferDraft((current) => ({ ...current, closingText: value }))}
                   />
                 </label>
               </div>
@@ -58756,7 +58792,7 @@ await addProjectLogbookEntry(
                             </button>
                           </div>
                           <div className={styles.offerLinePicker}>
-                            <input
+                            <IsolatedFormTextControl
                               value={
                                 openOfferLinePickerId === line.id
                                   ? offerLineSearchTerms[line.id] ?? ""
@@ -58768,11 +58804,11 @@ await addProjectLogbookEntry(
                               }
                               onFocus={() => setOpenOfferLinePickerId(line.id)}
                               onBlur={() => window.setTimeout(() => setOpenOfferLinePickerId(""), 120)}
-                              onChange={(event) => {
+                              onChange={(value) => {
                                 setOpenOfferLinePickerId(line.id);
                                 setOfferLineSearchTerms((current) => ({
                                   ...current,
-                                  [line.id]: event.target.value,
+                                  [line.id]: value,
                                 }));
                               }}
                               placeholder="Artikel, Leistung oder Paket suchen..."
@@ -58804,14 +58840,15 @@ await addProjectLogbookEntry(
                               </div>
                             ) : null}
                           </div>
-                          <input
+                          <IsolatedFormTextControl
                             value={line.title}
-                            onChange={(event) => updateOfferLine(index, { title: event.target.value })}
+                            onChange={(value) => updateOfferLine(index, { title: value })}
                             placeholder="Bezeichnung"
                           />
-                          <textarea
+                          <IsolatedFormTextControl
+                            as="textarea"
                             value={line.description}
-                            onChange={(event) => updateOfferLine(index, { description: event.target.value })}
+                            onChange={(value) => updateOfferLine(index, { description: value })}
                             placeholder="Beschreibung"
                           />
                           {canPlanOfferLineLabor(line) ? (
@@ -62691,19 +62728,19 @@ await addProjectLogbookEntry(
                       </label>
                       <label>
                         Anzeigename *
-                        <input
+                        <IsolatedFormTextControl
                           value={userName}
                           disabled={!mayManageUsers}
-                          onChange={(event) => setUserName(event.target.value)}
+                          onChange={setUserName}
                           placeholder="Vorname Nachname"
                         />
                       </label>
                       <label>
                         Personalnummer
-                        <input
+                        <IsolatedFormTextControl
                           value={employeePersonalNumber}
                           disabled={activeUser?.role !== "GESCHAEFTSFUEHRER"}
-                          onChange={(event) => setEmployeePersonalNumber(event.target.value)}
+                          onChange={setEmployeePersonalNumber}
                           placeholder="z. B. P-1001"
                         />
                       </label>
@@ -62736,55 +62773,57 @@ await addProjectLogbookEntry(
                       </label>
                       <label className={styles.fullWidth}>
                         E-Mail-Adresse *
-                        <input
+                        <IsolatedFormTextControl
                           type="email"
                           value={userEmail}
                           disabled={!mayManageUsers}
-                          onChange={(event) => setUserEmail(event.target.value)}
+                          onChange={setUserEmail}
                         />
                       </label>
                       <h3 className={`${styles.employeeFormSectionTitle} ${styles.fullWidth}`}>Kontakt &amp; Adresse</h3>
                       <label>
                         Telefonnummer
-                        <input
+                        <IsolatedFormTextControl
+                          type="tel"
                           value={employeePhone}
                           disabled={!mayManageUsers}
-                          onChange={(event) => setEmployeePhone(event.target.value)}
+                          onChange={setEmployeePhone}
                           placeholder="+49..."
                         />
                       </label>
                       <label>
                         Mobilfunknummer
-                        <input
+                        <IsolatedFormTextControl
+                          type="tel"
                           value={employeeMobile}
                           disabled={!mayManageUsers}
-                          onChange={(event) => setEmployeeMobile(event.target.value)}
+                          onChange={setEmployeeMobile}
                           placeholder="+49..."
                         />
                       </label>
                       <label className={styles.fullWidth}>
                         Straße & Hausnummer
-                        <input
+                        <IsolatedFormTextControl
                           value={employeeStreet}
                           disabled={!mayManageUsers}
-                          onChange={(event) => setEmployeeStreet(event.target.value)}
+                          onChange={setEmployeeStreet}
                           placeholder="Straße und Hausnummer"
                         />
                       </label>
                       <label>
                         Postleitzahl
-                        <input
+                        <IsolatedFormTextControl
                           value={employeePostalCode}
                           disabled={!mayManageUsers}
-                          onChange={(event) => setEmployeePostalCode(event.target.value)}
+                          onChange={setEmployeePostalCode}
                         />
                       </label>
                       <label>
                         Ort
-                        <input
+                        <IsolatedFormTextControl
                           value={employeeCity}
                           disabled={!mayManageUsers}
-                          onChange={(event) => setEmployeeCity(event.target.value)}
+                          onChange={setEmployeeCity}
                         />
                       </label>
                       <h3 className={`${styles.employeeFormSectionTitle} ${styles.fullWidth}`}>E-Mail-Signatur</h3>
@@ -62809,12 +62848,13 @@ await addProjectLogbookEntry(
                           </button>
                           <span>HTML aus Outlook/HERO kann hier eingefügt werden.</span>
                         </div>
-                        <textarea
+                        <IsolatedFormTextControl
+                          as="textarea"
                           rows={10}
                           value={employeeSignature}
                           disabled={employeeSignatureHidden}
                           placeholder="<p>Mit freundlichen Gr&uuml;&szlig;en</p>"
-                          onChange={(event) => setEmployeeSignature(event.target.value)}
+                          onChange={setEmployeeSignature}
                         />
                         {!employeeSignatureHidden && employeeSignature.trim() ? (
                           <div className={styles.signaturePreview}>
@@ -67507,13 +67547,12 @@ await addProjectLogbookEntry(
               ) : null}
               <label className={styles.standardFormWide}>
                 {isInvoiceMail ? "Empfänger Rechnung (An)" : "Empfänger (An)"}
-                <input
-                  type="text"
+                <IsolatedFormTextControl
                   value={documentMailDraft.to}
                   placeholder="kunde@example.de, buchhaltung@example.de"
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setDocumentMailDraft((current) =>
-                      current ? { ...current, to: event.target.value } : current
+                      current ? { ...current, to: value } : current
                     )
                   }
                 />
@@ -67521,13 +67560,12 @@ await addProjectLogbookEntry(
               {hasSeparateActivityReportRecipient ? (
                 <label className={styles.standardFormWide}>
                   Empfänger Tätigkeitsbericht
-                  <input
-                    type="text"
+                  <IsolatedFormTextControl
                     value={documentMailDraft.activityReportTo || ""}
                     placeholder="bericht@example.de, ansprechpartner@example.de"
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setDocumentMailDraft((current) =>
-                        current ? { ...current, activityReportTo: event.target.value } : current
+                        current ? { ...current, activityReportTo: value } : current
                       )
                     }
                   />
@@ -67535,12 +67573,12 @@ await addProjectLogbookEntry(
               ) : null}
               <label>
                 CC
-                <input
+                <IsolatedFormTextControl
                   value={documentMailDraft.cc}
                   placeholder="Optional"
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setDocumentMailDraft((current) =>
-                      current ? { ...current, cc: event.target.value } : current
+                      current ? { ...current, cc: value } : current
                     )
                   }
                 />
@@ -67573,18 +67611,19 @@ await addProjectLogbookEntry(
                   </span>
                 ) : null}
                 Betreff
-                <input
+                <IsolatedFormTextControl
+                  key={`document-mail-subject-${activeDocumentMailTab}`}
                   value={
                     activeDocumentMailTab === "activityReport"
                       ? documentMailDraft.activityReportSubject || ""
                       : documentMailDraft.subject
                   }
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setDocumentMailDraft((current) =>
                       current
                         ? activeDocumentMailTab === "activityReport"
-                          ? { ...current, activityReportSubject: event.target.value }
-                          : { ...current, subject: event.target.value }
+                          ? { ...current, activityReportSubject: value }
+                          : { ...current, subject: value }
                         : current
                     )
                   }
@@ -67592,19 +67631,21 @@ await addProjectLogbookEntry(
               </label>
               <label className={styles.standardFormWide}>
                 Nachricht
-                <textarea
+                <IsolatedFormTextControl
+                  key={`document-mail-body-${activeDocumentMailTab}`}
+                  as="textarea"
                   rows={7}
                   value={
                     activeDocumentMailTab === "activityReport"
                       ? documentMailDraft.activityReportBody || ""
                       : documentMailDraft.body
                   }
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setDocumentMailDraft((current) =>
                       current
                         ? activeDocumentMailTab === "activityReport"
-                          ? { ...current, activityReportBody: event.target.value }
-                          : { ...current, body: event.target.value }
+                          ? { ...current, activityReportBody: value }
+                          : { ...current, body: value }
                         : current
                     )
                   }
