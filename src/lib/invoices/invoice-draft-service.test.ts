@@ -21,7 +21,7 @@ function db(overrides: { duplicateOffer?: boolean; unbilled?: boolean } = {}) {
       findMany: vi.fn(async () => overrides.duplicateOffer ? [{ id: "invoice-old", invoiceNumber: "RE-10100", status: "Entwurf", plannedExecutionMonth: "2026-07", serviceDate: "2026-07-20", sourceOfferId: "offer-1" }] : []),
     },
     projectLogbookEntry: { findMany: vi.fn(async () => []) },
-    projectTimeEntry: { findMany: vi.fn(async () => overrides.unbilled ? [{ durationMs: 7_200_000n, pauseMs: 0n }] : []) },
+    projectTimeEntry: { findMany: vi.fn(async () => overrides.unbilled ? [{ durationMs: 7_200_000n, pauseMs: 1_800_000n }] : []) },
   } as any;
 }
 
@@ -40,6 +40,7 @@ describe("JARVIS invoice draft service", () => {
       expect.objectContaining({ key: "duplicate", status: "ok" }),
       expect.objectContaining({ key: "time", status: "warning" }),
     ]));
+    expect(result.preflight.find((item) => item.key === "time")?.detail).toContain("2.00 Std.");
   });
 
   it("blocks duplicate offer billing and cross-organization records", async () => {

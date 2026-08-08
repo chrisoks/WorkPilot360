@@ -22,6 +22,9 @@ const employee = {
   email: "emil@example.test",
   role: Role.MITARBEITER,
   isActive: true,
+  planningBreakWindows: {
+    friday: { start: "12:00", end: "12:30" },
+  },
 };
 
 function row(overrides: Record<string, unknown> = {}) {
@@ -151,6 +154,45 @@ function payload(overrides: Record<string, unknown> = {}) {
 }
 
 describe("shared project time-entry service", () => {
+  it("requires explicit confirmation when a manual entry omits the configured break", async () => {
+    const { db } = database({
+      inserted: row({
+        date: "2026-07-31",
+        startTime: "08:00",
+        endTime: "16:00",
+        durationMs: BigInt(8 * 3_600_000),
+        pauseMs: BigInt(0),
+      }),
+    });
+    const manualDay = payload({
+      date: "2026-07-31",
+      startTime: "08:00",
+      endTime: "16:00",
+      durationMs: 8 * 3_600_000,
+      pauseMs: 0,
+    });
+
+    await expect(saveProjectTimeEntry({
+      db: db as never,
+      organizationId: "org-1",
+      actor: manager,
+      users: [manager, employee],
+      payload: manualDay,
+    })).rejects.toMatchObject({
+      code: "break_confirmation_required",
+      message: expect.stringContaining("30 Minuten"),
+    });
+
+    const saved = await saveProjectTimeEntry({
+      db: db as never,
+      organizationId: "org-1",
+      actor: manager,
+      users: [manager, employee],
+      payload: { ...manualDay, confirmScheduledBreakShortfall: true },
+    });
+    expect(saved.durationMs).toBe(8 * 3_600_000);
+  });
+
   it("derives the duration, reloads canonical project and offer data and writes a logbook entry", async () => {
     const { db, queryRaw } = database();
     const saved = await saveProjectTimeEntry({

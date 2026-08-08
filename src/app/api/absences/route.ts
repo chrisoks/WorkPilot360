@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Role, TaskPriority, TaskStatus } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getNetWorkDurationMs } from "@/lib/time/work-duration";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageAbsences } from "@/lib/permissions";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
@@ -246,9 +247,7 @@ async function getCurrentTimeAccountBalanceHours(input: {
     if (paidDayPart) paidAbsenceCreditHours += getAbsenceHours(input.user, current, paidDayPart);
   }
   const productiveHours = entryRows.reduce((sum, entry) => {
-    const durationMs = Number(entry.durationMs) || 0;
-    const pauseMs = Number(entry.pauseMs) || 0;
-    return sum + Math.max(0, durationMs - pauseMs) / 3_600_000;
+    return sum + getNetWorkDurationMs(entry.durationMs) / 3_600_000;
   }, 0);
   return productiveHours - targetHours + paidAbsenceCreditHours;
 }

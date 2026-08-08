@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
+import { getNetWorkDurationMs } from "@/lib/time/work-duration";
 import { getBillingAddressSnapshot } from "@/lib/contacts/invoice-routing";
 import {
   addInvoiceDays,
@@ -305,7 +306,10 @@ export async function evaluateInvoiceDraft(input: { organizationId: string; draf
       where: { organizationId: input.organizationId, projectId, mode: "project", deletedAt: null, invoiceId: null, date: { startsWith: plannedExecutionMonth } },
       select: { durationMs: true, pauseMs: true },
     });
-    const unbilledHours = unbilledTimes.reduce((sum, entry) => sum + Math.max(Number(entry.durationMs - entry.pauseMs), 0) / 3_600_000, 0);
+    const unbilledHours = unbilledTimes.reduce(
+      (sum, entry) => sum + getNetWorkDurationMs(entry.durationMs) / 3_600_000,
+      0,
+    );
     preflight.push({ key: "time", label: "Offene Arbeitszeiten", status: unbilledHours > 0.01 ? "warning" : "ok", detail: unbilledHours > 0.01 ? `${unbilledHours.toFixed(2)} Std. sind noch nicht mit einer Rechnung verknüpft.` : "Keine offenen Projektzeiten im Leistungsmonat." });
     if (!(project.projectKind || "").toLocaleLowerCase("de-DE").startsWith("dauer") && !sourceOfferId) {
       warnings.push("Für das Einmalprojekt ist noch kein Bezugsangebot ausgewählt.");

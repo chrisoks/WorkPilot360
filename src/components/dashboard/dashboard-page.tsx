@@ -34,6 +34,10 @@ import {
 } from "@/lib/contacts/contact-form";
 import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
 import {
+  getNetWorkDurationMs,
+  getScheduledBreakOverlapMinutes,
+} from "@/lib/time/work-duration";
+import {
   getHourlyBillingDayHours,
   getMissingHourlyBillingCustomerTextDates,
   normalizeHourlyBillingDays,
@@ -15748,6 +15752,7 @@ export function DashboardPage() {
   const [stampEditStartTime, setStampEditStartTime] = useState("");
   const [stampEditEndTime, setStampEditEndTime] = useState("");
   const [stampEditPause, setStampEditPause] = useState("");
+  const [manualProjectTimePauseTouched, setManualProjectTimePauseTouched] = useState(false);
   const [stampEditComment, setStampEditComment] = useState("");
   const [stampEditReason, setStampEditReason] = useState("");
   const [stampEditError, setStampEditError] = useState("");
@@ -31674,7 +31679,7 @@ await addProjectLogbookEntry(
     planningBillingGroupId: string;
     billingCatalogItemId: string;
     confirmImplementationStatus: boolean;
-  }) {
+  }, confirmScheduledBreakShortfall = false) {
     const requestId = stampChangeRequestIdRef.current || crypto.randomUUID();
     stampChangeRequestIdRef.current = requestId;
     const res = await fetch("/api/stamp-session", {
@@ -31688,6 +31693,7 @@ await addProjectLogbookEntry(
         completionStatus: input.completionStatus,
         comment: input.previousComment,
         interruptionReason: input.interruptionReason,
+        confirmScheduledBreakShortfall,
         finalInspectionMode: shouldShowFinalInspectionChecklist
           ? finalInspectionByColleague ? "colleague" : "self"
           : "",
@@ -31708,10 +31714,18 @@ await addProjectLogbookEntry(
     });
     const data = await res.json().catch(() => null) as null | {
       error?: string;
+      code?: string;
       stopped?: StampTimeEntry;
       started?: ActiveStampSessionResponse;
     };
     if (!res.ok || !data?.stopped || !data.started) {
+      if (
+        data?.code === "break_confirmation_required" &&
+        !confirmScheduledBreakShortfall &&
+        window.confirm(`${data.error}\n\nDie bisher erfasste Pause bleibt unverändert. Trotzdem fortfahren?`)
+      ) {
+        return changeStampSession(input, true);
+      }
       const message = data?.error ?? "Stempelung konnte nicht sicher gewechselt werden.";
       setStampError(message);
       throw new Error(message);
@@ -31728,7 +31742,10 @@ await addProjectLogbookEntry(
     return data;
   }
 
-  async function saveStampTimeEntry(entry: StampTimeEntry) {
+  async function saveStampTimeEntry(
+    entry: StampTimeEntry,
+    confirmScheduledBreakShortfall = false,
+  ) {
     const projectId =
       entry.mode === "project"
         ? String(entry.projectId ?? "").trim()
@@ -31744,11 +31761,19 @@ await addProjectLogbookEntry(
         projectId,
         actorUserId: activeUserId,
         actorName: activeUser?.name ?? "",
+        confirmScheduledBreakShortfall,
       }),
     });
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
+      if (
+        data?.code === "break_confirmation_required" &&
+        !confirmScheduledBreakShortfall &&
+        window.confirm(`${data.error}\n\nDie hinterlegte Pause wird nicht automatisch gekürzt. Trotzdem speichern?`)
+      ) {
+        return saveStampTimeEntry(entry, true);
+      }
       setStampError(data?.error ?? "Projektzeit konnte nicht gespeichert werden.");
       throw new Error(data?.error ?? "Projektzeit konnte nicht gespeichert werden.");
     }
@@ -31953,7 +31978,17 @@ await addProjectLogbookEntry(
   function openManualProjectTimeModal() {
     if (!selectedProjectFile) return;
     const now = new Date();
-    setManualProjectTimeUserId(activeUser?.id || users.find((user) => user.isActive)?.id || "");
+    const selectedUserId = activeUser?.id || users.find((user) => user.isActive)?.id || "";
+    const selectedUser = users.find((user) => user.id === selectedUserId);
+    const date = formatDateKey(now);
+    const startTime = "08:00";
+    const endTime = "09:00";
+    const scheduledBreakMinutes = getScheduledBreakOverlapMinutes({
+      startTime,
+      endTime,
+      breakWindow: getUserBreakWindowForDate(selectedUser, date),
+    });
+    setManualProjectTimeUserId(selectedUserId);
     const requiresBillingContext = isHourlyRecurringProject(selectedProjectFile);
     const requiresOfferContext = !isRecurringProjectKindValue(getProjectKind(selectedProjectFile));
     const assignableOffers = requiresOfferContext
@@ -31973,10 +32008,11 @@ await addProjectLogbookEntry(
     );
     if (requiresBillingContext && catalogItems.length === 0) void loadCatalogItems();
     if (requiresOfferContext) void loadOffers(selectedProjectFile.id);
-    setStampEditDate(formatDateKey(now));
-    setStampEditStartTime("08:00");
-    setStampEditEndTime("09:00");
-    setStampEditPause("0:00:00");
+    setStampEditDate(date);
+    setStampEditStartTime(startTime);
+    setStampEditEndTime(endTime);
+    setStampEditPause(formatStampDuration(scheduledBreakMinutes * 60_000));
+    setManualProjectTimePauseTouched(false);
     setStampEditComment("");
     setStampEditError("");
     setIsManualProjectTimeModalOpen(true);
@@ -31990,6 +32026,38 @@ await addProjectLogbookEntry(
     setStampEditOfferId("");
     setStampEditReason("");
     setStampEditError("");
+    setManualProjectTimePauseTouched(false);
+  }
+
+  function updateManualProjectTimePauseSuggestion(input: {
+    userId?: string;
+    date?: string;
+    startTime?: string;
+    endTime?: string;
+    force?: boolean;
+  } = {}) {
+    if (manualProjectTimePauseTouched && !input.force) return;
+    const userId = input.userId ?? manualProjectTimeUserId;
+    const date = input.date ?? stampEditDate;
+    const startTime = input.startTime ?? stampEditStartTime;
+    const endTime = input.endTime ?? stampEditEndTime;
+    const user = users.find((candidate) => candidate.id === userId);
+    const scheduledBreakMinutes = getScheduledBreakOverlapMinutes({
+      startTime,
+      endTime,
+      breakWindow: getUserBreakWindowForDate(user, date),
+    });
+    setStampEditPause(formatStampDuration(scheduledBreakMinutes * 60_000));
+    if (input.force) setManualProjectTimePauseTouched(false);
+  }
+
+  function getManualProjectTimeScheduledBreakMinutes() {
+    const user = users.find((candidate) => candidate.id === manualProjectTimeUserId);
+    return getScheduledBreakOverlapMinutes({
+      startTime: stampEditStartTime,
+      endTime: stampEditEndTime,
+      breakWindow: getUserBreakWindowForDate(user, stampEditDate),
+    });
   }
 
   async function saveManualProjectTimeEntry() {
@@ -32232,15 +32300,29 @@ await addProjectLogbookEntry(
     };
 
     try {
-      const res = await fetch("/api/project-time-entries", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...updatedEntry,
-          actorUserId: activeUserId,
-          editReason: stampEditReason.trim(),
-        }),
-      });
+      const submitUpdate = (confirmScheduledBreakShortfall: boolean) =>
+        fetch("/api/project-time-entries", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...updatedEntry,
+            actorUserId: activeUserId,
+            editReason: stampEditReason.trim(),
+            confirmScheduledBreakShortfall,
+          }),
+        });
+      let res = await submitUpdate(false);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        if (
+          data?.code === "break_confirmation_required" &&
+          window.confirm(`${data.error}\n\nDie hinterlegte Pause wird nicht automatisch gekürzt. Trotzdem speichern?`)
+        ) {
+          res = await submitUpdate(true);
+        } else {
+          throw new Error(data?.error ?? "Zeiteintrag konnte nicht gespeichert werden.");
+        }
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error ?? "Zeiteintrag konnte nicht gespeichert werden.");
@@ -32308,7 +32390,8 @@ await addProjectLogbookEntry(
 
   async function closeCurrentStampSession(
     comment: string,
-    completionStatus: "" | "finished" | "interrupted" = ""
+    completionStatus: "" | "finished" | "interrupted" = "",
+    confirmScheduledBreakShortfall = false,
   ) {
     if (!stampSession) return null;
     const finalComment = combineStampComments(
@@ -32333,11 +32416,19 @@ await addProjectLogbookEntry(
         comment: finalComment,
         interruptionReason: completionStatus === "interrupted" ? comment.trim() : "",
         completionStatus: normalizedCompletionStatus,
+        confirmScheduledBreakShortfall,
       }),
     });
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
+      if (
+        data?.code === "break_confirmation_required" &&
+        !confirmScheduledBreakShortfall &&
+        window.confirm(`${data.error}\n\nDie bisher erfasste Pause bleibt unverändert. Trotzdem beenden?`)
+      ) {
+        return closeCurrentStampSession(comment, completionStatus, true);
+      }
       setStampError(data?.error ?? "Stempelung konnte nicht gespeichert werden.");
       throw new Error(data?.error ?? "Stempelung konnte nicht gespeichert werden.");
     }
@@ -35476,17 +35567,10 @@ await addProjectLogbookEntry(
     breakWindow?: PlanningTimeWindow
   ) => {
     const grossMinutes = getPlanningMinutesBetween(startTime, endTime);
-    if (!breakWindow?.start || !breakWindow.end) return grossMinutes;
-
-    const start = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3, 5));
-    const end = Number(endTime.slice(0, 2)) * 60 + Number(endTime.slice(3, 5));
-    const breakStart =
-      Number(breakWindow.start.slice(0, 2)) * 60 + Number(breakWindow.start.slice(3, 5));
-    const breakEnd =
-      Number(breakWindow.end.slice(0, 2)) * 60 + Number(breakWindow.end.slice(3, 5));
-    const overlap = Math.max(0, Math.min(end, breakEnd) - Math.max(start, breakStart));
-
-    return Math.max(0, grossMinutes - overlap);
+    return Math.max(
+      0,
+      grossMinutes - getScheduledBreakOverlapMinutes({ startTime, endTime, breakWindow }),
+    );
   };
   const planningTimeOptions = planningTimelineSlots.slice(0, -1);
   const openPlanningProjects = heroProjects.filter(
@@ -52307,18 +52391,18 @@ await addProjectLogbookEntry(
           : actualHours <= 0
           ? "offen"
           : actualHours < targetHours - 0.01
-            ? "schneller als Vorgabe"
+            ? "unter Soll-Zeit"
             : Math.abs(actualHours - targetHours) <= 0.01
-              ? "Vorgabe eingehalten"
-              : "Vorgabe nicht erreicht";
+              ? "Soll-Zeit erreicht"
+              : "Soll-Zeit überschritten";
       const statusTone =
         status === "Unterbrochen"
           ? "interrupted"
-          : status === "schneller als Vorgabe"
+          : status === "unter Soll-Zeit"
           ? "fast"
-          : status === "Vorgabe eingehalten"
+          : status === "Soll-Zeit erreicht"
             ? "met"
-            : status === "Vorgabe nicht erreicht"
+            : status === "Soll-Zeit überschritten"
               ? "missed"
               : "open";
 
@@ -56288,8 +56372,8 @@ await addProjectLogbookEntry(
                             <th>Soll-Zeit</th>
                             <th>Ist-Zeit</th>
                             <th>Differenz</th>
-                            <th>Leistungsgrad</th>
-                            <th>Status</th>
+                            <th title="Soll-Nettozeit im Verhältnis zur erfassten Ist-Nettozeit.">Leistungsgrad</th>
+                            <th title="Reiner Nettozeitvergleich; keine Aussage über die fachliche Fertigstellung.">Zeitstatus</th>
                             <th>Pünktlichkeit</th>
                             <th>Rechnung</th>
                             <th>Kommentar</th>
@@ -59699,12 +59783,12 @@ await addProjectLogbookEntry(
       (_, index) => new Date(personalTimeYear, personalTimeMonth, index + 1, 12)
     );
     const monthProductiveMs = monthStampEntries.reduce(
-      (sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs),
+      (sum, entry) => sum + getNetWorkDurationMs(entry.durationMs),
       0
     );
     const yearProductiveMs = personalStampBaseEntries
       .filter((entry) => entry.date.startsWith(String(currentYear)))
-      .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
+      .reduce((sum, entry) => sum + getNetWorkDurationMs(entry.durationMs), 0);
     const getPersonalTargetHoursForDate = (dateKey: string) => {
       if (!currentUser || isWeekendDateKey(dateKey) || getHolidayForDateKey(dateKey)) return 0;
       const capacity = getSafeWeeklyCapacity(currentUser.weeklyCapacity);
@@ -59732,7 +59816,7 @@ await addProjectLogbookEntry(
         .filter((entry) => entry.date === dateKey)
         .sort((first, second) => first.startTime.localeCompare(second.startTime));
       const productiveMs = dayEntries.reduce(
-        (sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs),
+        (sum, entry) => sum + getNetWorkDurationMs(entry.durationMs),
         0
       );
       const pauseMs = dayEntries.reduce((sum, entry) => sum + entry.pauseMs, 0);
@@ -59791,7 +59875,7 @@ await addProjectLogbookEntry(
     const accountEndDateKey = formatDateKey(accountEndDate);
     const cumulativeProductiveMs = personalStampBaseEntries
       .filter((entry) => entry.date >= accountStartDateKey && entry.date <= accountEndDateKey)
-      .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
+      .reduce((sum, entry) => sum + getNetWorkDurationMs(entry.durationMs), 0);
     const cumulativeTargetHours = accountDateKeys.reduce(
       (sum, dateKey) => sum + getPersonalTargetHoursForDate(dateKey),
       0
@@ -59821,11 +59905,11 @@ await addProjectLogbookEntry(
     const monthProjectEntries = monthStampEntries.filter((entry) => entry.mode === "project");
     const monthUnproductiveEntries = monthStampEntries.filter((entry) => entry.mode === "unproductive");
     const monthProjectMs = monthProjectEntries.reduce(
-      (sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs),
+      (sum, entry) => sum + getNetWorkDurationMs(entry.durationMs),
       0
     );
     const monthUnproductiveMs = monthUnproductiveEntries.reduce(
-      (sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs),
+      (sum, entry) => sum + getNetWorkDurationMs(entry.durationMs),
       0
     );
     const productiveShare =
@@ -60294,7 +60378,7 @@ await addProjectLogbookEntry(
                       <td>{entry.endTime || "-"}</td>
                       <td>{entry.entrySource === "manual" ? "Manuell" : "Gestempelt"}</td>
                       <td>{entry.projectLabel || (entry.mode === "unproductive" ? "Unproduktiv" : "-")}</td>
-                      <td>{formatStampDuration(Math.max(0, entry.durationMs - entry.pauseMs))}</td>
+                      <td>{formatStampDuration(getNetWorkDurationMs(entry.durationMs))}</td>
                       <td>{entry.pauseMs > 0 ? formatStampDuration(entry.pauseMs) : "-"}</td>
                       <td>
                         <span
@@ -61917,10 +62001,10 @@ await addProjectLogbookEntry(
       });
     const productiveMs = visibleTimeEntries
       .filter((entry) => entry.mode === "project")
-      .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
+      .reduce((sum, entry) => sum + getNetWorkDurationMs(entry.durationMs), 0);
     const unproductiveMs = visibleTimeEntries
       .filter((entry) => entry.mode === "unproductive")
-      .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
+      .reduce((sum, entry) => sum + getNetWorkDurationMs(entry.durationMs), 0);
     const pauseMs = visibleTimeEntries.reduce((sum, entry) => sum + entry.pauseMs, 0);
     const editedCount = visibleTimeEntries.filter((entry) => (entry.editHistory ?? []).length > 0).length;
     const setTimeTrackingQuickRange = (
@@ -62070,7 +62154,7 @@ await addProjectLogbookEntry(
                     <td>{entry.employee || "-"}</td>
                     <td>{entry.startTime}</td>
                     <td>{entry.endTime}</td>
-                    <td>{formatStampDuration(Math.max(0, entry.durationMs - entry.pauseMs))}</td>
+                    <td>{formatStampDuration(getNetWorkDurationMs(entry.durationMs))}</td>
                     <td>{formatStampDuration(entry.pauseMs)}</td>
                     <td>{entry.entrySource === "manual" ? "Manuell" : "Gestempelt"}</td>
                     <td>{entry.projectLabel || (entry.mode === "unproductive" ? "Unproduktiv" : "-")}</td>
@@ -77804,7 +77888,11 @@ await addProjectLogbookEntry(
                 Mitarbeiter
                 <select
                   value={manualProjectTimeUserId}
-                  onChange={(event) => setManualProjectTimeUserId(event.target.value)}
+                  onChange={(event) => {
+                    const userId = event.target.value;
+                    setManualProjectTimeUserId(userId);
+                    updateManualProjectTimePauseSuggestion({ userId });
+                  }}
                 >
                   <option value="">Bitte auswählen</option>
                   {users
@@ -77822,14 +77910,21 @@ await addProjectLogbookEntry(
                   <input
                     type="date"
                     value={stampEditDate}
-                    onChange={(event) => setStampEditDate(event.target.value)}
+                    onChange={(event) => {
+                      const date = event.target.value;
+                      setStampEditDate(date);
+                      updateManualProjectTimePauseSuggestion({ date });
+                    }}
                   />
                 </label>
                 <label>
                   Pause
                   <input
                     value={stampEditPause}
-                    onChange={(event) => setStampEditPause(event.target.value)}
+                    onChange={(event) => {
+                      setStampEditPause(event.target.value);
+                      setManualProjectTimePauseTouched(true);
+                    }}
                     placeholder="0:00:00"
                   />
                 </label>
@@ -77840,7 +77935,11 @@ await addProjectLogbookEntry(
                   <input
                     type="time"
                     value={stampEditStartTime}
-                    onChange={(event) => setStampEditStartTime(event.target.value)}
+                    onChange={(event) => {
+                      const startTime = event.target.value;
+                      setStampEditStartTime(startTime);
+                      updateManualProjectTimePauseSuggestion({ startTime });
+                    }}
                   />
                 </label>
                 <label>
@@ -77848,10 +77947,28 @@ await addProjectLogbookEntry(
                   <input
                     type="time"
                     value={stampEditEndTime}
-                    onChange={(event) => setStampEditEndTime(event.target.value)}
+                    onChange={(event) => {
+                      const endTime = event.target.value;
+                      setStampEditEndTime(endTime);
+                      updateManualProjectTimePauseSuggestion({ endTime });
+                    }}
                   />
                 </label>
               </div>
+              {getManualProjectTimeScheduledBreakMinutes() > 0 ? (
+                <div className={styles.stampPauseHint}>
+                  <span>
+                    Hinterlegtes Pausenfenster im gewählten Zeitraum: {getManualProjectTimeScheduledBreakMinutes()} Min.
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => updateManualProjectTimePauseSuggestion({ force: true })}
+                  >
+                    Pausenzeit übernehmen
+                  </button>
+                </div>
+              ) : null}
               {manualProjectTimeNeedsOfferContext ? (
                 <div className={styles.stampTradePicker}>
                   <label

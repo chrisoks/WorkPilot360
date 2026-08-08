@@ -24015,6 +24015,26 @@
   gap: 14px;
 }
 
+.stampPauseHint {
+  align-items: center;
+  background: #ecfdf5;
+  border: 1px solid #99d5cf;
+  border-radius: 10px;
+  color: #115e59;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.stampPauseHint .secondaryButton {
+  min-height: 30px;
+  padding: 5px 9px;
+}
+
 .mailBccRouting {
   background: #f4fbfa;
   border: 1px solid #b8ded9;

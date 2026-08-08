@@ -770,6 +770,8 @@ const stampSessionStopContextSchema = z.object({
   willAttachHourlyInvoiceDraft: z.boolean(),
   willCreateInterruptionTask: z.boolean(),
   willTransitionProjectToInterrupted: z.boolean(),
+  scheduledBreakShortfallMinutes: z.number().int().nonnegative(),
+  requiresBreakConfirmation: z.boolean(),
   fingerprint: z.string().length(64),
   warnings: z.array(z.string().max(1000)),
   blockingIssues: z.array(z.string().max(2000)),
@@ -7411,6 +7413,7 @@ export async function confirmJarvisTimeDraft(
               startTime: parsed.payload.startTime,
               endTime: parsed.payload.endTime,
               pauseMs: parsed.payload.pauseMinutes * 60_000,
+              confirmScheduledBreakShortfall: true,
               comment: parsed.payload.comment,
               offerId: parsed.payload.offerId,
               trade: parsed.payload.trade,
@@ -11517,7 +11520,7 @@ export async function confirmJarvisTimeManagementDraft(
       }
       const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, isActive: true } });
       if (!actor || !canManageProjectTimeEntries(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Zeitberechtigung sind nicht mehr aktuell.", 409);
-      const users = await tx.user.findMany({ where: { organizationId: binding.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, isActive: true } });
+      const users = await tx.user.findMany({ where: { organizationId: binding.organizationId, isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, isActive: true, planningBreakWindows: true } });
       const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
       const claimed = await tx.jarvisActionDraft.updateMany({
         where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag },
@@ -11527,7 +11530,10 @@ export async function confirmJarvisTimeManagementDraft(
       const result = await executeProjectTimeEntryManagementInTransaction({
         tx, organizationId: binding.organizationId, actor, users,
         entryId: parsed.payload.entryId, action: parsed.payload.action, reason: parsed.payload.reason,
-        expectedFingerprint: parsed.context.fingerprint, changes: parsed.payload.changes,
+        expectedFingerprint: parsed.context.fingerprint,
+        changes: parsed.payload.changes
+          ? { ...parsed.payload.changes, confirmScheduledBreakShortfall: true }
+          : parsed.payload.changes,
       });
       const executedAt = new Date();
       const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "projectTimeEntry", resultEntityId: result.id };

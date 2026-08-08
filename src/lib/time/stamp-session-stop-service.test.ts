@@ -71,6 +71,7 @@ function project(overrides: Record<string, unknown> = {}) {
 function database(options: {
   active?: ReturnType<typeof activeSession> | null;
   existingEntry?: Record<string, unknown> | null;
+  planningBreakWindows?: Record<string, { start: string; end: string }>;
 } = {}) {
   const active = options.active === undefined ? activeSession() : options.active;
   const existingEntry = options.existingEntry ?? null;
@@ -122,6 +123,12 @@ function database(options: {
     workPilotProject: {
       findFirst: vi.fn(async () => (active?.mode === "project" ? project() : null)),
     },
+    user: {
+      findFirst: vi.fn(async () => active ? ({
+        planningBreakWindows: options.planningBreakWindows ?? {},
+        updatedAt: STARTED,
+      }) : null),
+    },
     projectTimeEntry: {
       findFirst: vi.fn(async () => existingEntry),
       create: vi.fn(async () => createdEntry),
@@ -132,6 +139,50 @@ function database(options: {
 
 describe("stamp-session-stop-service", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("warns when a running stamp omits the configured break", async () => {
+    const { db } = database({
+      planningBreakWindows: {
+        sunday: { start: "11:00", end: "11:30" },
+      },
+    });
+    const evaluation = await evaluateStampSessionStop({
+      db: db as never,
+      organizationId: "org-1",
+      userId: "user-1",
+      stop: { completionStatus: "finished" },
+      now: NOW,
+    });
+
+    expect(evaluation.scheduledBreakShortfallMinutes).toBe(30);
+    expect(evaluation.requiresBreakConfirmation).toBe(true);
+    expect(evaluation.warnings).toContainEqual(expect.stringContaining("30 Minuten"));
+  });
+
+  it("reconstructs the original wall-clock start after a recorded pause", async () => {
+    const resumedAt = new Date("2026-08-02T09:30:00.000Z");
+    const stoppedAt = new Date("2026-08-02T10:30:00.000Z");
+    const { db } = database({
+      active: activeSession({
+        startedAt: resumedAt,
+        accumulatedMs: BigInt(60 * 60_000),
+        pauseMs: BigInt(30 * 60_000),
+        updatedAt: resumedAt,
+      }),
+    });
+    const evaluation = await evaluateStampSessionStop({
+      db: db as never,
+      organizationId: "org-1",
+      userId: "user-1",
+      stop: { completionStatus: "finished" },
+      now: stoppedAt,
+    });
+
+    expect(evaluation.effective.durationMs).toBe(2 * 3_600_000);
+    expect(evaluation.effective.pauseMs).toBe(30 * 60_000);
+    expect(evaluation.effective.startTime).toBe("10:00");
+    expect(evaluation.effective.endTime).toBe("12:30");
+  });
 
   it("keeps the stop fingerprint stable while elapsed display time grows", async () => {
     const { db } = database();

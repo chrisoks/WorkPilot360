@@ -245,6 +245,7 @@ const fake = vi.hoisted(() => {
     project: { id: "project-1", projectNumber: "MKG-209", title: "Marketing", customer: "Musterkunde", status: "Umsetzung", projectKind: "Einmalprojekt", recurringBillingMode: "", branch: "OK solutions", projectType: "Projekt OK solutions", responsibleName: "Jarvis Tester", updatedAt: "2026-07-29T18:00:00.000Z" },
     isHourlyRecurring: false, requiresFinalInspection: false, willAttachHourlyInvoiceDraft: false,
     willCreateInterruptionTask: false, willTransitionProjectToInterrupted: false,
+    scheduledBreakShortfallMinutes: 0, requiresBreakConfirmation: false,
     fingerprint: "8".repeat(64), warnings: [], blockingIssues: [],
   };
   const evaluateStampSessionStop = vi.fn(async () => stopEvaluation);
@@ -3757,7 +3758,10 @@ describe("persistent JARVIS time-entry management drafts", () => {
       action: "update",
       reason: "Uhrzeit falsch erfasst",
       expectedFingerprint: "f".repeat(64),
-      changes: { startTime: "08:15" },
+      changes: {
+        startTime: "08:15",
+        confirmScheduledBreakShortfall: true,
+      },
     }));
   });
 

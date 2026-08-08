@@ -8,6 +8,10 @@ import {
 import { shouldApplyStampInterruptionTransition } from "@/lib/projects/stamp-status-automation";
 import { getEmployeeHourlyCostRateSnapshot } from "@/lib/time/project-time-entry-service";
 import {
+  getScheduledBreakShortfallMinutes,
+  getScheduledBreakWindowForDate,
+} from "@/lib/time/work-duration";
+import {
   StampSessionServiceError,
   toStampSessionSnapshot,
   type StampSessionSnapshot,
@@ -53,6 +57,8 @@ export type StampSessionStopEvaluation = {
   willAttachHourlyInvoiceDraft: boolean;
   willCreateInterruptionTask: boolean;
   willTransitionProjectToInterrupted: boolean;
+  scheduledBreakShortfallMinutes: number;
+  requiresBreakConfirmation: boolean;
   fingerprint: string;
   warnings: string[];
   blockingIssues: string[];
@@ -266,6 +272,16 @@ export async function evaluateStampSessionStop(input: {
           },
         })
       : null;
+  const stampUser = active
+    ? await db.user.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          id: input.userId,
+          isActive: true,
+        },
+        select: { planningBreakWindows: true, updatedAt: true },
+      })
+    : null;
   if (active?.mode === "project" && !project) {
     blockingIssues.push("Das gestempelte Projekt wurde in dieser Organisation nicht gefunden.");
   }
@@ -295,6 +311,9 @@ export async function evaluateStampSessionStop(input: {
           )
         : 0)
     : 0;
+  const effectiveStartedAt = active && durationMs > 0
+    ? new Date(now.getTime() - durationMs - pauseMs)
+    : active?.startedAt ?? now;
   if (session && durationMs <= 0) {
     blockingIssues.push("Die Laufzeit muss größer als 0 sein.");
   }
@@ -352,12 +371,28 @@ export async function evaluateStampSessionStop(input: {
       active?.mode === "project" ? requested.completionStatus || "" : "",
     comment: effectiveComment,
     interruptionReason: requested.interruptionReason || "",
-    date: active ? berlinDateKey(active.startedAt) : "",
-    startTime: active ? berlinTime(active.startedAt) : "",
+    date: active ? berlinDateKey(effectiveStartedAt) : "",
+    startTime: active ? berlinTime(effectiveStartedAt) : "",
     endTime: active ? berlinTime(now) : "",
     durationMs,
     pauseMs,
   } as StampSessionStopEvaluation["effective"];
+  const scheduledBreakShortfallMinutes = stampUser
+    ? getScheduledBreakShortfallMinutes({
+        startTime: effective.startTime,
+        endTime: effective.endTime,
+        pauseMs: effective.pauseMs,
+        breakWindow: getScheduledBreakWindowForDate(
+          stampUser.planningBreakWindows,
+          effective.date,
+        ),
+      })
+    : 0;
+  if (scheduledBreakShortfallMinutes > 0) {
+    warnings.push(
+      `Gegenüber dem hinterlegten Pausenfenster fehlen ${scheduledBreakShortfallMinutes} Minuten erfasste Pause. Bitte Pause prüfen oder die Abweichung ausdrücklich bestätigen.`,
+    );
+  }
   const willTransitionProjectToInterrupted = Boolean(
     project &&
       effective.completionStatus === "interrupted" &&
@@ -390,6 +425,12 @@ export async function evaluateStampSessionStop(input: {
         }
       : null,
     project: projectSnapshot,
+    breakPolicy: stampUser
+      ? {
+          planningBreakWindows: stampUser.planningBreakWindows,
+          updatedAt: stampUser.updatedAt.toISOString(),
+        }
+      : null,
   });
   return {
     action: "stop",
@@ -404,6 +445,8 @@ export async function evaluateStampSessionStop(input: {
       project && effective.completionStatus === "interrupted",
     ),
     willTransitionProjectToInterrupted,
+    scheduledBreakShortfallMinutes,
+    requiresBreakConfirmation: scheduledBreakShortfallMinutes > 0,
     fingerprint,
     warnings: [...new Set(warnings)],
     blockingIssues: [...new Set(blockingIssues)],

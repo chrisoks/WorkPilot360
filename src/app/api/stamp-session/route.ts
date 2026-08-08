@@ -17,8 +17,10 @@ import {
   executeStampSessionSwitch,
 } from "@/lib/time/stamp-session-switch-service";
 import {
+  evaluateStampSessionStop,
   executeStampSessionStop,
   type StampSessionStopEntry,
+  type StampSessionStopInput,
 } from "@/lib/time/stamp-session-stop-service";
 import { ensureStampInterruptionFollowup } from "@/lib/time/stamp-session-interruption-service";
 import { attachStampEntryToHourlyInvoiceDraft as attachStampEntryToHourlyInvoiceDraftShared } from "@/lib/time/stamp-session-billing-service";
@@ -1135,6 +1137,19 @@ async function changeSession(req: Request, body: Record<string, unknown>) {
       userId: stampUser.id,
       change,
     });
+    if (
+      preview?.stop.requiresBreakConfirmation &&
+      body.confirmScheduledBreakShortfall !== true
+    ) {
+      return NextResponse.json(
+        {
+          error: `Gegenüber dem hinterlegten Pausenfenster fehlen ${preview.stop.scheduledBreakShortfallMinutes} Minuten erfasste Pause. Soll die bisherige Stempelung trotzdem beendet werden?`,
+          code: "break_confirmation_required",
+          missingBreakMinutes: preview.stop.scheduledBreakShortfallMinutes,
+        },
+        { status: 409 },
+      );
+    }
     if (preview?.stop.requiresFinalInspection && !["self", "colleague"].includes(cleanString(body.finalInspectionMode))) {
       return NextResponse.json({ error: "Vor dem Wechsel muss die verpflichtende Endkontrolle vollständig festgelegt werden." }, { status: 400 });
     }
@@ -1283,20 +1298,38 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
     );
   }
 
+  const stopInput: StampSessionStopInput = {
+    completionStatus:
+      completionStatus === "finished" || completionStatus === "interrupted"
+        ? completionStatus
+        : "",
+    comment: finalComment,
+    interruptionReason,
+  };
+  const preview = await evaluateStampSessionStop({
+    organizationId: organization.id,
+    userId: stampUser.id,
+    stop: stopInput,
+  });
+  if (preview.requiresBreakConfirmation && body.confirmScheduledBreakShortfall !== true) {
+    return NextResponse.json(
+      {
+        error: `Gegenüber dem hinterlegten Pausenfenster fehlen ${preview.scheduledBreakShortfallMinutes} Minuten erfasste Pause. Soll die Stempelung trotzdem beendet werden?`,
+        code: "break_confirmation_required",
+        missingBreakMinutes: preview.scheduledBreakShortfallMinutes,
+      },
+      { status: 409 },
+    );
+  }
+
   let stopped;
   try {
     stopped = await executeStampSessionStop({
       organizationId: organization.id,
       userId: stampUser.id,
       actorName: getUserName(stampUser),
-      stop: {
-        completionStatus:
-          completionStatus === "finished" || completionStatus === "interrupted"
-            ? completionStatus
-            : "",
-        comment: finalComment,
-        interruptionReason,
-      },
+      stop: stopInput,
+      expectedFingerprint: preview.fingerprint,
       requestId: randomUUID(),
       source: "ui",
     });

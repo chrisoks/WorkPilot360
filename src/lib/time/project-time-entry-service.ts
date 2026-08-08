@@ -6,6 +6,10 @@ import {
   canManageProjectTimeEntries,
   canViewInternalCostData,
 } from "@/lib/permissions";
+import {
+  getScheduledBreakShortfallMinutes,
+  getScheduledBreakWindowForDate,
+} from "@/lib/time/work-duration";
 
 export const WITHOUT_OFFER_ASSIGNMENT = "__without_offer_assignment__";
 
@@ -20,7 +24,9 @@ export type ProjectTimeEntryActor = {
   isActive: boolean;
 };
 
-export type ProjectTimeEntryUser = ProjectTimeEntryActor;
+export type ProjectTimeEntryUser = ProjectTimeEntryActor & {
+  planningBreakWindows?: unknown;
+};
 
 export type ProjectTimeEntryWriteInput = {
   id?: string;
@@ -42,6 +48,7 @@ export type ProjectTimeEntryWriteInput = {
   endTime?: string;
   durationMs?: number;
   pauseMs?: number;
+  confirmScheduledBreakShortfall?: boolean;
   comment?: string;
   marketingContentItemId?: string;
   marketingContentType?: string;
@@ -97,7 +104,8 @@ export class ProjectTimeEntryServiceError extends Error {
       | "invalid_input"
       | "forbidden"
       | "not_found"
-      | "conflict",
+      | "conflict"
+      | "break_confirmation_required",
     message: string,
     public readonly status: 400 | 403 | 404 | 409
   ) {
@@ -455,6 +463,23 @@ export async function saveProjectTimeEntry(input: {
       "conflict",
       "Die angegebene Laufzeit passt nicht zu Beginn, Ende und Pause.",
       409
+    );
+  }
+  const scheduledBreakShortfallMinutes = getScheduledBreakShortfallMinutes({
+    startTime,
+    endTime,
+    pauseMs,
+    breakWindow: getScheduledBreakWindowForDate(targetUser.planningBreakWindows, date),
+  });
+  if (
+    entrySource === "manual" &&
+    scheduledBreakShortfallMinutes > 0 &&
+    payload.confirmScheduledBreakShortfall !== true
+  ) {
+    throw new ProjectTimeEntryServiceError(
+      "break_confirmation_required",
+      `Im erfassten Zeitraum fehlen gegenüber dem hinterlegten Pausenfenster ${scheduledBreakShortfallMinutes} Minuten Pause. Soll der Zeiteintrag trotzdem mit der kürzeren Pause gespeichert werden?`,
+      409,
     );
   }
 
