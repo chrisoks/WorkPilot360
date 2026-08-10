@@ -1,5 +1,21 @@
 # WorkPilot360 Agent Handover
 
+- Stunden-Dauerläufer Hybrid-Forecast 2026-08-10: Der sichere Monatsforecast
+  für Dauerläufer mit Stundenabrechnung entsteht nun aus dem vollständigen
+  Netto-Wert des offenen automatischen Stundenentwurfs und den noch nicht
+  ausgeführten bestätigten Planterminen desselben Monats. Pro Mitarbeiter
+  angelegte Planungseinträge werden mit derselben Stundenrundung wie die
+  spätere Rechnung und dem Verkaufspreis ihrer Abrechnungsleistung bewertet.
+  Planungseinträge, die über `planningEntryId` bereits in der Entwurfsrechnung
+  enthalten sind, werden nicht doppelt gezählt. Terminwünsche, gelöschte
+  Termine und Termine ohne belastbare Abrechnungsleistung speisen keinen
+  sicheren Forecast. Material und Zusatzpositionen werden nicht künstlich aus
+  der Planung geschätzt, fließen aber vollständig ein, sobald sie im
+  Stundenentwurf stehen. Eine echte Monatsrechnung ersetzt Entwurf und Planung
+  vollständig; ohne aktuelle Planung/Entwurf bleibt die bisherige echte
+  Rechnungshistorie der letzte Fallback. Einmalprojekte und Monatspauschalen
+  bleiben unverändert; keine Prisma-Schemaänderung.
+
 - Manuelle Stundenzeiten im Monatsentwurf 2026-08-10: Neue manuelle
   Projektzeiteinträge eines Dauerläufers mit Stundenabrechnung verwenden nach
   der fachlichen Zeitspeicherung denselben advisory-lock- und

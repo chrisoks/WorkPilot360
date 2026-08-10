@@ -34,6 +34,7 @@ import {
   type ContactSortDirection,
 } from "@/lib/contacts/contact-form";
 import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
+import { calculateHourlyRecurringForecast } from "@/lib/forecast/hourly-recurring";
 import { openPdfPreviewInNewTab } from "@/lib/documents/pdf-preview";
 import {
   getNetWorkDurationMs,
@@ -37501,6 +37502,7 @@ await addProjectLogbookEntry(
     return values.includes("dauer") || values.includes("monat") || values.includes("lauf");
   };
   const getProjectForecastValue = (project: HeroProjectPreview, monthKey?: string) => {
+    if (isHourlyRecurringProject(project)) return 0;
     const forecastAmount = parseReportAmount(project.forecastNetAmount);
     if (forecastAmount > 0) {
       if (isWeeklyForecastBillingType(project.forecastBillingType)) return (forecastAmount * 52) / 12;
@@ -37714,10 +37716,53 @@ await addProjectLogbookEntry(
         const monthInvoices = forecastInvoices.filter(
           (invoice) => invoice.projectId === project.id && getProjectInvoiceMonth(invoice) === month.key
         );
+        const hourlyDraftInvoices = invoices.filter(
+          (invoice) =>
+            invoice.projectId === project.id &&
+            invoice.status === "Entwurf" &&
+            invoice.billingSource === "hourly-recurring" &&
+            getProjectInvoiceMonth(invoice) === month.key
+        );
         const projectForecastValue = getProjectForecastValue(project, month.key);
         const historyForecastValue = getRecurringInvoiceAverage(project, month.key);
         const invoiceValue = monthInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
-        const forecastValue = invoiceValue || projectForecastValue || historyForecastValue;
+        const hourlyForecast = isHourlyRecurringProject(project)
+          ? calculateHourlyRecurringForecast({
+              projectId: project.id,
+              monthKey: month.key,
+              hasFinalInvoice: monthInvoices.length > 0,
+              finalInvoiceNetTotal: invoiceValue,
+              historicalInvoiceNetTotal: historyForecastValue,
+              roundingFactorHours: hourlyBillingRoundingFactorHours,
+              planningEntries,
+              timeEntries: stampEntries,
+              draftInvoices: hourlyDraftInvoices,
+              catalogItems,
+            })
+          : null;
+        const forecastValue = hourlyForecast
+          ? hourlyForecast.forecastValue
+          : invoiceValue || projectForecastValue || historyForecastValue;
+        const hourlyStatus =
+          hourlyForecast?.source === "draft-and-planning"
+            ? "Forecast (Entwurf + Planung)"
+            : hourlyForecast?.source === "draft"
+              ? "Forecast (Entwurf)"
+              : hourlyForecast?.source === "planning"
+                ? "Forecast (Planung)"
+                : hourlyForecast?.source === "history"
+                  ? "Forecast (Historie)"
+                  : "Forecast";
+        const hourlyNote =
+          hourlyForecast?.source === "draft-and-planning"
+            ? `Stundenentwurf ${formatMoney(hourlyForecast.draftValue)} inkl. enthaltener Material-/Zusatzpositionen + ${hourlyForecast.plannedEntryCount} bestätigte, noch nicht ausgeführte Plantermine ${formatMoney(hourlyForecast.plannedValue)}`
+            : hourlyForecast?.source === "draft"
+              ? "Stundenentwurf inklusive enthaltener Material- und Zusatzpositionen"
+              : hourlyForecast?.source === "planning"
+                ? `${hourlyForecast.plannedEntryCount} bestätigte Plantermine × Verkaufspreis der Abrechnungsleistung`
+                : hourlyForecast?.source === "history"
+                  ? "Aus Durchschnitt der letzten Rechnungen fortgeführt"
+                  : "Keine belastbare Forecastquelle";
         return {
           id: `recurring-${month.key}-${project.id}`,
           month: month.key,
@@ -37727,17 +37772,19 @@ await addProjectLogbookEntry(
           project,
           customer: project.customer || "",
           description: project.title,
-          forecastValue: invoiceValue || forecastValue,
+          forecastValue,
           invoiceValue,
           invoiceNumbers: monthInvoices.map((invoice) => invoice.invoiceNumber).join(", "),
           offerNumber: "",
-          status: monthInvoices.length > 0 ? "Fakturiert" : "Forecast",
+          status: monthInvoices.length > 0 ? "Fakturiert" : hourlyForecast ? hourlyStatus : "Forecast",
           note:
             monthInvoices.length > 0
               ? "Monatsrechnung ersetzt den geplanten Forecastwert"
-              : projectForecastValue > 0
-                ? `Forecastbetrag am Projekt (${project.forecastBillingType || "monatlich"})`
-                : "Aus Durchschnitt der letzten Rechnungen fortgeführt",
+              : hourlyForecast
+                ? hourlyNote
+                : projectForecastValue > 0
+                  ? `Forecastbetrag am Projekt (${project.forecastBillingType || "monatlich"})`
+                  : "Aus Durchschnitt der letzten Rechnungen fortgeführt",
         };
       })
       .filter((row) => row.forecastValue > 0 || row.invoiceValue > 0);
@@ -38163,12 +38210,16 @@ await addProjectLogbookEntry(
     heroProjects
       .filter((project) => isRecurringForecastProject(project) && isProjectInForecastMonth(project, month.key))
       .filter((project) => isVisibleReportingBusinessArea(getProjectBusinessArea(project).name))
-      .filter((project) => {
-        const invoiceValue = forecastInvoices
-          .filter((invoice) => invoice.projectId === project.id && getProjectInvoiceMonth(invoice) === month.key)
-          .reduce((sum, invoice) => sum + invoice.netTotal, 0);
-        return invoiceValue <= 0 && getProjectForecastValue(project, month.key) <= 0 && getRecurringInvoiceAverage(project, month.key) <= 0;
-      })
+      .filter(
+        (project) =>
+          !forecastPeriodRows.some(
+            (row) =>
+              row.project?.id === project.id &&
+              row.month === month.key &&
+              row.certainty === "safe" &&
+              row.forecastValue > 0
+          )
+      )
       .map((project) => ({ project, month }))
   );
   const forecastNeedsDateQualityRows =
@@ -55541,13 +55592,23 @@ await addProjectLogbookEntry(
                 <div className={styles.customerFileMainHeader}>
                   <h2>Forecast</h2>
                   <span>
-                    {selectedProjectFile.forecastNetAmount
+                    {isSelectedProjectHourlyRecurring
+                      ? "Automatisch aus Planung, Entwurf und Rechnung"
+                      : selectedProjectFile.forecastNetAmount
                       ? `${selectedProjectFile.forecastNetAmount} € netto (${selectedProjectFile.forecastBillingType || "monatlich"})`
                       : "Kein Forecastbetrag hinterlegt"}
                   </span>
                 </div>
 
                 <section className={`${styles.projectBudgetEditor} ${styles.projectForecastEditor}`}>
+                  {isSelectedProjectHourlyRecurring ? (
+                    <p className={styles.autoBillingHint}>
+                      Für diesen Dauerläufer wird kein fester Forecastbetrag gepflegt. Bestätigte Termine bilden
+                      den frühen Stunden-Forecast. Bereits ausgeführte Anteile und enthaltenes Material kommen aus
+                      dem offenen Stundenentwurf; eine finale Monatsrechnung ersetzt diese Werte vollständig.
+                    </p>
+                  ) : (
+                    <>
                   <div className={styles.projectForecastSummaryGrid}>
                     <article>
                       <span>Monatswert für Forecast</span>
@@ -55620,6 +55681,8 @@ await addProjectLogbookEntry(
                       {isSavingProjectForecast ? "Speichert..." : "Forecast speichern"}
                     </button>
                   </div>
+                    </>
+                  )}
                 </section>
               </div>
             ) : projectFileTab === "automaticBilling" ? (
@@ -77775,11 +77838,12 @@ await addProjectLogbookEntry(
 
                   {projectDraft.recurringBillingMode === RECURRING_BILLING_HOURLY ? (
                     <div className={`${styles.recurringHourlyHint} ${styles.standardFormWide}`}>
-                      <strong>Forecast ueber Stempelstunden</strong>
+                      <strong>Forecast aus bestätigter Planung</strong>
                       <span>
-                        Bei Stundenabrechnung entsteht der Forecast später aus gestempelten Stunden und dem
-                        durchschnittlichen SVS des jeweils gewaehlten Gewerks. Ein fester Monatsbetrag wird hier
-                        nicht gepflegt.
+                        Bestätigte Termine werden mit ihrer abrechenbaren Dauer und dem Verkaufspreis der
+                        Abrechnungsleistung berücksichtigt. Nach der Ausführung ersetzt der Stundenentwurf den
+                        jeweiligen Plananteil und übernimmt auch enthaltenes Material; die finale Monatsrechnung
+                        ersetzt beides.
                       </span>
                     </div>
                   ) : (
