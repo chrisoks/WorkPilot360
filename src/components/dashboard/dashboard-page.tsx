@@ -10345,7 +10345,7 @@ type ProjectDraft = {
   projectKind: ProjectKindValue;
   projectRuntimeFrom: string;
   projectRuntimeUntil: string;
-  billingInterval: "monatlich" | "quartalsweise" | "jährlich" | "j\u00c3\u00a4hrlich";
+  billingInterval: "monatlich" | "quartalsweise" | "halbjährlich" | "jährlich" | "j\u00c3\u00a4hrlich";
   recurringBillingMode: RecurringBillingMode;
   forecastBillingType: "monatlich" | "wöchentlich" | "w\u00c3\u00b6chentlich" | "quartalsweise";
   forecastNetAmount: string;
@@ -13672,7 +13672,7 @@ function getProjectKind(project: HeroProjectPreview): ProjectDraft["projectKind"
     .join(" ")
     .toLowerCase();
 
-  return ["monatlich", "jährlich", "j\u00c3\u00a4hrlich", "jaehrlich", "quartal", "dauer"].some((token) =>
+  return ["monatlich", "halbjähr", "jährlich", "j\u00c3\u00a4hrlich", "jaehrlich", "quartal", "dauer"].some((token) =>
     searchableText.includes(token)
   )
     ? RECURRING_PROJECT_KIND
@@ -28812,7 +28812,9 @@ export function DashboardPage() {
       projectRuntimeFrom: project.projectRuntimeFrom || "",
       projectRuntimeUntil: project.projectRuntimeUntil || "",
       billingInterval:
-        project.billingInterval === "quartalsweise" || isAnnualBillingInterval(project.billingInterval)
+        project.billingInterval === "quartalsweise" ||
+        project.billingInterval === "halbjährlich" ||
+        isAnnualBillingInterval(project.billingInterval)
           ? project.billingInterval
           : "monatlich",
       recurringBillingMode: getProjectRecurringBillingMode(project),
@@ -77856,6 +77858,7 @@ await addProjectLogbookEntry(
                     >
                       <option value="monatlich">monatlich</option>
                       <option value="quartalsweise">quartalsweise</option>
+                      <option value="halbjährlich">halbjährlich</option>
                       <option value="jährlich">jährlich</option>
                     </select>
                   </label>

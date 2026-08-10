@@ -1,5 +1,14 @@
 # WorkPilot360 Agent Handover
 
+- Halbjährliches Fakturierungsintervall 2026-08-10: In der Projektanlage und
+  Projektdatenbearbeitung kann für Dauerläufer zusätzlich `halbjährlich`
+  ausgewählt, gespeichert und wieder geladen werden. Das Feld bleibt wie die
+  bisherigen Werte `quartalsweise` und `jährlich` zunächst ein Projektstammwert:
+  Stapelabrechnung, automatische Stundenentwürfe und Forecast werden dadurch
+  ausdrücklich nicht zeitlich umgestellt. Eine spätere echte Intervalllogik
+  benötigt eine getrennte fachliche Festlegung zu Startmonat, Betragsbasis und
+  Umgang mit Stundenabrechnung. Keine Prisma-Schemaänderung.
+
 - Kunden-/Projekthinweise vor Projektanlage 2026-08-10: Der bestehende Auslöser
   `requiresProjectCreateConfirmation` wird fachlich tatsächlich vor der ersten
   Speicherung eines neuen Projekts geprüft. Markierte Kundenhinweise sowie
