@@ -10102,6 +10102,11 @@ type CustomerProjectNoteContext =
   | "invoiceCreate"
   | "invoiceSend";
 
+type PendingProjectCreateNoteConfirmation = {
+  notes: CustomerProjectNote[];
+  customerId: string;
+};
+
 type AppNotification = {
   id: string;
   subject: string;
@@ -11788,7 +11793,7 @@ const customerProjectNoteEffectLabels: Record<CustomerProjectNote["effectLevel"]
 };
 const customerProjectNoteContextLabels: Record<CustomerProjectNoteContext, string> = {
   stamp: "vor der Stempelung",
-  projectCreate: "bei der Projektanlage",
+  projectCreate: "vor der Projektanlage",
   offerSend: "vor dem Angebotsversand",
   invoiceCreate: "vor der Rechnungserstellung",
   invoiceSend: "vor dem Rechnungsversand",
@@ -15947,11 +15952,8 @@ export function DashboardPage() {
     comment: string;
     unproductiveLabel: string;
   } | null>(null);
-  const [pendingProjectCreateNoteConfirm, setPendingProjectCreateNoteConfirm] = useState<{
-    notes: CustomerProjectNote[];
-    projectId: string;
-    customerId: string;
-  } | null>(null);
+  const [pendingProjectCreateNoteConfirm, setPendingProjectCreateNoteConfirm] =
+    useState<PendingProjectCreateNoteConfirmation | null>(null);
   const [pendingWorkflowNoteConfirm, setPendingWorkflowNoteConfirm] = useState<{
     notes: CustomerProjectNote[];
     context: "offerSend" | "invoiceCreate" | "invoiceSend";
@@ -24243,18 +24245,10 @@ export function DashboardPage() {
 
   async function confirmPendingProjectCreateNotes() {
     if (!pendingProjectCreateNoteConfirm) return;
-    try {
-      await acknowledgeCustomerProjectNotes({
-        notes: pendingProjectCreateNoteConfirm.notes,
-        context: "projectCreate",
-        customerId: pendingProjectCreateNoteConfirm.customerId,
-        projectId: pendingProjectCreateNoteConfirm.projectId,
-      });
-      setPendingProjectCreateNoteConfirm(null);
-      setIsPendingNoteConfirmed(false);
-    } catch (error) {
-      setNoteError(error instanceof Error ? error.message : "Hinweise konnten nicht bestaetigt werden.");
-    }
+    const confirmation = pendingProjectCreateNoteConfirm;
+    setPendingProjectCreateNoteConfirm(null);
+    setIsPendingNoteConfirmed(false);
+    await saveProjectDraft(confirmation);
   }
 
   async function confirmPendingWorkflowNotes() {
@@ -30897,7 +30891,7 @@ export function DashboardPage() {
     return applyBillingCheckStatus(project, monthKey, options);
   }
 
-  async function saveProjectDraft() {
+  async function saveProjectDraft(projectCreateConfirmation?: PendingProjectCreateNoteConfirmation) {
     const selectedContact = contacts.find((contact) => contact.id === projectDraft.contactId);
     const selectedPrimaryAddress =
       selectedContact &&
@@ -31114,6 +31108,23 @@ await addProjectLogbookEntry(
       description: projectDescription,
     };
 
+    if (!projectCreateConfirmation) {
+      const projectCreateNotes = await loadCustomerProjectNotes({
+        customerId: selectedContact?.id || "",
+        context: "projectCreate",
+        userId: activeUserId,
+      });
+      if (projectCreateNotes.length > 0) {
+        setNoteError("");
+        setIsPendingNoteConfirmed(false);
+        setPendingProjectCreateNoteConfirm({
+          notes: projectCreateNotes,
+          customerId: selectedContact?.id || "",
+        });
+        return;
+      }
+    }
+
     let savedProject: HeroProjectPreview;
     try {
       savedProject = await persistProject(createdProject);
@@ -31132,19 +31143,19 @@ await addProjectLogbookEntry(
       "Projekt",
       `Projekt angelegt: ${savedProject.projectNumber || savedProject.id} | ${savedProject.title}.`
     );
-    const projectCreateNotes = await loadCustomerProjectNotes({
-      customerId: selectedContact?.id || savedProject.contactId || "",
-      projectId: savedProject.id,
-      context: "projectCreate",
-      userId: activeUserId,
-    });
-    if (projectCreateNotes.length > 0) {
-      setIsPendingNoteConfirmed(false);
-      setPendingProjectCreateNoteConfirm({
-        notes: projectCreateNotes,
-        projectId: savedProject.id,
-        customerId: selectedContact?.id || savedProject.contactId || "",
-      });
+    if (projectCreateConfirmation) {
+      try {
+        await acknowledgeCustomerProjectNotes({
+          notes: projectCreateConfirmation.notes,
+          context: "projectCreate",
+          customerId: projectCreateConfirmation.customerId || savedProject.contactId || "",
+          projectId: savedProject.id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Hinweise konnten nicht bestätigt werden.";
+        setNoteError(message);
+        setErrorMessage(`Das Projekt wurde angelegt, aber die Hinweisbestätigung konnte nicht protokolliert werden: ${message}`);
+      }
     }
     closeProjectModal();
   }
@@ -49780,7 +49791,7 @@ await addProjectLogbookEntry(
                   <p>{note.body}</p>
                   <div className={styles.noteBadges}>
                     {note.requiresStampConfirmation ? <span>Stempelung</span> : null}
-                    {note.requiresProjectCreateConfirmation ? <span>Projektanlage</span> : null}
+                    {note.requiresProjectCreateConfirmation ? <span>Vor Projektanlage</span> : null}
                     {note.requiresOfferSendConfirmation ? <span>Angebotsversand</span> : null}
                     {note.requiresInvoiceCreateConfirmation ? <span>Rechnungserstellung</span> : null}
                     {note.requiresInvoiceSendConfirmation ? <span>Rechnungsversand</span> : null}
@@ -76936,7 +76947,7 @@ await addProjectLogbookEntry(
                         }))
                       }
                     />
-                    <span>Bei neuer Projektanlage</span>
+                    <span>Vor Projektanlage</span>
                   </label>
                   <label className={styles.noteCheckboxLine}>
                     <input
@@ -77024,7 +77035,7 @@ await addProjectLogbookEntry(
                   {pendingStampNoteConfirm
                     ? "Kunden- und Projekthinweise vor der Stempelung prüfen."
                     : pendingProjectCreateNoteConfirm
-                      ? "Kunden- und Projekthinweise bei der Projektanlage prüfen."
+                      ? "Kunden- und Projekthinweise vor der Projektanlage prüfen."
                       : `Kunden- und Projekthinweise ${customerProjectNoteContextLabels[pendingWorkflowNoteConfirm?.context || "stamp"]} prüfen.`}
                 </p>
               </div>
@@ -77070,6 +77081,19 @@ await addProjectLogbookEntry(
             </div>
             <div className={styles.standardModalFooter}>
               <div className={styles.modalActions}>
+                {pendingProjectCreateNoteConfirm ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => {
+                      setPendingProjectCreateNoteConfirm(null);
+                      setIsPendingNoteConfirmed(false);
+                      setNoteError("");
+                    }}
+                  >
+                    Zurück zur Projektanlage
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={styles.primaryButton}
@@ -78139,7 +78163,7 @@ await addProjectLogbookEntry(
                 >
                   Abbrechen
                 </button>
-                <button type="button" className={styles.primaryButton} onClick={saveProjectDraft}>
+                <button type="button" className={styles.primaryButton} onClick={() => void saveProjectDraft()}>
                   Speichern
                 </button>
               </div>

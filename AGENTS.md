@@ -1,5 +1,15 @@
 # WorkPilot360 Agent Handover
 
+- Kunden-/Projekthinweise vor Projektanlage 2026-08-10: Der bestehende Auslöser
+  `requiresProjectCreateConfirmation` wird fachlich tatsächlich vor der ersten
+  Speicherung eines neuen Projekts geprüft. Markierte Kundenhinweise sowie
+  markierte Projekthinweise desselben Kunden erscheinen nach vollständiger
+  Eingabe, aber vor `persistProject`; ein Zurück-Button lässt die Projektmaske
+  unverändert offen. Erst nach sichtbarer Bestätigung wird das Projekt
+  gespeichert und die Bestätigung anschließend mit der neuen Projekt-ID
+  protokolliert. Das Bearbeiten vorhandener Projekte löst diesen Auslöser nicht
+  mehr aus. Keine Prisma-Schemaänderung.
+
 - Stunden-Dauerläufer Hybrid-Forecast 2026-08-10: Der sichere Monatsforecast
   für Dauerläufer mit Stundenabrechnung entsteht nun aus dem vollständigen
   Netto-Wert des offenen automatischen Stundenentwurfs und den noch nicht
