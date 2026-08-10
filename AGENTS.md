@@ -1,5 +1,18 @@
 # WorkPilot360 Agent Handover
 
+- Manuelle Stundenzeiten im Monatsentwurf 2026-08-10: Neue manuelle
+  Projektzeiteinträge eines Dauerläufers mit Stundenabrechnung verwenden nach
+  der fachlichen Zeitspeicherung denselben advisory-lock- und
+  serialisierbar geschützten Monatsentwurfs-Service wie Live-Stempelungen.
+  Ein vorhandener Monatsentwurf wird positionsbezogen ergänzt; andernfalls
+  entsteht genau ein Entwurf für den Leistungsmonat. Der Service lädt den
+  gespeicherten Zeiteintrag serverseitig erneut, damit interne Kostensnapshots
+  unabhängig von den Sichtrechten des Bearbeiters vollständig bleiben. Ein
+  Fehler der Abrechnungsautomatik löscht niemals die bereits erfasste Zeit,
+  sondern wird sichtbar zur Prüfung gemeldet. Einmalprojekte,
+  Monatspauschalen, bestehende Zeiteinträge und Auswertungen bleiben
+  unverändert; keine Prisma-Schemaänderung.
+
 - Stunden-Dauerläufer Tagesnachweise 2026-08-07: Die automatische
   Stempel-zu-Rechnungsentwurf-Kette bleibt unverändert führend: Die erste
   passende Stempelung eines Leistungsmonats erzeugt den Entwurf, weitere

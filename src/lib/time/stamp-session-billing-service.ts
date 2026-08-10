@@ -2,7 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { prisma } from "@/lib/db/client";
-import type { StampSessionStopEntry } from "@/lib/time/stamp-session-stop-service";
+import {
+  toStampSessionStopEntry,
+  type StampSessionStopEntry,
+} from "@/lib/time/stamp-session-stop-service";
 import { upsertHourlyBillingEntry } from "@/lib/invoices/hourly-billing-details";
 
 type ProjectRow = {
@@ -22,6 +25,9 @@ type ContactRow = {
 type CatalogRow = {
   id: string; type: string; number: string; name: string; unit: string;
   salesPrice: number; vatRate: number;
+};
+type HourlyBillingTimeEntry = Omit<StampSessionStopEntry, "entrySource"> & {
+  entrySource: "stamped" | "manual";
 };
 
 function clean(value: unknown, max = 1000) {
@@ -106,7 +112,7 @@ async function nextInvoiceNumber(tx: Prisma.TransactionClient, organizationId: s
 
 export async function attachStampEntryToHourlyInvoiceDraft(input: {
   organizationId: string;
-  entry: StampSessionStopEntry;
+  entry: HourlyBillingTimeEntry;
 }) {
   if (
     input.entry.mode !== "project" ||
@@ -182,7 +188,9 @@ export async function attachStampEntryToHourlyInvoiceDraft(input: {
         INSERT INTO "InvoiceHistory" (id, "organizationId", "invoiceId", "projectId", "invoiceNumber", "eventType", title, note, "actorName")
         VALUES (${randomUUID()}, ${input.organizationId}, ${draft.id}, ${project.id}, ${draft.invoiceNumber}, 'created',
           'Rechnungsentwurf automatisch angelegt',
-          'Automatisch aus der ersten Stempelung eines Dauerläufers mit Stundenabrechnung erzeugt.', 'System')
+          ${input.entry.entrySource === "manual"
+            ? "Automatisch aus dem ersten manuellen Zeiteintrag eines Dauerläufers mit Stundenabrechnung erzeugt."
+            : "Automatisch aus der ersten Stempelung eines Dauerläufers mit Stundenabrechnung erzeugt."}, 'System')
       `;
     }
     const title = `${catalog.number} | ${catalog.name}`;
@@ -261,4 +269,27 @@ export async function attachStampEntryToHourlyInvoiceDraft(input: {
     `;
     return { invoiceId: draft.id, invoiceNumber: draft.invoiceNumber, replayed: false };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function attachStoredProjectTimeEntryToHourlyInvoiceDraft(input: {
+  organizationId: string;
+  entryId: string;
+}) {
+  const entry = await prisma.projectTimeEntry.findFirst({
+    where: {
+      id: input.entryId,
+      organizationId: input.organizationId,
+      deletedAt: null,
+    },
+  });
+  if (!entry) {
+    throw new Error("Die gespeicherte Projektzeit wurde nicht gefunden.");
+  }
+  return attachStampEntryToHourlyInvoiceDraft({
+    organizationId: input.organizationId,
+    entry: {
+      ...toStampSessionStopEntry(entry),
+      entrySource: entry.entrySource === "manual" ? "manual" : "stamped",
+    },
+  });
 }

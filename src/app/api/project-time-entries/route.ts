@@ -13,6 +13,7 @@ import {
   evaluateProjectTimeEntryManagement,
   executeProjectTimeEntryManagement,
 } from "@/lib/time/project-time-entry-management-service";
+import { attachStoredProjectTimeEntryToHourlyInvoiceDraft } from "@/lib/time/stamp-session-billing-service";
 
 type DemoUser = {
   id: string;
@@ -220,7 +221,49 @@ export async function POST(req: Request) {
       users,
       payload: body,
     });
-    return NextResponse.json(saved, { status: 201 });
+    let billingAutomation:
+      | { status: "attached"; invoiceId: string; invoiceNumber: string }
+      | { status: "failed"; message: string }
+      | null = null;
+    if (
+      saved.mode === "project" &&
+      saved.entrySource === "manual" &&
+      Boolean(saved.billingCatalogItemId) &&
+      Boolean(saved.billingCatalogItemLabel)
+    ) {
+      try {
+        const attached = await attachStoredProjectTimeEntryToHourlyInvoiceDraft({
+          organizationId: organization.id,
+          entryId: saved.id,
+        });
+        if (!attached) {
+          throw new Error("Keine sichere Stundenabrechnungszuordnung gefunden.");
+        }
+        billingAutomation = {
+          status: "attached",
+          invoiceId: attached.invoiceId,
+          invoiceNumber: attached.invoiceNumber,
+        };
+      } catch (error) {
+        console.error("Manual project time could not update hourly invoice draft", error);
+        billingAutomation = {
+          status: "failed",
+          message:
+            "Der manuelle Zeiteintrag wurde gespeichert, konnte aber keinem Rechnungsentwurf zugeordnet werden. Bitte die Abrechnung prüfen.",
+        };
+      }
+    }
+    return NextResponse.json(
+      billingAutomation?.status === "attached"
+        ? {
+            ...saved,
+            invoiceId: billingAutomation.invoiceId,
+            invoiceNumber: billingAutomation.invoiceNumber,
+            billingAutomation,
+          }
+        : { ...saved, billingAutomation },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof ProjectTimeEntryServiceError) {
       return NextResponse.json(

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getDeadlineSettings: vi.fn(),
   transaction: vi.fn(),
+  findTimeEntry: vi.fn(),
 }));
 
 vi.mock("@/lib/company-settings/deadlines", () => ({
@@ -10,10 +11,16 @@ vi.mock("@/lib/company-settings/deadlines", () => ({
 }));
 
 vi.mock("@/lib/db/client", () => ({
-  prisma: { $transaction: mocks.transaction },
+  prisma: {
+    $transaction: mocks.transaction,
+    projectTimeEntry: { findFirst: mocks.findTimeEntry },
+  },
 }));
 
-import { attachStampEntryToHourlyInvoiceDraft } from "@/lib/time/stamp-session-billing-service";
+import {
+  attachStampEntryToHourlyInvoiceDraft,
+  attachStoredProjectTimeEntryToHourlyInvoiceDraft,
+} from "@/lib/time/stamp-session-billing-service";
 
 describe("hourly recurring stamp billing", () => {
   beforeEach(() => {
@@ -21,6 +28,65 @@ describe("hourly recurring stamp billing", () => {
     mocks.getDeadlineSettings.mockResolvedValue({
       hourlyBillingRoundingFactorHours: 0.25,
     });
+  });
+
+  it("reloads a manual entry from the database before reusing an existing draft link", async () => {
+    mocks.findTimeEntry.mockResolvedValue({
+      id: "manual-time-1",
+      organizationId: "org-1",
+      mode: "project",
+      projectId: "project-1",
+      projectLabel: "OBJ-449 | Objektbetreuung",
+      trade: "Grünpflege",
+      planningEntryId: null,
+      planningBillingGroupId: null,
+      billingCatalogItemId: "catalog-1",
+      billingCatalogItemLabel: "OKI0204 | Grünpflege: Rasenpflege",
+      userId: "user-1",
+      employee: "Mert Tozkular",
+      entrySource: "manual",
+      date: "2026-08-06",
+      startTime: "08:00",
+      endTime: "16:00",
+      durationMs: 27_000_000n,
+      pauseMs: 1_800_000n,
+      laborCostRateSnapshot: 30,
+      laborCostSnapshot: 225,
+      costSnapshotAt: new Date("2026-08-06T16:00:00.000Z"),
+      comment: "Manuell hinzugefügt",
+      marketingContentItemId: null,
+      marketingContentType: null,
+      completionStatus: null,
+      invoiceId: "invoice-1",
+      invoiceNumber: "RE-10125",
+      invoicedAt: null,
+      overtimeApprovalStatus: "not_required",
+      overtimeApprovedByUserId: null,
+      overtimeApprovedByName: null,
+      overtimeApprovedAt: null,
+      editHistory: [],
+      deletedAt: null,
+      createdAt: new Date("2026-08-06T16:00:00.000Z"),
+    });
+
+    await expect(
+      attachStoredProjectTimeEntryToHourlyInvoiceDraft({
+        organizationId: "org-1",
+        entryId: "manual-time-1",
+      })
+    ).resolves.toEqual({
+      invoiceId: "invoice-1",
+      invoiceNumber: "RE-10125",
+      replayed: true,
+    });
+    expect(mocks.findTimeEntry).toHaveBeenCalledWith({
+      where: {
+        id: "manual-time-1",
+        organizationId: "org-1",
+        deletedAt: null,
+      },
+    });
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
   it("keeps the automatic invoice linkage and adds the same-day customer snapshot", async () => {

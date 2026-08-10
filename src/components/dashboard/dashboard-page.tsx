@@ -31959,6 +31959,13 @@ await addProjectLogbookEntry(
       normalizedSavedEntry,
       ...currentEntries.filter((currentEntry) => currentEntry.id !== normalizedSavedEntry.id),
     ]);
+    if (normalizedSavedEntry.projectId) void loadInvoices(normalizedSavedEntry.projectId);
+    if (normalizedSavedEntry.billingAutomation?.status === "failed") {
+      setErrorMessage(
+        normalizedSavedEntry.billingAutomation.message ||
+          "Der Zeiteintrag wurde gespeichert, aber die Abrechnungsautomatik muss geprüft werden."
+      );
+    }
   }
 
   async function approveOvertimeForDay(userId: string, dateKey: string) {
