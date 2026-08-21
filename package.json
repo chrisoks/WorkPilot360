@@ -14,6 +14,7 @@
     "check:mojibake": "node scripts/check-mojibake.js",
     "check:regressions": "node scripts/check-regressions.js",
     "check:jarvis-knowledge": "node scripts/check-jarvis-knowledge-coverage.js",
+    "jarvis:eval:plan": "node scripts/plan-jarvis-evaluation.mjs",
     "check:session-secret": "node scripts/check-session-secret.js",
     "check:kosit": "node scripts/check-kosit-validator.js",
     "setup:kosit": "node scripts/setup-kosit-validator.js",

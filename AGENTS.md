@@ -1,5 +1,18 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS risikobasierte Evaluierung 2026-08-21: Die bisherige feste
+  Fraganzahl ist kein eigenständiges Qualitätsziel mehr. Der gepflegte
+  Referenzbestand bleibt erhalten, wird aber über
+  `src/lib/jarvis/evaluation-profile.ts` als `smoke`, `targeted` oder
+  `release` ausgewählt. `scripts/plan-jarvis-evaluation.mjs` leitet aus den
+  geänderten Pfaden Profil, Fachbereiche, Begründung und sicheren QA-Befehl
+  ab. Der QA-Bericht nennt Auswahl, erreichte Topics, Vorschauen, ausgeführte
+  Aktionen, Seiteneffekte, Fehler und Erkenntnisse. JARVIS-Kern-, Sicherheits-,
+  Aktions- und Korpusänderungen erzwingen den vollständigen Release-Korpus;
+  fachlich begrenzte Produktänderungen erhalten Kern plus betroffene Domänen.
+  Datenbanknahe Evaluierungen laufen ausschließlich gegen eine isoliert
+  restaurierte QA-Datenbank, niemals gegen produktive Fachdaten.
+
 - JARVIS Kontaktlöschvorschau 2026-08-21: Der streng validierte
   `contact.delete`-Kontext kennt jetzt auch die vom gemeinsamen Fachservice
   gelieferte Löschmarkierung `deletionMarkedAt`. Dadurch kann JARVIS einen

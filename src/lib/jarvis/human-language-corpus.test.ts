@@ -6,7 +6,7 @@ import { isJarvisBroadNaturalEntry } from "@/lib/jarvis/natural-entry";
 import { parseJarvisTeamSlotQuery } from "@/lib/jarvis/team-slot-finder";
 
 describe("JARVIS versioned human-language contract", () => {
-  it("contains a stable broad corpus in addition to the permanent 110 questions", () => {
+  it("contains a stable broad corpus in addition to the risk-based reference evaluation", () => {
     expect(JARVIS_HUMAN_LANGUAGE_CORPUS).toHaveLength(156);
     expect(new Set(JARVIS_HUMAN_LANGUAGE_CORPUS.map((item) => item.id)).size).toBe(156);
   });

@@ -59,6 +59,7 @@ try {
     /^scripts\/check-jarvis-knowledge-coverage\.js$/,
     /^scripts\/check-regressions\.js$/,
     /^scripts\/qa-jarvis-live-corpus\.mjs$/,
+    /^scripts\/plan-jarvis-evaluation\.mjs$/,
     /^package\.json$/,
     /^AGENTS\.md$/,
   ];

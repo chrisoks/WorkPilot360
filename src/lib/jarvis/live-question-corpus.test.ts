@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { JARVIS_LIVE_QUESTION_CORPUS } from "@/lib/jarvis/live-question-corpus";
 
-describe("JARVIS permanent 110-question regression corpus", () => {
-  it("contains exactly 110 stable and unique questions", () => {
-    expect(JARVIS_LIVE_QUESTION_CORPUS).toHaveLength(110);
-    expect(new Set(JARVIS_LIVE_QUESTION_CORPUS.map((item) => item.id)).size).toBe(110);
-    expect(new Set(JARVIS_LIVE_QUESTION_CORPUS.map((item) => item.question)).size).toBe(110);
+describe("JARVIS maintained evaluation corpus", () => {
+  it("keeps broad category coverage with stable and unique cases", () => {
+    expect(new Set(JARVIS_LIVE_QUESTION_CORPUS.map((item) => item.id)).size).toBe(JARVIS_LIVE_QUESTION_CORPUS.length);
+    expect(new Set(JARVIS_LIVE_QUESTION_CORPUS.map((item) => item.question)).size).toBe(JARVIS_LIVE_QUESTION_CORPUS.length);
+    const categoryCounts = new Map<string, number>();
+    JARVIS_LIVE_QUESTION_CORPUS.forEach((item) => categoryCounts.set(item.category, (categoryCounts.get(item.category) ?? 0) + 1));
+    expect(categoryCounts.size).toBeGreaterThanOrEqual(10);
+    expect([...categoryCounts.values()].every((count) => count >= 6)).toBe(true);
   });
 
   it("permanently covers invoice drafts, calculators, online requests and safety", () => {

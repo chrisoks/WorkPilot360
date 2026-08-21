@@ -35,7 +35,26 @@ async function loadCorpus() {
     module,
     exports: module.exports,
   });
-  return module.exports.JARVIS_LIVE_QUESTION_CORPUS;
+  const policySource = await fs.readFile(
+    path.resolve(process.cwd(), "src/lib/jarvis/evaluation-profile.ts"),
+    "utf8"
+  );
+  const policyCompiled = ts.transpileModule(policySource, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const policyModule = { exports: {} };
+  vm.runInNewContext(policyCompiled, {
+    module: policyModule,
+    exports: policyModule.exports,
+  });
+  return {
+    corpus: module.exports.JARVIS_LIVE_QUESTION_CORPUS,
+    select: policyModule.exports.selectJarvisEvaluationCases,
+    categories: policyModule.exports.JARVIS_EVALUATION_CATEGORIES,
+  };
 }
 
 function createSessionToken(sessionId, version) {
@@ -65,10 +84,26 @@ function formatGermanDate(dateKey) {
 }
 
 async function main() {
-  const corpus = await loadCorpus();
-  if (!Array.isArray(corpus) || corpus.length !== 110) {
-    throw new Error(`Der permanente Korpus enthält ${corpus?.length ?? 0} statt 110 Fragen.`);
+  const loaded = await loadCorpus();
+  const fullCorpus = loaded.corpus;
+  const profile = process.argv.find((argument) => argument.startsWith("--profile="))?.split("=")[1] || "release";
+  if (!["smoke", "targeted", "release"].includes(profile)) {
+    throw new Error(`Unbekanntes Evaluierungsprofil: ${profile}.`);
   }
+  const requestedCategories = (process.argv.find((argument) => argument.startsWith("--categories="))?.split("=")[1] || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const invalidCategories = requestedCategories.filter((value) => !loaded.categories.includes(value));
+  if (invalidCategories.length) {
+    throw new Error(`Unbekannte Evaluierungskategorie: ${invalidCategories.join(", ")}.`);
+  }
+  if (!Array.isArray(fullCorpus) || fullCorpus.length < 1) {
+    throw new Error("Der gepflegte JARVIS-Evaluierungskorpus ist leer.");
+  }
+  if (new Set(fullCorpus.map((item) => item.id)).size !== fullCorpus.length) throw new Error("Der JARVIS-Evaluierungskorpus enthält doppelte IDs.");
+  const corpus = loaded.select({ corpus: fullCorpus, profile, categories: requestedCategories });
+  if (!corpus.length) throw new Error("Das gewählte JARVIS-Evaluierungsprofil enthält keine Fälle.");
   const primaryActor = await prisma.user.findFirst({
     where: {
       role: Role.GESCHAEFTSFUEHRER,
@@ -360,7 +395,7 @@ async function main() {
     orderBy: { createdAt: "asc" },
     select: { id: true, allowedTradeIds: true },
   });
-  if (!onlinePortal) throw new Error("Kein aktives Online-Anfragen-Portal für den 110-Fragen-Korpus gefunden.");
+  if (!onlinePortal) throw new Error("Kein aktives Online-Anfragen-Portal für die JARVIS-Evaluierung gefunden.");
   const onlineAllowedTradeIds = Array.isArray(onlinePortal.allowedTradeIds)
     ? onlinePortal.allowedTradeIds.filter((id) => typeof id === "string")
     : [];
@@ -372,7 +407,7 @@ async function main() {
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });
-  if (!onlineTrade) throw new Error("Kein freigegebenes Gewerk für den 110-Fragen-Korpus gefunden.");
+  if (!onlineTrade) throw new Error("Kein freigegebenes Gewerk für die JARVIS-Evaluierung gefunden.");
   const onlineContact = await prisma.contact.create({
     data: {
       id: randomUUID(), organizationId: actor.organizationId,
@@ -391,7 +426,7 @@ async function main() {
       status: "in_review", requestType: "execution", tradeId: onlineTrade.id, tradeName: onlineTrade.name,
       desiredDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), desiredTimeWindow: "morning",
       street: "QA Korpusweg 360", postalCode: "74722", city: "Buchen",
-      description: "Isolierte Online-Anfragen-Vorschau im permanenten 110-Fragen-Korpus.",
+      description: "Isolierte Online-Anfragen-Vorschau in der risikobasierten JARVIS-Evaluierung.",
       customerKind: "business", company: "QA JARVIS Online-Korpus", firstName: "QA", lastName: "Online",
       email: `qa-online-request-${Date.now()}@example.test`, phone: "+49 6281 000000", preferredContact: "either",
       consentAt: now, submissionIpHash: "8".repeat(64), securitySignals: [], securityScore: 100,
@@ -1131,7 +1166,7 @@ async function main() {
           id: "side-effect-invoice-payment",
           status: 0,
           error:
-            "Die 110-Fragen-Prüfung hat unerwartet Rechnung oder Zahlungshistorie verändert.",
+            "Die JARVIS-Evaluierung hat unerwartet Rechnung oder Zahlungshistorie verändert.",
         });
       }
     }
@@ -1177,7 +1212,7 @@ async function main() {
           id: "side-effect-invoice-reminder",
           status: 0,
           error:
-            "Die 110-Fragen-Prüfung hat unerwartet Mahnstufe, Mahnhistorie oder Projektakte verändert.",
+            "Die JARVIS-Evaluierung hat unerwartet Mahnstufe, Mahnhistorie oder Projektakte verändert.",
         });
       }
     }
@@ -1214,7 +1249,7 @@ async function main() {
         failures.push({
           id: "side-effect-invoice-cancellation",
           status: 0,
-          error: "Die 110-Fragen-Prüfung hat unerwartet eine Rechnung storniert oder eine Stornorechnung erzeugt.",
+          error: "Die JARVIS-Evaluierung hat unerwartet eine Rechnung storniert oder eine Stornorechnung erzeugt.",
         });
       }
     }
@@ -1251,7 +1286,7 @@ async function main() {
         failures.push({
           id: "side-effect-invoice-credit",
           status: 0,
-          error: "Die 110-Fragen-Prüfung hat unerwartet eine Teilgutschrift oder Gutschrifthistorie erzeugt.",
+          error: "Die JARVIS-Evaluierung hat unerwartet eine Teilgutschrift oder Gutschrifthistorie erzeugt.",
         });
       }
     }
@@ -1280,7 +1315,7 @@ async function main() {
         failures.push({
           id: "side-effect-offer-finalization",
           status: 0,
-          error: "Die 110-Fragen-Prüfung hat unerwartet ein Angebot finalisiert oder ein PDF erzeugt.",
+          error: "Die JARVIS-Evaluierung hat unerwartet ein Angebot finalisiert oder ein PDF erzeugt.",
         });
       }
     }
@@ -1300,7 +1335,7 @@ async function main() {
         failures.push({
           id: "side-effect-invoice-lifecycle",
           status: 0,
-          error: "Die 110-Fragen-Prüfung hat unerwartet einen Rechnungsentwurf gelöscht oder wiederhergestellt.",
+          error: "Die JARVIS-Evaluierung hat unerwartet einen Rechnungsentwurf gelöscht oder wiederhergestellt.",
         });
       }
     }
@@ -1318,7 +1353,7 @@ async function main() {
       failures.push({
         id: "side-effect-task-lifecycle",
         status: 0,
-        error: "Die 110-Fragen-Prüfung hat unerwartet eine Aufgabe archiviert oder wiederhergestellt.",
+        error: "Die JARVIS-Evaluierung hat unerwartet eine Aufgabe archiviert oder wiederhergestellt.",
       });
     }
     const [currentStatusProject, statusTimelineWrites, statusLogbookWrites, statusAuditWrites] = await Promise.all([
@@ -1345,23 +1380,23 @@ async function main() {
       failures.push({
         id: "side-effect-project-status",
         status: 0,
-        error: "Die 110-Fragen-Prüfung hat unerwartet Projektstatus, Timeline, Logbuch oder Audit verändert.",
+        error: "Die JARVIS-Evaluierung hat unerwartet Projektstatus, Timeline, Logbuch oder Audit verändert.",
       });
     }
     const currentPersonnelTarget = await prisma.user.findUnique({ where: { id: personnelTarget.id }, select: { firstName: true, email: true, role: true, updatedAt: true } });
     const personnelAuditWrites = await prisma.auditLog.count({ where: { organizationId: actor.organizationId, entityType: "user", entityId: personnelTarget.id, action: "personnel.changed", createdAt: { gte: now } } });
     if (!currentPersonnelTarget || currentPersonnelTarget.firstName !== personnelTarget.firstName || currentPersonnelTarget.email !== personnelTarget.email || currentPersonnelTarget.role !== personnelTarget.role || currentPersonnelTarget.updatedAt.toISOString() !== personnelTarget.updatedAt.toISOString() || personnelAuditWrites !== 0) {
-      failures.push({ id: "side-effect-personnel-management", status: 0, error: "Die 110-Fragen-Prüfung hat unerwartet Personalstammdaten, Rolle oder Audit verändert." });
+      failures.push({ id: "side-effect-personnel-management", status: 0, error: "Die JARVIS-Evaluierung hat unerwartet Personalstammdaten, Rolle oder Audit verändert." });
     }
     const currentEmployeeCost = await prisma.employeeCostCalculation.findUnique({ where: { id: employeeCostTarget.id } });
     const employeeCostAuditWrites = await prisma.auditLog.count({ where: { organizationId: actor.organizationId, entityType: "employeeCostCalculation", entityId: employeeCostTarget.id, action: "employee-cost.changed", createdAt: { gte: now } } });
     if (!currentEmployeeCost || currentEmployeeCost.monthlySalary !== employeeCostTarget.monthlySalary || currentEmployeeCost.fullCostFactor !== employeeCostTarget.fullCostFactor || currentEmployeeCost.updatedAt.toISOString() !== employeeCostTarget.updatedAt.toISOString() || employeeCostAuditWrites !== 0) {
-      failures.push({ id: "side-effect-employee-cost-management", status: 0, error: "Die 110-Fragen-Prüfung hat unerwartet Lohnkosten oder Kosten-Audit verändert." });
+      failures.push({ id: "side-effect-employee-cost-management", status: 0, error: "Die JARVIS-Evaluierung hat unerwartet Lohnkosten oder Kosten-Audit verändert." });
     }
     const currentBulkContacts = await prisma.contact.findMany({ where: { id: { in: bulkContacts.map((contact) => contact.id) }, organizationId: actor.organizationId }, select: { id: true, category: true, updatedAt: true } });
     const bulkAuditWrites = await prisma.auditLog.count({ where: { organizationId: actor.organizationId, entityType: "contact-bulk", createdAt: { gte: now } } });
     if (currentBulkContacts.length !== bulkContacts.length || bulkContacts.some((contact) => { const current = currentBulkContacts.find((candidate) => candidate.id === contact.id); return !current || current.category !== contact.category || current.updatedAt.toISOString() !== contact.updatedAt.toISOString(); }) || bulkAuditWrites !== 0) {
-      failures.push({ id: "side-effect-bulk-update", status: 0, error: "Die 110-Fragen-Prüfung hat unerwartet Kontaktkategorien oder Massenänderungs-Audit verändert." });
+      failures.push({ id: "side-effect-bulk-update", status: 0, error: "Die JARVIS-Evaluierung hat unerwartet Kontaktkategorien oder Massenänderungs-Audit verändert." });
     }
     const [currentOnlineRequest, onlineConvertedAuditWrites, onlineCreatedProjects] = await Promise.all([
       prisma.onlineRequest.findUnique({ where: { id: onlineRequest.id }, select: { status: true, convertedProjectId: true, updatedAt: true } }),
@@ -1369,7 +1404,7 @@ async function main() {
       prisma.workPilotProject.count({ where: { organizationId: actor.organizationId, source: `Online-Anfrage ${onlineRequest.referenceNumber}`, createdAt: { gte: now } } }),
     ]);
     if (!currentOnlineRequest || currentOnlineRequest.status !== onlineRequest.status || currentOnlineRequest.convertedProjectId !== onlineRequest.convertedProjectId || currentOnlineRequest.updatedAt.toISOString() !== onlineRequest.updatedAt.toISOString() || onlineConvertedAuditWrites !== 0 || onlineCreatedProjects !== 0) {
-      failures.push({ id: "side-effect-online-request-conversion", status: 0, error: "Die 110-Fragen-Prüfung hat eine Online-Anfrage unerwartet umgewandelt oder ein Projekt erzeugt." });
+      failures.push({ id: "side-effect-online-request-conversion", status: 0, error: "Die JARVIS-Evaluierung hat eine Online-Anfrage unerwartet umgewandelt oder ein Projekt erzeugt." });
     }
     const currentCorpusStampSession = await prisma.activeStampSession.findUnique({ where: { id: corpusStampSession.id } });
     if (
@@ -1380,7 +1415,7 @@ async function main() {
       currentCorpusStampSession.pauseMs !== corpusStampSession.pauseMs ||
       currentCorpusStampSession.updatedAt.toISOString() !== corpusStampSession.updatedAt.toISOString()
     ) {
-      failures.push({ id: "side-effect-stamp-session", status: 0, error: "Die 110-Fragen-Prüfung hat die persönliche QA-Stempelung unerwartet verändert." });
+      failures.push({ id: "side-effect-stamp-session", status: 0, error: "Die JARVIS-Evaluierung hat die persönliche QA-Stempelung unerwartet verändert." });
     }
   } finally {
     if (createdDraftIds.size) {
@@ -1436,6 +1471,11 @@ async function main() {
     : 0;
   const result = {
     baseUrl,
+    profile,
+    requestedCategories,
+    selectedCategories: [...new Set(corpus.map((item) => item.category))],
+    maintainedCaseCount: fullCorpus.length,
+    expectedTopicChecks: corpus.filter((item) => expectedTopics[item.id]).length,
     passed: corpus.length - failures.length,
     total: corpus.length,
     actionDraftsPrepared: actionDraftCount,
@@ -1489,6 +1529,17 @@ async function main() {
     responseTypes: Object.fromEntries([...responseTypes.entries()].sort()),
     responseTopics: Object.fromEntries([...responseTopics.entries()].sort()),
     failures,
+    insights: [
+      failures.length
+        ? `${failures.length} konkrete Regression(en) oder Abweichung(en) wurden gefunden.`
+        : "Keine Regression im gewählten Risikoprofil gefunden.",
+      `${responseTopics.size} unterschiedliche Antwort-Topics wurden tatsächlich erreicht.`,
+      `${actionDraftCount} kontrollierte Aktionsvorschau(en), ${executedActions} ausgeführte Aktion(en).`,
+      `${corpus.length} von ${fullCorpus.length} gepflegten Fällen wurden aufgrund des Risikoprofils ausgewählt.`,
+      profile === "release"
+        ? "Der vollständige gepflegte Referenzbestand wurde geprüft."
+        : `Nicht ausgewählte Fachbereiche bleiben diesem Lauf bewusst vorbehalten; Profil ${profile} ist kein Vollrelease-Nachweis.`,
+    ],
     qaDraftsRemaining: remainingDrafts,
     qaSessionsRemaining: await prisma.authSession.count({
       where: { id: sessionId },

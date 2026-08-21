@@ -2,6 +2,28 @@
 
 Stand: 21.08.2026
 
+## Risikobasierte JARVIS-Evaluierung statt starrer Fraganzahl
+
+Die gepflegten Referenzfragen bleiben erhalten, ihre Anzahl ist aber kein
+Qualitätsziel mehr. `src/lib/jarvis/evaluation-profile.ts` wählt den fachlich
+notwendigen Prüfumfang anhand des Änderungsrisikos:
+
+- `smoke` prüft einen kleinen stabilen Querschnitt aus Verstehen, Navigation,
+  Rückfragen, Vorschauen, Rollen-/Mandantenschutz und Stale-State-Schutz,
+- `targeted` ergänzt den Kern automatisch um alle Fälle der erkannten
+  Fachbereiche,
+- `release` prüft den vollständigen gepflegten Referenzbestand bei Änderungen
+  an JARVIS-Kern-, Sicherheits-, Aktions- oder Korpuslogik sowie vor einem
+  JARVIS-Release.
+
+`npm run jarvis:eval:plan -- --base=<Basis> --head=<Ziel>` meldet Profil,
+betroffene Fachbereiche, Begründung und den passenden QA-Befehl. Der Lauf
+selbst weist Auswahl, tatsächlich erreichte Topics, kontrollierte Vorschauen,
+ausgeführte Aktionen, Seiteneffektfreiheit, Fehler und konkrete Erkenntnisse
+aus. Teilprofile sind ausdrücklich kein Vollrelease-Nachweis. Datenbanknahe
+Läufe dürfen ausschließlich gegen eine isoliert restaurierte QA-Datenbank
+erfolgen; produktive Fachdatentests bleiben verboten.
+
 ## Verbindliche Nachführung produktiver Fachänderungen vom 21.08.2026
 
 JARVIS besitzt jetzt einen eigenen deterministischen Fachvertrag für die seit
