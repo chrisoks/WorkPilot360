@@ -1469,6 +1469,7 @@ async function main() {
         where: { id: { in: [...createdDraftIds] } },
       })
     : 0;
+  const executedActions = 0;
   const result = {
     baseUrl,
     profile,
@@ -1525,7 +1526,7 @@ async function main() {
     qaOnlineRequestRemaining: await prisma.onlineRequest.count({ where: { id: onlineRequest.id } }),
     qaOnlineContactRemaining: await prisma.contact.count({ where: { id: onlineContact.id } }),
     qaStampSessionRemaining: await prisma.activeStampSession.count({ where: { id: corpusStampSession.id } }),
-    executedActions: 0,
+    executedActions,
     responseTypes: Object.fromEntries([...responseTypes.entries()].sort()),
     responseTopics: Object.fromEntries([...responseTopics.entries()].sort()),
     failures,
