@@ -86,7 +86,7 @@ function formatGermanDate(dateKey) {
 async function main() {
   const loaded = await loadCorpus();
   const fullCorpus = loaded.corpus;
-  const profile = process.argv.find((argument) => argument.startsWith("--profile="))?.split("=")[1] || "release";
+  const profile = (process.argv.find((argument) => argument.startsWith("--profile="))?.split("=")[1] || "release").trim();
   if (!["smoke", "targeted", "release"].includes(profile)) {
     throw new Error(`Unbekanntes Evaluierungsprofil: ${profile}.`);
   }
