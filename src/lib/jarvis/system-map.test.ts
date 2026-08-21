@@ -57,7 +57,7 @@ describe("JARVIS system map", () => {
   });
 
   it("keeps every entry traceable and useful", () => {
-    expect(JARVIS_SYSTEM_AREAS).toHaveLength(96);
+    expect(JARVIS_SYSTEM_AREAS).toHaveLength(101);
     expect(new Set(JARVIS_SYSTEM_AREAS.map((item) => item.id)).size).toBe(JARVIS_SYSTEM_AREAS.length);
     JARVIS_SYSTEM_AREAS.forEach((item) => {
       expect(item.purpose.length).toBeGreaterThan(12);
@@ -113,6 +113,14 @@ describe("JARVIS system map", () => {
   it("maps natural language and shared team-slot planning as verified services", () => {
     expect(findJarvisSystemAreas("Wie siehts aus und wie verstehst du Umgangssprache?", management)[0]?.area.id).toBe("system.naturalLanguageOrchestration");
     expect(findJarvisSystemAreas("Wann sind zwei Jungs gemeinsam frei?", employee)[0]?.area.id).toBe("system.teamSlotFinder");
+  });
+
+  it("maps the current productive project, time and sales contracts", () => {
+    expect(findJarvisSystemAreas("Interessent im Sales-Journal", management)[0]?.area.id).toBe("system.prospectLifecycle");
+    expect(findJarvisSystemAreas("Kundenhinweis vor Projektanlage bestätigen", management)[0]?.area.id).toBe("system.projectCreationConfirmation");
+    expect(findJarvisSystemAreas("Kundentext beim Stunden-Dauerläufer", bookkeeper)[0]?.area.id).toBe("system.hourlyRecurringBilling");
+    expect(findJarvisSystemAreas("Pause nicht doppelt von Nettoarbeitszeit abziehen", employee)[0]?.area.id).toBe("system.netWorkDuration");
+    expect(findJarvisSystemAreas("halbjährlich innerhalb der Projektlaufzeit", management)[0]?.area.id).toBe("system.projectContractMonths");
   });
 
   it("keeps known cleanup candidates behind a management decision", () => {

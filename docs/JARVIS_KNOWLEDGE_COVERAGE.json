@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "reviewedAt": "2026-08-21",
+  "reviewedProductCommit": "fc05c6be083ec944ee9e3bcf78f65a20c938ac9e",
+  "policy": "Every product commit after reviewedProductCommit must be followed by an explicit JARVIS knowledge review. Knowledge-only commits are exempt.",
+  "capabilities": [
+    {
+      "id": "prospect-lifecycle-and-sales-journal",
+      "status": "covered",
+      "topicIds": ["contacts.prospect.lifecycle", "contacts.prospect.project-eligibility", "sales-journal.workflow"],
+      "sourceRefs": ["src/app/api/contacts/route.ts", "src/app/api/sales-journal/route.ts", "src/lib/projects/project-contact-eligibility.ts"],
+      "testRefs": ["src/lib/jarvis/current-product-guidance.test.ts", "src/lib/jarvis/current-product-guidance-routing.test.ts", "src/lib/jarvis/system-map.test.ts"]
+    },
+    {
+      "id": "project-creation-confirmation",
+      "status": "covered",
+      "topicIds": ["projects.create-confirmation"],
+      "sourceRefs": ["src/app/api/customer-project-notes/route.ts", "src/components/dashboard/dashboard-page.tsx"],
+      "testRefs": ["src/lib/jarvis/current-product-guidance.test.ts", "src/lib/jarvis/current-product-guidance-routing.test.ts"]
+    },
+    {
+      "id": "hourly-recurring-day-evidence",
+      "status": "covered",
+      "topicIds": ["recurring.hourly.customer-text"],
+      "sourceRefs": ["src/lib/invoices/hourly-billing-details.ts", "src/lib/invoices/hourly-customer-text-service.ts", "src/app/api/invoices/route.ts"],
+      "testRefs": ["src/lib/jarvis/current-product-guidance.test.ts", "src/lib/jarvis/current-product-guidance-routing.test.ts"]
+    },
+    {
+      "id": "hourly-recurring-manual-time-draft",
+      "status": "covered",
+      "topicIds": ["recurring.hourly.invoice-draft"],
+      "sourceRefs": ["src/lib/time/project-time-entry-service.ts", "src/lib/time/stamp-session-billing-service.ts"],
+      "testRefs": ["src/lib/jarvis/current-product-guidance.test.ts", "src/lib/jarvis/current-product-guidance-routing.test.ts"]
+    },
+    {
+      "id": "hourly-recurring-hybrid-forecast",
+      "status": "covered",
+      "topicIds": ["recurring.hourly.forecast"],
+      "sourceRefs": ["src/lib/forecast/hourly-recurring.ts", "src/lib/forecast/hourly-recurring.test.ts"],
+      "testRefs": ["src/lib/jarvis/current-product-guidance.test.ts"]
+    },
+    {
+      "id": "canonical-net-work-duration",
+      "status": "covered",
+      "topicIds": ["time.net-duration-and-breaks"],
+      "sourceRefs": ["src/lib/time/work-duration.ts", "src/lib/time/work-duration.test.ts", "src/lib/time/stamp-session-stop-service.ts"],
+      "testRefs": ["src/lib/jarvis/current-product-guidance.test.ts"]
+    },
+    {
+      "id": "project-contract-month-boundaries",
+      "status": "covered",
+      "topicIds": ["projects.contract-month-boundaries"],
+      "sourceRefs": ["src/lib/projects/project-month-range.ts", "src/lib/projects/project-month-range.test.ts"],
+      "testRefs": ["src/lib/jarvis/current-product-guidance.test.ts"]
+    },
+    {
+      "id": "semiannual-project-billing-value",
+      "status": "covered",
+      "topicIds": ["projects.billing-interval.semiannual"],
+      "sourceRefs": ["src/components/dashboard/dashboard-page.tsx", "src/app/api/hero/projects/route.ts"],
+      "testRefs": ["src/lib/jarvis/current-product-guidance.test.ts"]
+    }
+  ]
+}

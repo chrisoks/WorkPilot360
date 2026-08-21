@@ -25,5 +25,12 @@ describe("JARVIS permanent 110-question regression corpus", () => {
     expect(text).toContain("Korrigiere einen Zeiteintrag");
     expect(text).toContain("Verschiebe eine komplette Terminserie ab einem ausgewählten Termin gemeinsam");
     expect(text).toContain("Entscheide eine gesamte Terminwunschserie: freigeben, ablehnen, zurückziehen oder bestätigte Terminserie absagen");
+    expect(text).toContain("Interessenten noch kein Projekt");
+    expect(text).toContain("Sales-Journal");
+    expect(text).toContain("Kundenhinweis vor der Projektanlage");
+    expect(text).toContain("Forecast beim Stunden-Dauerläufer");
+    expect(text).toContain("Kundentext je Leistungstag");
+    expect(text).toContain("Pause von der Nettoarbeitszeit doppelt");
+    expect(text).toContain("halbjährlich als Fakturierungsintervall");
   });
 });

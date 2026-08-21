@@ -1,6 +1,43 @@
 # JARVIS Entwicklungsplan
 
-Stand: 04.08.2026
+Stand: 21.08.2026
+
+## Verbindliche Nachführung produktiver Fachänderungen vom 21.08.2026
+
+JARVIS besitzt jetzt einen eigenen deterministischen Fachvertrag für die seit
+dem letzten großen Wissensrelease produktiv hinzugekommenen Abläufe. Er kennt
+und erklärt rollenbegrenzt:
+
+- Interessenten ohne Kundennummer, ihre bewusste Umwandlung zu Gewerbe- oder
+  Privatkunden und die Sperre von Projekt beziehungsweise Angebot davor,
+- das Sales-Journal als Nachweis tatsächlich ausgeführter
+  Vertriebsaktivitäten ohne zweite Aufgaben- oder Zeitwelt,
+- bestätigungspflichtige Kunden- und Projekthinweise vor der ersten
+  Speicherung eines neuen Projekts,
+- den automatischen Stunden-Dauerläufer-Monatsentwurf aus Live- und manuellen
+  Zeiten, interne Tagesnachweise und den verpflichtenden kundenwirksamen Text
+  je Leistungstag,
+- den Hybrid-Forecast aus offenem Stundenentwurf und noch nicht ausgeführten
+  bestätigten Planterminen ohne Doppelzählung,
+- `durationMs` als kanonische Nettoarbeitszeit; `pauseMs` ist ein zusätzlicher
+  Nachweis und wird niemals nochmals abgezogen,
+- die Begrenzung von Leistungsmonaten auf die Projektlaufzeit sowie
+  `halbjährlich` als derzeit reinen Projektstammwert ohne erfundene
+  Sechsmonatsautomatik.
+
+Diese Wissenswege lesen und verändern keine Fachdaten. Rollenbegrenzte
+Rechnungsdetails bleiben nur den bestehenden Finanzrollen zugänglich. Das
+Sales-Journal ist bekannt und navigierbar, aber noch keine schreibende
+JARVIS-Aktion.
+
+`docs/JARVIS_KNOWLEDGE_COVERAGE.json` bindet acht aktuelle Fachverträge an
+ihre produktiven Quellen, Topic-IDs und Tests. Der neue Check
+`scripts/check-jarvis-knowledge-coverage.js` läuft einzeln über
+`npm run check:jarvis-knowledge` und verpflichtend innerhalb des bestehenden
+Regressionschecks. Jeder spätere Produktcommit hinter dem zuletzt geprüften
+Produktstand lässt den Check fehlschlagen, bis die JARVIS-Auswirkung bewusst
+bewertet und der Prüfstand nachgeführt wurde. Reine JARVIS-Wissens-, Test- und
+Dokumentationscommits sind davon ausgenommen.
 
 ## Menschliche Sprache, Mehrfachanalysen und gemeinsamer Einsatzslot vom 04.08.2026
 

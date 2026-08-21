@@ -1,5 +1,24 @@
 # JARVIS Systemlandkarte
 
+## Aktuelle produktive Fachverträge
+
+- `system.prospectLifecycle` kennt Interessenten, die kontrollierte
+  Kundenübernahme und das rollenbegrenzte Sales-Journal. JARVIS schreibt noch
+  nicht selbst in das Journal.
+- `system.projectCreationConfirmation` erklärt die sichtbare Bestätigung
+  markierter Kunden- und Projekthinweise vor der ersten Projektspeicherung.
+- `system.hourlyRecurringBilling` verbindet Live- und manuelle Zeiten,
+  Monatsentwurf, Tagesnachweis, Kundentext und Hybrid-Forecast eines
+  Stunden-Dauerläufers ohne Doppelzählung.
+- `system.netWorkDuration` hält verbindlich fest, dass `durationMs` bereits
+  Nettoarbeitszeit und `pauseMs` nur der zusätzliche Pausennachweis ist.
+- `system.projectContractMonths` begrenzt Leistungsmonate auf die Laufzeit und
+  unterscheidet den Projektstammwert `halbjährlich` von einer noch nicht
+  implementierten Intervallautomatik.
+
+Die maschinenprüfbare Zuordnung dieser Verträge zu produktiven Quellen und
+Tests liegt in `docs/JARVIS_KNOWLEDGE_COVERAGE.json`.
+
 ## Sales-Journal
 
 - Der eigenständige Sidebar-Reiter `Sales-Journal` ist das einfache
@@ -256,9 +275,9 @@ ersetzt nicht die Registry.
 
 ## Aktuelle Abdeckung
 
-Die Registry enthält 90 Einträge:
+Die Registry enthält 101 Einträge:
 
-- 18 aktive Hauptbereiche,
+- 19 aktive Hauptbereiche,
 - 3 Aufgabenansichten,
 - 2 Zielansichten,
 - 4 Mitarbeiteransichten,
@@ -270,8 +289,9 @@ Die Registry enthält 90 Einträge:
 - 4 Kalkulationsbereiche,
 - 17 Reiter der Projektakte,
 - 11 Reiter der Kundenakte,
-- 1 nicht navigierbaren, aber verifizierten Systemdienst für den privaten
-  Datei- und Objektspeicher.
+- 11 nicht navigierbare, aber verifizierte Systemdienste für Sprache,
+  Analysen, Planung, aktuelle Fachverträge, Dokumentintegrität,
+  Datenqualität und privaten Datei-/Objektspeicher.
 
 Jeder Eintrag enthält:
 

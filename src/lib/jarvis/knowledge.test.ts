@@ -30,6 +30,17 @@ describe("JARVIS system help", () => {
   });
 
   it.each([
+    ["Warum kann ich für einen Interessenten noch kein Projekt anlegen?", "contacts.prospect.project-eligibility"],
+    ["Wie berechnet sich der Forecast beim Stunden-Dauerläufer?", "recurring.hourly.forecast"],
+    ["Was bewirkt halbjährlich als Fakturierungsintervall?", "projects.billing-interval.semiannual"],
+  ])("integrates current productive knowledge into operational guidance: %s", (question, topicId) => {
+    expect(resolveJarvisOperationalGuidance(question, executiveAccess)).toMatchObject({
+      type: "answer",
+      topicId,
+    });
+  });
+
+  it.each([
     "Welche Projektarten gibt es bei uns?",
     "Was sind die Projekttypen in WorkPilot360?",
     "Erkläre den Unterschied zwischen Einmalprojekt und Dauerläufer.",

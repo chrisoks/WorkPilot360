@@ -951,6 +951,34 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
   });
 
+  it("keeps current productive knowledge ahead of AI and live-data fallbacks", async () => {
+    const message = "Was bewirkt halbjährlich als Fakturierungsintervall?";
+    mocks.resolveJarvisOperationalGuidance.mockReturnValueOnce({
+      type: "answer",
+      topicId: "projects.billing-interval.semiannual",
+      message: "Der Wert ist noch keine automatische Sechsmonatsabrechnung.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: "user-1", message }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      type: "answer",
+      topicId: "projects.billing-interval.semiannual",
+    });
+    expect(mocks.resolveJarvisOperationalGuidance).toHaveBeenCalledWith(
+      message,
+      { profile: true }
+    );
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
   it("answers natural main-navigation wording before consulting the AI router", async () => {
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",
@@ -3232,6 +3260,7 @@ describe("POST /api/jarvis/chat", () => {
   });
 
   it("never turns task deletion into a task creation preview", async () => {
+    const taskLookup = vi.spyOn(prisma.task, "findMany").mockResolvedValue([]);
     mocks.resolveJarvisIntentDecision.mockReturnValue({
       state: "resolved",
       domain: "system",
@@ -3273,6 +3302,7 @@ describe("POST /api/jarvis/chat", () => {
     expect(payload.message).toContain("keine aktive Aufgabe");
     expect(payload.message).toContain("Es wurde nichts verändert");
     expect(payload.actionPreview).toBeUndefined();
+    taskLookup.mockRestore();
   });
 
   it("never turns an ambiguous task change into a creation preview", async () => {

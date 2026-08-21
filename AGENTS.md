@@ -1,5 +1,21 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Wissensabdeckung 2026-08-21: Die produktiven Fachänderungen bis
+  `fc05c6be083ec944ee9e3bcf78f65a20c938ac9e` sind in einem neuen
+  deterministischen Erklärvertrag nachgeführt: Interessenten/Sales-Journal,
+  Projektanlage-Hinweise, Stunden-Dauerläufer-Monatsentwurf, Tagesnachweis und
+  Kundentext, Hybrid-Forecast, kanonische Nettoarbeitszeit/Pausennachweis,
+  Projektlaufzeitgrenzen und der bewusst noch nicht automatisierende
+  halbjährliche Projektstammwert. Rollenbegrenzte Finanzdetails bleiben
+  geschützt; diese Wissenswege verändern keine Fachdaten. Das Sales-Journal
+  bleibt für JARVIS les-/erklärbar, aber ohne schreibende Aktion. Das neue
+  Manifest `docs/JARVIS_KNOWLEDGE_COVERAGE.json` bindet Fachverträge an
+  produktive Quellen, Topic-IDs und Tests. Der neue Check
+  `scripts/check-jarvis-knowledge-coverage.js` ist in
+  `npm run check:regressions` integriert und schlägt bei jedem späteren
+  Produktcommit hinter dem bewusst geprüften Stand fehl, bis JARVIS erneut
+  fachlich bewertet wurde. Keine Prisma- oder Produktionsdatenänderung.
+
 - Halbjährliches Fakturierungsintervall 2026-08-10: In der Projektanlage und
   Projektdatenbearbeitung kann für Dauerläufer zusätzlich `halbjährlich`
   ausgewählt, gespeichert und wieder geladen werden. Das Feld bleibt wie die

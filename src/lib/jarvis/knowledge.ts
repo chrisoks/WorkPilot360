@@ -19,6 +19,7 @@ import {
 } from "@/lib/jarvis/dialog";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import { canManagePlanningEntries } from "@/lib/permissions";
+import { resolveJarvisCurrentProductGuidance } from "@/lib/jarvis/current-product-guidance";
 
 export type JarvisSurfaceContext = {
   module?: string;
@@ -382,6 +383,11 @@ export function resolveJarvisOperationalGuidance(
   if (hardeningGuidance) return hardeningGuidance;
   const storageGuidance = resolveJarvisStorageGuidance(question);
   if (storageGuidance) return storageGuidance;
+  const currentProductGuidance = resolveJarvisCurrentProductGuidance(
+    question,
+    accessProfile
+  );
+  if (currentProductGuidance) return currentProductGuidance;
   const asks =
     /^(?:wie|wo|was|wer|warum|wann|kann|konnen|wird|welche|ist|gibt|erfind|bewert|entscheid)\w*\b/.test(
       value

@@ -898,4 +898,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
+require("./check-jarvis-knowledge-coverage.js");
 console.log("Regressionscheck bestanden: zentrale Entwicklungsmarker sind vorhanden.");
