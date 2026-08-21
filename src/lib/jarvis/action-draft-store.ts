@@ -1306,7 +1306,7 @@ const contactDeletionPayloadSchema = z.object({
 }).strict();
 
 const contactDeletionContextSchema = z.object({
-  contact: z.object({ id: z.string(), customerNumber: z.string(), displayName: z.string(), type: z.string(), category: z.string(), updatedAt: z.string() }).strict(),
+  contact: z.object({ id: z.string(), customerNumber: z.string(), displayName: z.string(), type: z.string(), category: z.string(), updatedAt: z.string(), deletionMarkedAt: z.string() }).strict(),
   reason: z.string().min(3).max(1000),
   references: z.array(z.object({ key: z.string(), label: z.string(), count: z.number().int().min(0) }).strict()),
   checks: z.array(z.object({ key: z.string(), label: z.string(), status: z.enum(["ok", "blocked"]), detail: z.string() }).strict()),

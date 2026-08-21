@@ -322,6 +322,7 @@ async function main() {
       type: "company",
       category: "Kunde",
       companyName: `QA JARVIS Löschvorschau ${Date.now()}`,
+      deletionMarkedAt: now,
     },
     select: { id: true, customerNumber: true },
   });

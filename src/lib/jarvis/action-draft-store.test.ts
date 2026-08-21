@@ -83,7 +83,7 @@ const fake = vi.hoisted(() => {
   });
   const contactDeletions: Array<Record<string, any>> = [];
   const evaluateContactDeletion = vi.fn(async ({ contactId, reason }: { contactId: string; reason: string }) => ({
-    contact: { id: contactId, customerNumber: "7000049", displayName: "Muster GmbH", type: "company", category: "Kunde", updatedAt: "2026-07-29T18:00:00.000Z" },
+    contact: { id: contactId, customerNumber: "7000049", displayName: "Muster GmbH", type: "company", category: "Kunde", updatedAt: "2026-07-29T18:00:00.000Z", deletionMarkedAt: "2026-07-29T17:00:00.000Z" },
     reason,
     references: [{ key: "projects", label: "Projekte", count: 0 }],
     checks: [{ key: "references", label: "Fachliche Verknüpfungen", status: "ok", detail: "Alle Referenzen sind frei." }],

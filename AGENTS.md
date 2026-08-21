@@ -1,5 +1,14 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Kontaktlöschvorschau 2026-08-21: Der streng validierte
+  `contact.delete`-Kontext kennt jetzt auch die vom gemeinsamen Fachservice
+  gelieferte Löschmarkierung `deletionMarkedAt`. Dadurch kann JARVIS einen
+  zuvor löschmarkierten, referenzfreien Kontakt wieder kontrolliert als
+  Bestätigungsvorschau vorbereiten; unmarkierte oder verknüpfte Kontakte
+  bleiben fail-closed blockiert. Der permanente 110-Fragen-Test markiert
+  seinen ausschließlich isolierten QA-Kontakt passend vor. Keine
+  Prisma-Schema- oder Produktionsdatenänderung.
+
 - JARVIS Wissensabdeckung 2026-08-21: Die produktiven Fachänderungen bis
   `fc05c6be083ec944ee9e3bcf78f65a20c938ac9e` sind in einem neuen
   deterministischen Erklärvertrag nachgeführt: Interessenten/Sales-Journal,
