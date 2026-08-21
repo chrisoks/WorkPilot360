@@ -48,7 +48,10 @@ import {
 } from "@/lib/jarvis/organization-project-review-analysis";
 import { resolveJarvisOrganizationOperationsRequest } from "@/lib/jarvis/organization-operations-analysis";
 import { resolveJarvisEnterpriseFollowUpQuestion, resolveJarvisEnterpriseInsightRequest } from "@/lib/jarvis/enterprise-insights";
-import { resolveJarvisTeamSlotRequest } from "@/lib/jarvis/team-slot-finder";
+import {
+  parseJarvisTeamSlotPreparationRequest,
+  resolveJarvisTeamSlotRequest,
+} from "@/lib/jarvis/team-slot-finder";
 import { resolveJarvisNaturalEntryRequest } from "@/lib/jarvis/natural-entry";
 import { resolveJarvisManagementCompositeRequest } from "@/lib/jarvis/management-composite";
 import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
@@ -85,6 +88,7 @@ import {
   isJarvisReferentialFollowUp,
   sanitizeJarvisDialogState,
   shouldCarryJarvisActiveRecord,
+  type JarvisActionWorkflow,
 } from "@/lib/jarvis/dialog-state";
 import { createJarvisDialogChoice } from "@/lib/jarvis/dialog";
 import { resolveJarvisProjectDialogIntent } from "@/lib/jarvis/project-dialog-intent";
@@ -98,6 +102,8 @@ import {
 import {
   completeJarvisVehicleTripCalculationDraft,
   completeJarvisWinterCalculationDraft,
+  completeJarvisOfferDraft,
+  cancelJarvisOfferDraft,
   createPersistedJarvisPlanningDraft,
   createPersistedJarvisOfferDraft,
   createPersistedJarvisOfferFinalizationDraft,
@@ -133,8 +139,11 @@ import {
   createPersistedJarvisStampSessionTransitionDraft,
   createPersistedJarvisVehicleTripCalculationDraft,
   createPersistedJarvisWinterCalculationDraft,
+  getJarvisOfferDraft,
   JarvisActionDraftError,
+  type JarvisTaskDraftBinding,
 } from "@/lib/jarvis/action-draft-store";
+import { searchJarvisGuidedOptions } from "@/lib/jarvis/guided-search";
 import {
   extractJarvisVehicleCalculationIntake,
   extractJarvisWinterCalculationIntake,
@@ -317,7 +326,17 @@ async function buildJarvisOfferDraft(input: {
       message: explicitProject?.id
         ? "Ich habe das Projekt erkannt. Lass uns die Angebotsmodalitäten und Positionen jetzt Schritt für Schritt festlegen. Erst deine ausdrückliche Bestätigung legt genau einen Entwurf an; JARVIS finalisiert oder versendet ihn nicht."
         : "Gerne. Für welchen Kunden soll ich das Angebot erstellen? Suche den Kunden unten; danach zeige ich dir ausschließlich seine offenen Projekte zur Auswahl.",
-      actionDraft,
+      ...(explicitProject?.id ? { actionDraft } : {}),
+      ...(!explicitProject?.id
+        ? {
+            dialogActionWorkflow: {
+              kind: "offer" as const,
+              stage: "customer" as const,
+              previewId: actionDraft.previewId,
+              revision: actionDraft.revision,
+            },
+          }
+        : {}),
     };
   } catch (error) {
     return {
@@ -3131,13 +3150,13 @@ async function buildJarvisPlanningPreview(input: {
     };
   }
   const normalizedQuestion = normalizePersonLabel(input.question);
-  const assignee = input.users.find((user) => {
+  const assignees = input.users.filter((user) => {
     if (user.isActive === false || !user.id) return false;
     const label = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
     return label.length >= 3 &&
       normalizedQuestion.includes(normalizePersonLabel(label));
   });
-  if (!assignee) {
+  if (assignees.length === 0) {
     return {
       type: "clarification" as const,
       topicId: "action.preview.planning.assignee-required",
@@ -3156,7 +3175,7 @@ async function buildJarvisPlanningPreview(input: {
       startAt: details.startAt,
       endAt: details.endAt,
       projectId: input.context.recordId,
-      assigneeIds: [assignee.id],
+      assigneeIds: [...new Set(assignees.map((assignee) => assignee.id))],
       approvalStatus,
     },
     organizationId: input.organizationId,
@@ -3546,6 +3565,553 @@ function buildAiIntentClarification(
   };
 }
 
+function guidedProjectChoices(
+  projects: Awaited<ReturnType<typeof searchJarvisGuidedOptions>>
+) {
+  return projects
+    .filter((item) => item.kind === "project")
+    .slice(0, 8)
+    .map((item) => {
+      const projectNumber = item.label.split(" · ", 1)[0] || item.label;
+      return createJarvisDialogChoice(
+        `guided-project-${item.id}`,
+        item.label,
+        `Projekt ${projectNumber}`
+      );
+    });
+}
+
+function selectGuidedProject(
+  message: string,
+  projects: Awaited<ReturnType<typeof searchJarvisGuidedOptions>>
+) {
+  const candidates = projects.filter((item) => item.kind === "project");
+  if (candidates.length === 1) return candidates[0];
+  const normalized = normalizeJarvisIntentText(message);
+  const exact = candidates.filter((item) => {
+    const projectNumber = normalizeJarvisIntentText(
+      item.label.split(" · ", 1)[0] || ""
+    );
+    return projectNumber && normalized.split(/\s+/).includes(projectNumber);
+  });
+  return exact.length === 1 ? exact[0] : undefined;
+}
+
+type OfferWorkflow = Extract<JarvisActionWorkflow, { kind: "offer" }>;
+
+function offerDraftCompletionInput(
+  current: Awaited<ReturnType<typeof getJarvisOfferDraft>>,
+  patch: Record<string, unknown> = {}
+) {
+  return {
+    revision: current.revision,
+    projectId: current.editor.projectId,
+    company: current.editor.company,
+    offerType: current.editor.offerType,
+    addendumMode: current.editor.addendumMode,
+    parentOfferId: current.editor.parentOfferId,
+    plannedExecutionMonth: current.editor.plannedExecutionMonth,
+    plannedExecutionEndMonth: current.editor.plannedExecutionEndMonth,
+    introText: current.editor.introText,
+    closingText: current.editor.closingText,
+    vatRate: current.editor.vatRate,
+    discountPercent: current.editor.discountPercent,
+    lines: current.editor.lines.map((line) => ({
+      catalogItemId: line.catalogItemId,
+      quantity: line.quantity,
+      description: line.description,
+      unitPrice: line.unitPrice,
+      discountPercent: line.discountPercent,
+    })),
+    ...patch,
+  };
+}
+
+function nextOfferDialogStep(
+  draft: Awaited<ReturnType<typeof getJarvisOfferDraft>>,
+  workflow: OfferWorkflow,
+  options: { askForMorePositions?: boolean } = {}
+) {
+  const nextWorkflow = {
+    ...workflow,
+    revision: draft.revision,
+    pendingCatalogId: undefined,
+  };
+  if (draft.editor.offerType === "addendum" && !draft.editor.parentOfferId) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.dialog.offer.parent-offer",
+      message: draft.editor.parentOfferOptions.length
+        ? "Auf welches bestehende Angebot soll sich der Nachtrag beziehen?"
+        : "Für dieses Projekt ist kein gültiges Bezugsangebot verfügbar. Ein Nachtrag kann deshalb nicht sicher vorbereitet werden; es wurde kein Angebot angelegt.",
+      choices: draft.editor.parentOfferOptions.slice(0, 8).map((offer) =>
+        createJarvisDialogChoice(
+          `guided-parent-offer-${offer.id}`,
+          offer.label,
+          offer.label
+        )
+      ),
+      dialogActionWorkflow: {
+        ...nextWorkflow,
+        stage: "parent_offer" as const,
+      },
+    };
+  }
+  if (!draft.editor.plannedExecutionMonth) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.dialog.offer.execution-month",
+      message:
+        "In welchem Monat soll die Leistung ausgeführt werden? Du kannst zum Beispiel „November 2026“ oder „2026-11“ schreiben.",
+      dialogActionWorkflow: {
+        ...nextWorkflow,
+        stage: "execution_month" as const,
+      },
+    };
+  }
+  if (options.askForMorePositions && draft.editor.lines.length > 0) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.dialog.offer.more-positions",
+      message:
+        "Soll noch eine weitere Position ins Angebot oder soll ich die vollständige Vorschau jetzt zur Prüfung anzeigen?",
+      choices: [
+        createJarvisDialogChoice(
+          "guided-offer-more-position",
+          "Weitere Position",
+          "Weitere Position hinzufügen"
+        ),
+        createJarvisDialogChoice(
+          "guided-offer-review",
+          "Vorschau prüfen",
+          "Angebot jetzt prüfen"
+        ),
+      ],
+      dialogActionWorkflow: {
+        ...nextWorkflow,
+        stage: "more_positions" as const,
+      },
+    };
+  }
+  return {
+    type: "clarification" as const,
+    topicId: "action.dialog.offer.position",
+    message:
+      "Welche Leistung soll als Position ins Angebot? Suche frei nach Nummer, Name oder Beschreibung, zum Beispiel „Glasreinigung“ oder „OKI0305“.",
+    dialogActionWorkflow: {
+      ...nextWorkflow,
+      stage: "position" as const,
+    },
+  };
+}
+
+async function continueJarvisActionWorkflow(input: {
+  workflow: JarvisActionWorkflow;
+  message: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  users: Array<{
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    isActive?: boolean;
+  }>;
+}) {
+  const workflow = input.workflow;
+  const normalizedMessage = normalizeJarvisIntentText(input.message);
+  const wantsToAbort = /\b(?:abbrechen|abbruch|stopp|stoppen|beenden|verwerfen)\b/.test(
+    normalizedMessage
+  );
+  if (wantsToAbort) {
+    if (workflow.kind === "offer" && input.sessionId) {
+      const binding: JarvisTaskDraftBinding = {
+        organizationId: input.organizationId,
+        sessionId: input.sessionId,
+        profile: input.accessProfile,
+      };
+      try {
+        const current = await getJarvisOfferDraft(workflow.previewId, binding);
+        const cancelled = await cancelJarvisOfferDraft(
+          workflow.previewId,
+          binding,
+          current.revision
+        );
+        return {
+          type: "answer" as const,
+          topicId: "action.dialog.offer.cancelled",
+          message: "Der Angebotsdialog wurde abgebrochen. Es wurde kein Angebot angelegt.",
+          actionDraft: cancelled,
+          dialogActionWorkflow: null,
+        };
+      } catch (error) {
+        return {
+          type: "refusal" as const,
+          topicId: "action.draft.unavailable",
+          message: `${
+            error instanceof JarvisActionDraftError
+              ? error.message
+              : "Der Angebotsdialog konnte nicht sicher abgebrochen werden."
+          } Es wurde kein Angebot angelegt.`,
+          dialogActionWorkflow: null,
+        };
+      }
+    }
+    return {
+      type: "answer" as const,
+      topicId: `action.dialog.${workflow.kind}.cancelled`,
+      message:
+        workflow.kind === "planning"
+          ? "Die Terminvorbereitung wurde abgebrochen. Es wurde nichts gebucht."
+          : "Der Dialog wurde abgebrochen. Es wurde nichts angelegt.",
+      dialogActionWorkflow: null,
+    };
+  }
+
+  if (
+    workflow.kind === "offer" &&
+    workflow.stage !== "customer" &&
+    workflow.stage !== "project"
+  ) {
+    if (!input.sessionId) {
+      return {
+        type: "refusal" as const,
+        topicId: "action.draft.session-required",
+        message:
+          "Für den Angebotsdialog ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde kein Angebot angelegt.",
+        dialogActionWorkflow: null,
+      };
+    }
+    const binding: JarvisTaskDraftBinding = {
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    };
+    try {
+      const current = await getJarvisOfferDraft(workflow.previewId, binding);
+      if (workflow.stage === "parent_offer") {
+        const matches = current.editor.parentOfferOptions.filter((offer) => {
+          const label = normalizeJarvisIntentText(offer.label);
+          return label === normalizedMessage || label.split(" ").some((part) => part.length >= 5 && normalizedMessage.includes(part));
+        });
+        if (matches.length !== 1) {
+          return {
+            type: "clarification" as const,
+            topicId: "action.dialog.offer.parent-offer",
+            message: "Welches Bezugsangebot ist gemeint? Bitte wähle einen eindeutigen Treffer.",
+            choices: current.editor.parentOfferOptions.slice(0, 8).map((offer) =>
+              createJarvisDialogChoice(
+                `guided-parent-offer-${offer.id}`,
+                offer.label,
+                offer.label
+              )
+            ),
+            dialogActionWorkflow: workflow,
+          };
+        }
+        const next = await completeJarvisOfferDraft(
+          workflow.previewId,
+          binding,
+          offerDraftCompletionInput(current, { parentOfferId: matches[0].id })
+        );
+        return nextOfferDialogStep(next, workflow);
+      }
+      if (workflow.stage === "execution_month") {
+        const plannedExecutionMonth = extractOfferExecutionMonth(input.message);
+        if (!plannedExecutionMonth) {
+          return {
+            type: "clarification" as const,
+            topicId: "action.dialog.offer.execution-month",
+            message:
+              "Den Ausführungsmonat konnte ich nicht eindeutig lesen. Bitte schreibe ihn zum Beispiel als „November 2026“ oder „2026-11“.",
+            dialogActionWorkflow: workflow,
+          };
+        }
+        const next = await completeJarvisOfferDraft(
+          workflow.previewId,
+          binding,
+          offerDraftCompletionInput(current, { plannedExecutionMonth })
+        );
+        return nextOfferDialogStep(next, workflow);
+      }
+      if (workflow.stage === "position") {
+        const selectedChoice = workflow.catalogChoices?.find(
+          (item) => normalizeJarvisIntentText(item.label) === normalizedMessage
+        );
+        const catalogResults = selectedChoice
+          ? await searchJarvisGuidedOptions({
+              organizationId: input.organizationId,
+              kind: "catalog",
+              exactId: selectedChoice.id,
+              limit: 1,
+            })
+          : await searchJarvisGuidedOptions({
+              organizationId: input.organizationId,
+              kind: "catalog",
+              query: input.message,
+              limit: 8,
+            });
+        if (catalogResults.length === 0) {
+          return {
+            type: "clarification" as const,
+            topicId: "action.dialog.offer.position",
+            message:
+              "Ich finde dazu keine aktive Leistung im Katalog. Suche bitte mit einer anderen Nummer, Bezeichnung oder Beschreibung; ich lege keine freie, ungeprüfte Position an.",
+            dialogActionWorkflow: { ...workflow, catalogChoices: undefined },
+          };
+        }
+        if (catalogResults.length > 1) {
+          return {
+            type: "clarification" as const,
+            topicId: "action.dialog.offer.position-choice",
+            message: "Welche dieser Katalogleistungen ist gemeint?",
+            choices: catalogResults.map((item) =>
+              createJarvisDialogChoice(
+                `guided-catalog-${item.id}`,
+                item.label,
+                item.label
+              )
+            ),
+            dialogActionWorkflow: {
+              ...workflow,
+              catalogChoices: catalogResults.map((item) => ({ id: item.id, label: item.label })),
+            },
+          };
+        }
+        const item = catalogResults[0];
+        if (item.kind !== "catalog") return undefined;
+        return {
+          type: "clarification" as const,
+          topicId: "action.dialog.offer.quantity",
+          message: `Welche Menge von „${item.label}“ soll angeboten werden? Einheit: ${item.unit}.`,
+          dialogActionWorkflow: {
+            ...workflow,
+            stage: "quantity" as const,
+            pendingCatalogId: item.id,
+            catalogChoices: undefined,
+          },
+        };
+      }
+      if (workflow.stage === "quantity") {
+        const rawQuantity = normalizedMessage.match(/\b(\d{1,7}(?:[.,]\d{1,3})?)\b/)?.[1];
+        const quantity = Number(rawQuantity?.replace(",", "."));
+        if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) {
+          return {
+            type: "clarification" as const,
+            topicId: "action.dialog.offer.quantity",
+            message: "Welche positive Menge soll angeboten werden? Beispiele: „2“, „4,5“ oder „120“.",
+            dialogActionWorkflow: workflow,
+          };
+        }
+        const catalogItem = await prisma.catalogItem.findFirst({
+          where: {
+            id: workflow.pendingCatalogId,
+            organizationId: input.organizationId,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            description: true,
+            salesPrice: true,
+          },
+        });
+        if (!catalogItem) {
+          return {
+            type: "refusal" as const,
+            topicId: "action.dialog.offer.catalog-stale",
+            message:
+              "Die ausgewählte Katalogleistung ist nicht mehr aktiv oder gehört nicht zur Organisation. Bitte starte die Leistungssuche erneut; es wurde kein Angebot angelegt.",
+            dialogActionWorkflow: { ...workflow, stage: "position" as const, pendingCatalogId: undefined },
+          };
+        }
+        const next = await completeJarvisOfferDraft(
+          workflow.previewId,
+          binding,
+          offerDraftCompletionInput(current, {
+            lines: [
+              ...current.editor.lines.map((line) => ({
+                catalogItemId: line.catalogItemId,
+                quantity: line.quantity,
+                description: line.description,
+                unitPrice: line.unitPrice,
+                discountPercent: line.discountPercent,
+              })),
+              {
+                catalogItemId: catalogItem.id,
+                quantity,
+                description: catalogItem.description || "",
+                unitPrice: Number(catalogItem.salesPrice || 0),
+                discountPercent: 0,
+              },
+            ],
+          })
+        );
+        return nextOfferDialogStep(next, workflow, { askForMorePositions: true });
+      }
+      if (workflow.stage === "more_positions") {
+        if (/\b(?:weitere|noch eine|hinzufugen|mehr)\b/.test(normalizedMessage)) {
+          return nextOfferDialogStep(current, workflow);
+        }
+        if (/\b(?:pruf|prüf|vorschau|fertig|nein|abschliess|abschließ)\w*\b/.test(normalizedMessage)) {
+          return {
+            type: "answer" as const,
+            topicId: "action.draft.offer.review",
+            message:
+              "Hier ist die vollständige, neu berechnete Angebotsvorschau. Prüfe Projekt, Ausführungsmonat, Positionen, Preise und Texte. Erst der ausdrückliche Anlage-Button legt genau einen Angebotsentwurf an; JARVIS finalisiert oder versendet ihn nicht.",
+            actionDraft: current,
+            dialogActionWorkflow: null,
+          };
+        }
+        return {
+          type: "clarification" as const,
+          topicId: "action.dialog.offer.more-positions",
+          message: "Möchtest du eine weitere Position hinzufügen oder die Vorschau jetzt prüfen?",
+          choices: [
+            createJarvisDialogChoice("guided-offer-more-position", "Weitere Position", "Weitere Position hinzufügen"),
+            createJarvisDialogChoice("guided-offer-review", "Vorschau prüfen", "Angebot jetzt prüfen"),
+          ],
+          dialogActionWorkflow: workflow,
+        };
+      }
+    } catch (error) {
+      return {
+        type: "refusal" as const,
+        topicId: "action.draft.unavailable",
+        message: `${
+          error instanceof JarvisActionDraftError
+            ? error.message
+            : "Der Angebotsdialog konnte nicht sicher fortgesetzt werden."
+        } Es wurde kein Angebot angelegt.`,
+        dialogActionWorkflow: null,
+      };
+    }
+  }
+
+  if (workflow.stage === "customer") {
+    const customers = await searchJarvisGuidedOptions({
+      organizationId: input.organizationId,
+      kind: "customer",
+      query: input.message,
+      limit: 8,
+    });
+    if (customers.length === 0) {
+      return {
+        type: "clarification" as const,
+        topicId: `action.dialog.${workflow.kind}.customer`,
+        message:
+          "Ich finde unter dieser Eingabe keinen Kunden mit einem offenen Projekt. Bitte nenne Firmenname oder Vor- und Nachname noch einmal; es wurde nichts angelegt oder gebucht.",
+        dialogActionWorkflow: workflow,
+      };
+    }
+    if (customers.length > 1) {
+      return {
+        type: "clarification" as const,
+        topicId: `action.dialog.${workflow.kind}.customer`,
+        message: "Welcher dieser Kunden ist gemeint?",
+        choices: customers.map((customer) =>
+          createJarvisDialogChoice(
+            `guided-customer-${customer.id}`,
+            customer.label,
+            customer.label
+          )
+        ),
+        dialogActionWorkflow: workflow,
+      };
+    }
+    const customer = customers[0];
+    if (customer.kind !== "customer") return undefined;
+    const projects = await searchJarvisGuidedOptions({
+      organizationId: input.organizationId,
+      kind: "project",
+      customer: customer.label,
+      limit: 8,
+    });
+    return {
+      type: "clarification" as const,
+      topicId: `action.dialog.${workflow.kind}.project`,
+      message: `Alles klar. Welches offene Projekt von ${customer.label} ist gemeint?`,
+      choices: guidedProjectChoices(projects),
+      dialogActionWorkflow: {
+        ...workflow,
+        stage: "project" as const,
+        customer: customer.label,
+      },
+    };
+  }
+
+  const projects = await searchJarvisGuidedOptions({
+    organizationId: input.organizationId,
+    kind: "project",
+    customer: workflow.customer,
+    query: input.message,
+    limit: 8,
+  });
+  const project = selectGuidedProject(input.message, projects);
+  if (!project || project.kind !== "project") {
+    return {
+      type: "clarification" as const,
+      topicId: `action.dialog.${workflow.kind}.project`,
+      message:
+        projects.length > 0
+          ? "Ich kann das Projekt noch nicht eindeutig zuordnen. Bitte wähle einen der offenen Treffer."
+          : "Ich finde für diesen Kunden kein passendes offenes Projekt. Bitte nenne die Projektnummer; es wurde nichts angelegt oder gebucht.",
+      choices: guidedProjectChoices(projects),
+      dialogActionWorkflow: workflow,
+    };
+  }
+
+  if (workflow.kind === "offer") {
+    if (!input.sessionId) {
+      return {
+        type: "refusal" as const,
+        topicId: "action.draft.session-required",
+        message:
+          "Für den Angebotsdialog ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde kein Angebot angelegt.",
+      };
+    }
+    const binding: JarvisTaskDraftBinding = {
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    };
+    try {
+      const current = await getJarvisOfferDraft(workflow.previewId, binding);
+      const next = await completeJarvisOfferDraft(workflow.previewId, binding, {
+        ...offerDraftCompletionInput(current),
+        projectId: project.id,
+        company: project.defaultCompany,
+        parentOfferId: "",
+        plannedExecutionMonth:
+          current.editor.plannedExecutionMonth || project.defaultExecutionMonth,
+        plannedExecutionEndMonth:
+          current.editor.plannedExecutionEndMonth || project.defaultExecutionEndMonth,
+      });
+      return nextOfferDialogStep(next, workflow);
+    } catch (error) {
+      return {
+        type: "refusal" as const,
+        topicId: "action.draft.unavailable",
+        message: `${
+          error instanceof JarvisActionDraftError
+            ? error.message
+            : "Der Angebotsdialog konnte nicht sicher fortgesetzt werden."
+        } Es wurde kein Angebot angelegt.`,
+      };
+    }
+  }
+
+  const [year, month, day] = workflow.date.split("-");
+  return buildJarvisPlanningPreview({
+    question: `Plane am ${day}.${month}.${year} von ${workflow.startTime} bis ${workflow.endTime} den Termin „${workflow.title}“ für ${workflow.employeeNames.join(" und ")}.`,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    accessProfile: input.accessProfile,
+    context: { recordType: "project", recordId: project.id },
+    users: input.users,
+  });
+}
+
 export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   const body = await req.json().catch(() => ({}));
@@ -3668,6 +4234,7 @@ export async function POST(req: Request) {
       dialogSequence: _dialogSequence,
       dialogIntentSequence: _dialogIntentSequence,
       dialogGuidedSequence: _dialogGuidedSequence,
+      dialogActionWorkflow: _dialogActionWorkflow,
       ...publicPayload
     } = responsePayload;
     return NextResponse.json({
@@ -3686,6 +4253,34 @@ export async function POST(req: Request) {
       topicId: "security.refusal",
       message: getJarvisAuthorizationRefusalMessage(authorization, message),
     });
+  }
+  if (previousDialogState?.actionWorkflow) {
+    const workflowResponse = await continueJarvisActionWorkflow({
+      workflow: previousDialogState.actionWorkflow,
+      message,
+      organizationId: organization.id,
+      sessionId: actorResult.sessionId,
+      accessProfile,
+      users,
+    });
+    if (workflowResponse) return respond(workflowResponse, "system");
+  }
+  const teamSlotPreparation = parseJarvisTeamSlotPreparationRequest(message);
+  if (teamSlotPreparation) {
+    return respond(
+      {
+        type: "clarification",
+        topicId: "action.dialog.planning.customer",
+        message:
+          "Gerne. Für welchen Kunden soll ich diesen gemeinsamen Einsatz vorbereiten? Nenne Firmenname oder Vor- und Nachname; danach zeige ich ausschließlich die offenen Projekte dieses Kunden. Es wurde noch nichts gebucht.",
+        dialogActionWorkflow: {
+          kind: "planning",
+          stage: "customer",
+          ...teamSlotPreparation,
+        },
+      },
+      "system"
+    );
   }
   const stampSessionSwitch = extractStampSessionSwitchRequest(message);
   if (stampSessionSwitch) {

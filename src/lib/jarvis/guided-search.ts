@@ -67,12 +67,14 @@ export async function searchJarvisGuidedOptions(input: {
   organizationId: string;
   kind: JarvisGuidedSearchKind;
   query?: string;
+  exactId?: string;
   customer?: string;
   limit?: number;
   db?: GuidedSearchDb;
 }): Promise<JarvisGuidedSearchResult[]> {
   const db = input.db ?? prisma;
   const query = clean(input.query, 120);
+  const exactId = clean(input.exactId, 120);
   const customer = clean(input.customer, 300);
   const limit = Math.min(20, Math.max(1, input.limit ?? 12));
 
@@ -81,7 +83,9 @@ export async function searchJarvisGuidedOptions(input: {
       where: {
         organizationId: input.organizationId,
         isActive: true,
-        ...tokenizedContains(["number", "name", "description", "type"], query),
+        ...(exactId
+          ? { id: exactId }
+          : tokenizedContains(["number", "name", "description", "type"], query)),
       },
       orderBy: [{ type: "asc" }, { number: "asc" }],
       take: limit,

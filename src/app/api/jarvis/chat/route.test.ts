@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisOrganizationOperationsIntent: vi.fn(),
   resolveJarvisOrganizationOperationsRequest: vi.fn(),
   resolveJarvisTeamSlotRequest: vi.fn(),
+  parseJarvisTeamSlotPreparationRequest: vi.fn(),
+  searchJarvisGuidedOptions: vi.fn(),
   resolveJarvisNaturalEntryRequest: vi.fn(),
   resolveJarvisManagementCompositeRequest: vi.fn(),
   resolveJarvisEnterpriseInsightRequest: vi.fn(),
@@ -86,6 +88,9 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisVehicleTripCalculationDraft: vi.fn(),
   completeJarvisWinterCalculationDraft: vi.fn(),
   completeJarvisVehicleTripCalculationDraft: vi.fn(),
+  getJarvisOfferDraft: vi.fn(),
+  completeJarvisOfferDraft: vi.fn(),
+  cancelJarvisOfferDraft: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -140,6 +145,9 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.completeJarvisWinterCalculationDraft,
   completeJarvisVehicleTripCalculationDraft:
     mocks.completeJarvisVehicleTripCalculationDraft,
+  getJarvisOfferDraft: mocks.getJarvisOfferDraft,
+  completeJarvisOfferDraft: mocks.completeJarvisOfferDraft,
+  cancelJarvisOfferDraft: mocks.cancelJarvisOfferDraft,
   createPersistedJarvisTaskDraft: mocks.createPersistedJarvisTaskDraft,
   createPersistedJarvisCommunicationDraft:
     mocks.createPersistedJarvisCommunicationDraft,
@@ -285,6 +293,12 @@ vi.mock("@/lib/jarvis/organization-operations-analysis", () => ({
 
 vi.mock("@/lib/jarvis/team-slot-finder", () => ({
   resolveJarvisTeamSlotRequest: mocks.resolveJarvisTeamSlotRequest,
+  parseJarvisTeamSlotPreparationRequest:
+    mocks.parseJarvisTeamSlotPreparationRequest,
+}));
+
+vi.mock("@/lib/jarvis/guided-search", () => ({
+  searchJarvisGuidedOptions: mocks.searchJarvisGuidedOptions,
 }));
 
 vi.mock("@/lib/jarvis/natural-entry", () => ({
@@ -639,6 +653,8 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisOrganizationOperationsIntent.mockReturnValue(undefined);
     mocks.resolveJarvisOrganizationOperationsRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisTeamSlotRequest.mockResolvedValue(undefined);
+    mocks.parseJarvisTeamSlotPreparationRequest.mockReturnValue(undefined);
+    mocks.searchJarvisGuidedOptions.mockResolvedValue([]);
     mocks.resolveJarvisNaturalEntryRequest.mockReturnValue(undefined);
     mocks.resolveJarvisManagementCompositeRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisEnterpriseInsightRequest.mockResolvedValue(undefined);
@@ -3443,15 +3459,262 @@ describe("POST /api/jarvis/chat", () => {
     expect(payload).toMatchObject({
       type: "answer",
       topicId: "action.draft.offer",
-      actionDraft: {
-        actionId: "offer.prepare",
-        state: "awaiting_input",
-        missingFields: expect.arrayContaining(["Projekt", "Ausführungsmonat", "Mindestens eine Position"]),
+      dialogState: {
+        actionWorkflow: {
+          kind: "offer",
+          stage: "customer",
+        },
       },
     });
+    expect(payload.actionDraft).toBeUndefined();
     expect(payload.message).toContain("Für welchen Kunden");
     expect(payload.message).not.toContain("noch nicht freigegeben");
     expect(mocks.createPersistedJarvisOfferDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a typed customer and project inside the active offer dialog", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: actor,
+      effectiveActor: actor,
+      isImpersonating: false,
+    });
+    const firstResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Schreib mir ein Angebot." }),
+    }));
+    const first = await firstResponse.json();
+    expect(first.dialogState.actionWorkflow).toMatchObject({
+      kind: "offer",
+      stage: "customer",
+      previewId: expect.any(String),
+      revision: 1,
+    });
+
+    mocks.searchJarvisGuidedOptions
+      .mockResolvedValueOnce([{ kind: "customer", id: "Klaus Testmann", label: "Klaus Testmann", detail: "2 offene Projekte", projectCount: 2 }])
+      .mockResolvedValueOnce([
+        { kind: "project", id: "project-1", label: "GLR-449 · Glasreinigung", detail: "Klaus Testmann · Glasreinigung", customerLabel: "Klaus Testmann", projectKind: "Einmalig", defaultCompany: "OK solutions", defaultExecutionMonth: "", defaultExecutionEndMonth: "" },
+        { kind: "project", id: "project-2", label: "OBJ-155 · Objektbetreuung", detail: "Klaus Testmann · Objektbetreuung", customerLabel: "Klaus Testmann", projectKind: "Dauerläufer", defaultCompany: "OK solutions", defaultExecutionMonth: "2026-08", defaultExecutionEndMonth: "2027-07" },
+      ]);
+    const customerResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Klaus Testmann", dialogState: first.dialogState }),
+    }));
+    const customer = await customerResponse.json();
+    expect(customer).toMatchObject({
+      type: "clarification",
+      topicId: "action.dialog.offer.project",
+      dialogState: { actionWorkflow: { kind: "offer", stage: "project", customer: "Klaus Testmann" } },
+    });
+    expect(customer.choices).toHaveLength(2);
+
+    const currentDraft = await mocks.createPersistedJarvisOfferDraft.mock.results[0].value;
+    const projectDraft = {
+      ...currentDraft,
+      revision: 2,
+      editor: { ...currentDraft.editor, projectId: "project-1" },
+      missingFields: ["Ausführungsmonat", "Mindestens eine Position"],
+    };
+    mocks.searchJarvisGuidedOptions.mockResolvedValueOnce([
+      { kind: "project", id: "project-1", label: "GLR-449 · Glasreinigung", detail: "Klaus Testmann · Glasreinigung", customerLabel: "Klaus Testmann", projectKind: "Einmalig", defaultCompany: "OK solutions", defaultExecutionMonth: "", defaultExecutionEndMonth: "" },
+    ]);
+    mocks.getJarvisOfferDraft.mockResolvedValueOnce(currentDraft);
+    mocks.completeJarvisOfferDraft.mockResolvedValueOnce(projectDraft);
+    const projectResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Projekt GLR-449", dialogState: customer.dialogState }),
+    }));
+    const project = await projectResponse.json();
+    expect(project).toMatchObject({
+      type: "clarification",
+      topicId: "action.dialog.offer.execution-month",
+      dialogState: { actionWorkflow: { kind: "offer", stage: "execution_month", revision: 2 } },
+    });
+    expect(mocks.completeJarvisOfferDraft).toHaveBeenCalledWith(
+      currentDraft.previewId,
+      expect.objectContaining({ organizationId: "organization-1", sessionId: "session-1" }),
+      expect.objectContaining({ revision: 1, projectId: "project-1" })
+    );
+
+    const monthDraft = {
+      ...projectDraft,
+      revision: 3,
+      editor: { ...projectDraft.editor, plannedExecutionMonth: "2026-11" },
+      missingFields: ["Mindestens eine Position"],
+    };
+    mocks.getJarvisOfferDraft.mockResolvedValueOnce(projectDraft);
+    mocks.completeJarvisOfferDraft.mockResolvedValueOnce(monthDraft);
+    const monthResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "November 2026", dialogState: project.dialogState }),
+    }));
+    const month = await monthResponse.json();
+    expect(month).toMatchObject({
+      type: "clarification",
+      topicId: "action.dialog.offer.position",
+      dialogState: { actionWorkflow: { kind: "offer", stage: "position", revision: 3 } },
+    });
+
+    mocks.getJarvisOfferDraft.mockResolvedValueOnce(monthDraft);
+    mocks.searchJarvisGuidedOptions.mockResolvedValueOnce([{ kind: "catalog", id: "catalog-1", label: "OKI0305 · Objektbetreuung", detail: "Leistung · Std", catalogType: "Leistung", unit: "Std", description: "Objektbetreuung", salesPrice: 65, vatRate: 19 }]);
+    const positionResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Objektbetreuung", dialogState: month.dialogState }),
+    }));
+    const position = await positionResponse.json();
+    expect(position).toMatchObject({
+      type: "clarification",
+      topicId: "action.dialog.offer.quantity",
+      dialogState: { actionWorkflow: { kind: "offer", stage: "quantity", pendingCatalogId: "catalog-1" } },
+    });
+
+    const readyDraft = {
+      ...monthDraft,
+      revision: 4,
+      state: "awaiting_confirmation",
+      editor: {
+        ...monthDraft.editor,
+        lines: [{ catalogItemId: "catalog-1", quantity: 8, description: "Objektbetreuung", unitPrice: 65, discountPercent: 0 }],
+      },
+      missingFields: [],
+      confirmation: { enabled: true, reason: "ready" },
+    };
+    mocks.getJarvisOfferDraft.mockResolvedValueOnce(monthDraft);
+    const catalogLookup = vi.spyOn(prisma.catalogItem, "findFirst").mockResolvedValueOnce({ id: "catalog-1", description: "Objektbetreuung", salesPrice: 65 } as never);
+    mocks.completeJarvisOfferDraft.mockResolvedValueOnce(readyDraft);
+    const quantityResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "8 Stunden", dialogState: position.dialogState }),
+    }));
+    const quantity = await quantityResponse.json();
+    expect(quantity).toMatchObject({
+      type: "clarification",
+      topicId: "action.dialog.offer.more-positions",
+      dialogState: { actionWorkflow: { kind: "offer", stage: "more_positions", revision: 4 } },
+    });
+    catalogLookup.mockRestore();
+
+    mocks.getJarvisOfferDraft.mockResolvedValueOnce(readyDraft);
+    const reviewResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Angebot jetzt prüfen", dialogState: quantity.dialogState }),
+    }));
+    const review = await reviewResponse.json();
+    expect(review).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.offer.review",
+      actionDraft: { actionId: "offer.prepare", state: "awaiting_confirmation", revision: 4 },
+    });
+    expect(review.dialogState.actionWorkflow).toBeUndefined();
+  });
+
+  it("starts project selection after a team-slot suggestion instead of demanding an open project first", async () => {
+    const actor = { id: "user-1", firstName: "Christian", lastName: "Eid", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    const max = { id: "user-2", firstName: "Max", lastName: "Mustermann", isActive: true, role: "MITARBEITER" };
+    const erika = { id: "user-3", firstName: "Erika", lastName: "Musterfrau", isActive: true, role: "MITARBEITER" };
+    mocks.getDemoContext.mockResolvedValue({ organization: { id: "organization-1" }, users: [actor, max, erika] });
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.parseJarvisTeamSlotPreparationRequest.mockReturnValueOnce({
+      date: "2026-08-27",
+      startTime: "08:00",
+      endTime: "12:00",
+      title: "Rasenmähen",
+      employeeNames: ["Max Mustermann", "Erika Musterfrau"],
+    });
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: "user-1",
+        message: "Bereite für Do., 27.08.2026 von 08:00 bis 12:00 einen Rasenmähen-Termin mit Max Mustermann und Erika Musterfrau vor. Frage mich zuerst nach Kunde und Projekt.",
+      }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      type: "clarification",
+      topicId: "action.dialog.planning.customer",
+      dialogState: {
+        actionWorkflow: {
+          kind: "planning",
+          stage: "customer",
+          employeeNames: ["Max Mustermann", "Erika Musterfrau"],
+        },
+      },
+    });
+    expect(payload.message).toContain("Für welchen Kunden");
+    expect(mocks.createPersistedJarvisPlanningDraft).not.toHaveBeenCalled();
+
+    mocks.searchJarvisGuidedOptions
+      .mockResolvedValueOnce([{ kind: "customer", id: "Klaus Testmann", label: "Klaus Testmann", detail: "1 offenes Projekt", projectCount: 1 }])
+      .mockResolvedValueOnce([{ kind: "project", id: "project-1", label: "GRU-449 · Grünpflege", detail: "Klaus Testmann · Grünpflege", customerLabel: "Klaus Testmann", projectKind: "Einmalig", defaultCompany: "OK solutions", defaultExecutionMonth: "", defaultExecutionEndMonth: "" }]);
+    const customerResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Klaus Testmann", dialogState: payload.dialogState }),
+    }));
+    const customer = await customerResponse.json();
+    expect(customer.topicId).toBe("action.dialog.planning.project");
+
+    mocks.searchJarvisGuidedOptions.mockResolvedValueOnce([{ kind: "project", id: "project-1", label: "GRU-449 · Grünpflege", detail: "Klaus Testmann · Grünpflege", customerLabel: "Klaus Testmann", projectKind: "Einmalig", defaultCompany: "OK solutions", defaultExecutionMonth: "", defaultExecutionEndMonth: "" }]);
+    const projectResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Projekt GRU-449", dialogState: customer.dialogState }),
+    }));
+    expect(await projectResponse.json()).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.planning",
+      actionDraft: { actionId: "planning.prepare" },
+    });
+    expect(mocks.createPersistedJarvisPlanningDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preview: expect.objectContaining({
+          payload: expect.objectContaining({
+            projectId: "project-1",
+            assigneeIds: ["user-2", "user-3"],
+          }),
+        }),
+      })
+    );
+  });
+
+  it("cancels a conversational offer draft without creating an offer", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const firstResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Schreib mir ein Angebot." }),
+    }));
+    const first = await firstResponse.json();
+    const currentDraft = await mocks.createPersistedJarvisOfferDraft.mock.results[0].value;
+    mocks.getJarvisOfferDraft.mockResolvedValueOnce(currentDraft);
+    mocks.cancelJarvisOfferDraft.mockResolvedValueOnce({ ...currentDraft, state: "cancelled", revision: 2 });
+    const cancelResponse = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Abbrechen", dialogState: first.dialogState }),
+    }));
+    const cancelled = await cancelResponse.json();
+    expect(cancelled).toMatchObject({
+      type: "answer",
+      topicId: "action.dialog.offer.cancelled",
+      actionDraft: { state: "cancelled" },
+    });
+    expect(cancelled.dialogState.actionWorkflow).toBeUndefined();
+    expect(mocks.cancelJarvisOfferDraft).toHaveBeenCalledWith(
+      currentDraft.previewId,
+      expect.objectContaining({ organizationId: "organization-1", sessionId: "session-1" }),
+      1
+    );
   });
 
   it("prepares a uniquely scoped project master-data change without executing it", async () => {

@@ -11,6 +11,54 @@ import {
 } from "@/lib/jarvis/dialog-state";
 
 describe("JARVIS dialog state", () => {
+  it("sanitizes only bounded offer and planning workflow context", () => {
+    const base = {
+      version: 1,
+      domain: "system",
+      lastQuestion: "Schreib mir ein Angebot",
+      lastIntent: { goals: [], entities: [], timeScopes: [], recordFilter: "all" },
+    };
+    expect(sanitizeJarvisDialogState({
+      ...base,
+      actionWorkflow: { kind: "offer", stage: "customer", previewId: "preview-1", revision: 1 },
+    })?.actionWorkflow).toEqual({
+      kind: "offer",
+      stage: "customer",
+      previewId: "preview-1",
+      revision: 1,
+      customer: undefined,
+      pendingCatalogId: undefined,
+      catalogChoices: undefined,
+    });
+    expect(sanitizeJarvisDialogState({
+      ...base,
+      actionWorkflow: {
+        kind: "offer",
+        stage: "position",
+        previewId: "preview-1",
+        revision: 1,
+        catalogChoices: [
+          { id: "catalog-1", label: "OKI0305 · Objektbetreuung" },
+          { id: "", label: "ungültig" },
+        ],
+      },
+    })?.actionWorkflow).toMatchObject({
+      catalogChoices: [{ id: "catalog-1", label: "OKI0305 · Objektbetreuung" }],
+    });
+    expect(sanitizeJarvisDialogState({
+      ...base,
+      actionWorkflow: { kind: "planning", stage: "project", date: "2026-08-27", startTime: "08:00", endTime: "12:00", title: "Rasenmähen", employeeNames: ["Max Mustermann", "Erika Musterfrau"] },
+    })?.actionWorkflow).toMatchObject({ kind: "planning", employeeNames: ["Max Mustermann", "Erika Musterfrau"] });
+    expect(sanitizeJarvisDialogState({
+      ...base,
+      actionWorkflow: { kind: "offer", stage: "project", previewId: "preview-1", revision: -1 },
+    })?.actionWorkflow).toBeUndefined();
+    expect(sanitizeJarvisDialogState({
+      ...base,
+      actionWorkflow: { kind: "offer", stage: "quantity", previewId: "preview-1", revision: 2 },
+    })?.actionWorkflow).toBeUndefined();
+  });
+
   it("matches a short typed answer to exactly one guided choice", () => {
     expect(
       resolveJarvisDialogChoiceInput("nur die Rechnungen", [

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Role } from "@prisma/client";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
-import { parseJarvisTeamSlotQuery, resolveJarvisTeamSlotRequest, type JarvisTeamSlotSnapshot, type JarvisTeamSlotSource } from "@/lib/jarvis/team-slot-finder";
+import { parseJarvisTeamSlotPreparationRequest, parseJarvisTeamSlotQuery, resolveJarvisTeamSlotRequest, type JarvisTeamSlotSnapshot, type JarvisTeamSlotSource } from "@/lib/jarvis/team-slot-finder";
 
 const now = new Date("2026-08-03T07:00:00.000Z");
 const window = {
@@ -33,6 +33,25 @@ const manager = createJarvisAccessProfile({ id: "lead", role: Role.FUEHRUNGSKRAF
 const employee = createJarvisAccessProfile({ id: "u1", role: Role.MITARBEITER, teamId: "team-a" });
 
 describe("JARVIS team slot finder", () => {
+  it("turns a selected slot suggestion into a safe multi-employee planning handoff", () => {
+    expect(
+      parseJarvisTeamSlotPreparationRequest(
+        "Bereite für Do., 27.08.2026 von 08:00 bis 12:00 einen Rasenmähen-Termin mit Max Mustermann und Erika Musterfrau vor. Frage mich zuerst nach Kunde und Projekt."
+      )
+    ).toEqual({
+      date: "2026-08-27",
+      startTime: "08:00",
+      endTime: "12:00",
+      title: "Rasenmähen",
+      employeeNames: ["Max Mustermann", "Erika Musterfrau"],
+    });
+    expect(
+      parseJarvisTeamSlotPreparationRequest(
+        "Bereite für 31.02.2026 von 12:00 bis 08:00 einen Einsatz-Termin mit Max Mustermann vor."
+      )
+    ).toBeUndefined();
+  });
+
   it.each([
     "Wann haben 2 von unsere Jungs Zeit bei einem Kunden 4h Rasen zu mähen?",
     "Wann ist der nächstmögliche Termin wo zwei von den Jungs bei einem Kunden vier Stunden Rasen mähen können?",

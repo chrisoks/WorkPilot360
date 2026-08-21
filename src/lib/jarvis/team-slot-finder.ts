@@ -63,6 +63,14 @@ export type JarvisTeamSlotQuery = {
   earliestOnly: boolean;
 };
 
+export type JarvisTeamSlotPreparation = {
+  date: string;
+  startTime: string;
+  endTime: string;
+  title: string;
+  employeeNames: string[];
+};
+
 type MinuteInterval = { start: number; end: number };
 type TeamSlot = { date: string; start: number; end: number; users: SlotUser[] };
 
@@ -124,6 +132,41 @@ export function parseJarvisTeamSlotQuery(question: string): JarvisTeamSlotQuery 
     serviceLabel: serviceLabel(question),
     earliestOnly: /\b(?:nachstmoglich\w*|fruhest\w*|als nachstes)\b/.test(value),
   };
+}
+
+export function parseJarvisTeamSlotPreparationRequest(
+  question: string
+): JarvisTeamSlotPreparation | undefined {
+  const dateMatch = question.match(/\b(\d{1,2})\.(\d{1,2})\.(20\d{2})\b/u);
+  const timeMatch = question.match(
+    /\bvon\s+([01]?\d|2[0-3]):([0-5]\d)\s+(?:Uhr\s+)?bis\s+([01]?\d|2[0-3]):([0-5]\d)\b/iu
+  );
+  const titleMatch = question.match(
+    /\beinen?\s+(.{2,120}?)-Termin\s+mit\s+(.+?)\s+vor\b/iu
+  );
+  if (!dateMatch || !timeMatch || !titleMatch || !/\bbereit\w*\b/iu.test(question)) {
+    return undefined;
+  }
+  const date = `${dateMatch[3]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[1].padStart(2, "0")}`;
+  const parsedDate = new Date(`${date}T12:00:00.000Z`);
+  if (
+    Number.isNaN(parsedDate.getTime()) ||
+    parsedDate.toISOString().slice(0, 10) !== date
+  ) {
+    return undefined;
+  }
+  const startTime = `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}`;
+  const endTime = `${timeMatch[3].padStart(2, "0")}:${timeMatch[4]}`;
+  if (endTime <= startTime) return undefined;
+  const employeeNames = titleMatch[2]
+    .replace(/\s*,\s*und\s+/giu, ",")
+    .split(/\s*(?:,|\bund\b)\s*/iu)
+    .map((value) => value.trim().replace(/[.!?]+$/, ""))
+    .filter((value) => value.length >= 3)
+    .slice(0, 10);
+  const title = titleMatch[1].trim().replace(/[.!?]+$/, "");
+  if (!title || employeeNames.length === 0) return undefined;
+  return { date, startTime, endTime, title, employeeNames };
 }
 
 function actorVisibilityWhere(actor: JarvisAccessProfile["effectiveActor"]): Prisma.UserWhereInput {

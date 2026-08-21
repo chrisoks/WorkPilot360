@@ -45,6 +45,34 @@ export type JarvisGuidedSequenceTask = {
   projectScope?: JarvisProjectSequenceScope;
 };
 
+export type JarvisActionWorkflow =
+  | {
+      kind: "offer";
+      stage:
+        | "customer"
+        | "project"
+        | "parent_offer"
+        | "execution_month"
+        | "position"
+        | "quantity"
+        | "more_positions";
+      previewId: string;
+      revision: number;
+      customer?: string;
+      pendingCatalogId?: string;
+      catalogChoices?: Array<{ id: string; label: string }>;
+    }
+  | {
+      kind: "planning";
+      stage: "customer" | "project";
+      date: string;
+      startTime: string;
+      endTime: string;
+      title: string;
+      employeeNames: string[];
+      customer?: string;
+    };
+
 export type JarvisDialogState = {
   version: 1;
   domain: JarvisIntentDomain;
@@ -71,6 +99,7 @@ export type JarvisDialogState = {
   guidedSequence?: {
     remainingTasks: JarvisGuidedSequenceTask[];
   };
+  actionWorkflow?: JarvisActionWorkflow;
 };
 
 type JarvisDialogResponse = {
@@ -81,6 +110,7 @@ type JarvisDialogResponse = {
   dialogSequence?: unknown;
   dialogIntentSequence?: unknown;
   dialogGuidedSequence?: unknown;
+  dialogActionWorkflow?: unknown;
 };
 
 const DOMAINS = new Set<JarvisIntentDomain>([
@@ -134,6 +164,67 @@ const INTENT_SEQUENCE_ENTITIES = new Set<JarvisIntentSequenceEntity>([
   "offer",
   "invoice",
 ]);
+
+function sanitizeActionWorkflow(value: unknown): JarvisActionWorkflow | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const kind = cleanText(candidate.kind, 20);
+  const stage = cleanText(candidate.stage, 20);
+  const customer = cleanText(candidate.customer, 300) || undefined;
+  if (
+    kind === "offer" &&
+    ["customer", "project", "parent_offer", "execution_month", "position", "quantity", "more_positions"].includes(stage)
+  ) {
+    const previewId = cleanText(candidate.previewId, 120);
+    const revision = candidate.revision;
+    if (!previewId || typeof revision !== "number" || !Number.isInteger(revision) || revision < 1) {
+      return undefined;
+    }
+    const pendingCatalogId = cleanText(candidate.pendingCatalogId, 120) || undefined;
+    const catalogChoices = Array.isArray(candidate.catalogChoices)
+      ? candidate.catalogChoices
+          .map((item) => {
+            if (!item || typeof item !== "object") return undefined;
+            const choice = item as Record<string, unknown>;
+            const id = cleanText(choice.id, 120);
+            const label = cleanText(choice.label, 300);
+            return id && label ? { id, label } : undefined;
+          })
+          .filter((item): item is { id: string; label: string } => Boolean(item))
+          .slice(0, 8)
+      : undefined;
+    if (stage === "quantity" && !pendingCatalogId) return undefined;
+    return {
+      kind,
+      stage: stage as Extract<JarvisActionWorkflow, { kind: "offer" }>["stage"],
+      previewId,
+      revision,
+      customer,
+      pendingCatalogId,
+      catalogChoices: catalogChoices?.length ? catalogChoices : undefined,
+    };
+  }
+  if (kind === "planning" && (stage === "customer" || stage === "project")) {
+    const date = cleanText(candidate.date, 10);
+    const startTime = cleanText(candidate.startTime, 5);
+    const endTime = cleanText(candidate.endTime, 5);
+    const title = cleanText(candidate.title, 180);
+    const employeeNames = Array.isArray(candidate.employeeNames)
+      ? candidate.employeeNames.map((item) => cleanText(item, 160)).filter(Boolean).slice(0, 10)
+      : [];
+    if (
+      !/^20\d{2}-\d{2}-\d{2}$/.test(date) ||
+      !/^\d{2}:\d{2}$/.test(startTime) ||
+      !/^\d{2}:\d{2}$/.test(endTime) ||
+      !title ||
+      employeeNames.length === 0
+    ) {
+      return undefined;
+    }
+    return { kind, stage, date, startTime, endTime, title, employeeNames, customer };
+  }
+  return undefined;
+}
 const GUIDED_SEQUENCE_KINDS = new Set<JarvisGuidedSequenceTask["kind"]>([
   "domain",
   "time",
@@ -373,6 +464,7 @@ export function sanitizeJarvisDialogState(
     : [];
   const intentSequence = sanitizeIntentSequence(candidate.intentSequence);
   const guidedSequence = sanitizeGuidedSequence(candidate.guidedSequence);
+  const actionWorkflow = sanitizeActionWorkflow(candidate.actionWorkflow);
 
   return {
     version: 1,
@@ -410,6 +502,7 @@ export function sanitizeJarvisDialogState(
         : undefined,
     intentSequence,
     guidedSequence,
+    actionWorkflow,
   };
 }
 
@@ -660,6 +753,10 @@ export function buildJarvisDialogState(input: {
       : remainingGuidedTasks.length > 0
       ? { remainingTasks: remainingGuidedTasks }
       : undefined;
+  const hasResponseActionWorkflow = response.dialogActionWorkflow !== undefined;
+  const actionWorkflow = hasResponseActionWorkflow
+    ? sanitizeActionWorkflow(response.dialogActionWorkflow)
+    : undefined;
 
   return {
     version: 1,
@@ -684,6 +781,7 @@ export function buildJarvisDialogState(input: {
     projectSequence,
     intentSequence,
     guidedSequence,
+    actionWorkflow,
   };
 }
 

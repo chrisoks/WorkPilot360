@@ -64,4 +64,22 @@ describe("JARVIS guided full-text search", () => {
     expect(results[0]).toMatchObject({ kind: "catalog", id: "c1", unit: "Monat", salesPrice: 450, vatRate: 19 });
     expect(findMany.mock.calls[0]?.[0].where).toMatchObject({ organizationId: "org-1", isActive: true });
   });
+
+  it("reloads a selected catalog choice by its organization-bound id", async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      { id: "c1", number: "OKI0305", name: "Objektbetreuung", description: "Monatliche Betreuung", type: "Leistung", unit: "Monat", salesPrice: 450, vatRate: 19 },
+    ]);
+    await searchJarvisGuidedOptions({
+      organizationId: "org-1",
+      kind: "catalog",
+      exactId: "c1",
+      db: { catalogItem: { findMany } } as never,
+    });
+
+    expect(findMany.mock.calls[0]?.[0].where).toEqual({
+      organizationId: "org-1",
+      isActive: true,
+      id: "c1",
+    });
+  });
 });

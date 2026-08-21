@@ -3441,7 +3441,13 @@ function JarvisOfferDraftCard({
   const [error, setError] = useState("");
   const [guidedStep, setGuidedStep] = useState<
     "customer" | "project" | "basics" | "positions" | "review"
-  >(draft.editor.projectId ? "basics" : "customer");
+  >(
+    draft.state === "awaiting_confirmation"
+      ? "review"
+      : draft.editor.projectId
+        ? "basics"
+        : "customer"
+  );
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<JarvisGuidedSearchResult[]>([]);
