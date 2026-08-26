@@ -1,7 +1,8 @@
 {
   "version": 1,
-  "reviewedAt": "2026-08-21",
-  "reviewedProductCommit": "fc05c6be083ec944ee9e3bcf78f65a20c938ac9e",
+  "reviewedAt": "2026-08-26",
+  "reviewedProductCommit": "56a3446e393d62d584e5b4e9581881e1e30efe5e",
+  "reviewNote": "Die Produktdifferenz seit fc05c6be083ec944ee9e3bcf78f65a20c938ac9e wurde vollständig geprüft. Sie enthält ausschließlich bereits abgedeckte JARVIS-Wissens-, Sicherheits- und Evaluierungsnachführungen sowie den in JARVIS selbst implementierten und getesteten geführten Angebots- und Teamtermin-Dialog. Die acht allgemeinen Fachverträge und ihre produktiven Quellen bleiben unverändert.",
   "policy": "Every product commit after reviewedProductCommit must be followed by an explicit JARVIS knowledge review. Knowledge-only commits are exempt.",
   "capabilities": [
     {
